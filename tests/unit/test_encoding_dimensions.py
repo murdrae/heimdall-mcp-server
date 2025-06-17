@@ -5,6 +5,7 @@ Unit tests for cognitive dimension extractors.
 import pytest
 import torch
 
+from cognitive_memory.core.config import CognitiveConfig
 from cognitive_memory.encoding.dimensions import (
     CognitiveDimensionExtractor,
     ContextualExtractor,
@@ -14,20 +15,27 @@ from cognitive_memory.encoding.dimensions import (
 )
 
 
+@pytest.fixture
+def config():
+    """Create a test cognitive config."""
+    return CognitiveConfig()
+
+
 @pytest.mark.slow
 class TestEmotionalExtractor:
     """Test emotional dimension extraction."""
 
     def setup_method(self) -> None:
         """Set up test fixtures."""
-        self.extractor = EmotionalExtractor()
+        self.config = CognitiveConfig()
+        self.extractor = EmotionalExtractor(self.config)
 
     def test_basic_extraction(self) -> None:
         """Test basic emotional dimension extraction."""
         text = "I'm really frustrated with this bug that won't get fixed"
         dims = self.extractor.extract(text)
 
-        assert dims.shape == (4,)
+        assert dims.shape == (self.config.emotional_dimensions,)
         assert torch.all(dims >= 0.0)
         assert torch.all(dims <= 1.0)
         assert dims[0] > 0.2  # frustration should be detected
@@ -56,7 +64,7 @@ class TestEmotionalExtractor:
     def test_empty_text(self) -> None:
         """Test handling of empty text."""
         dims = self.extractor.extract("")
-        assert dims.shape == (4,)
+        assert dims.shape == (self.config.emotional_dimensions,)
         assert torch.all(dims == 0.0)
 
     def test_dimension_names(self) -> None:
@@ -71,14 +79,15 @@ class TestTemporalExtractor:
 
     def setup_method(self) -> None:
         """Set up test fixtures."""
-        self.extractor = TemporalExtractor()
+        self.config = CognitiveConfig()
+        self.extractor = TemporalExtractor(self.config)
 
     def test_urgency_detection(self) -> None:
         """Test urgency detection."""
         text = "I need this done ASAP, it's urgent"
         dims = self.extractor.extract(text)
 
-        assert dims.shape == (3,)
+        assert dims.shape == (self.config.temporal_dimensions,)
         assert dims[0] > 0.3  # urgency should be high
 
     def test_deadline_detection(self) -> None:
@@ -107,14 +116,15 @@ class TestContextualExtractor:
 
     def setup_method(self) -> None:
         """Set up test fixtures."""
-        self.extractor = ContextualExtractor()
+        self.config = CognitiveConfig()
+        self.extractor = ContextualExtractor(self.config)
 
     def test_work_context_detection(self) -> None:
         """Test work context detection."""
         text = "In today's meeting with the client we discussed the project"
         dims = self.extractor.extract(text)
 
-        assert dims.shape == (6,)
+        assert dims.shape == (self.config.contextual_dimensions,)
         assert dims[0] > 0.3  # work context should be high
 
     def test_technical_context_detection(self) -> None:
@@ -157,14 +167,15 @@ class TestSocialExtractor:
 
     def setup_method(self) -> None:
         """Set up test fixtures."""
-        self.extractor = SocialExtractor()
+        self.config = CognitiveConfig()
+        self.extractor = SocialExtractor(self.config)
 
     def test_collaboration_detection(self) -> None:
         """Test collaboration detection."""
         text = "We need to work together as a team on this project"
         dims = self.extractor.extract(text)
 
-        assert dims.shape == (3,)
+        assert dims.shape == (self.config.temporal_dimensions,)
         assert dims[0] > 0.3  # collaboration should be high
 
     def test_support_detection(self) -> None:
@@ -193,7 +204,8 @@ class TestCognitiveDimensionExtractor:
 
     def setup_method(self) -> None:
         """Set up test fixtures."""
-        self.extractor = CognitiveDimensionExtractor()
+        self.config = CognitiveConfig()
+        self.extractor = CognitiveDimensionExtractor(self.config)
 
     def test_complete_extraction(self) -> None:
         """Test complete dimension extraction."""
@@ -230,7 +242,7 @@ class TestCognitiveDimensionExtractor:
     def test_total_dimensions(self) -> None:
         """Test total dimension count."""
         total = self.extractor.get_total_dimensions()
-        assert total == 16  # 4 + 3 + 6 + 3
+        assert total == self.config.get_total_cognitive_dimensions()  # 4 + 3 + 6 + 3
 
     def test_dimension_names_structure(self) -> None:
         """Test dimension names structure."""

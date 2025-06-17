@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 import torch
 from transformers import pipeline
 
+from ..core.config import CognitiveConfig
 from ..core.interfaces import DimensionExtractor
 
 
@@ -37,7 +38,8 @@ class BaseDimensionExtractor(ABC):
 class EmotionalExtractor(BaseDimensionExtractor):
     """Extract emotional dimensions: frustration, satisfaction, curiosity, stress."""
 
-    def __init__(self) -> None:
+    def __init__(self, config: CognitiveConfig) -> None:
+        self.config = config
         # Initialize sentiment analysis pipeline for emotional context
         self.sentiment_analyzer = pipeline(
             "sentiment-analysis",
@@ -73,7 +75,7 @@ class EmotionalExtractor(BaseDimensionExtractor):
     def extract(self, text: str) -> torch.Tensor:
         """Extract emotional dimensions from text."""
         if not text or not text.strip():
-            return torch.zeros(4, dtype=torch.float32)
+            return torch.zeros(self.config.emotional_dimensions, dtype=torch.float32)
 
         text_lower = text.lower()
 
@@ -129,7 +131,8 @@ class EmotionalExtractor(BaseDimensionExtractor):
 class TemporalExtractor(BaseDimensionExtractor):
     """Extract temporal dimensions: urgency, deadline pressure, time context."""
 
-    def __init__(self) -> None:
+    def __init__(self, config: CognitiveConfig) -> None:
+        self.config = config
         self.urgency_patterns = [
             r"\b(asap|immediately|urgent|quickly|fast|soon)\b",
             r"\b(right now|right away|time sensitive|critical)\b",
@@ -151,7 +154,7 @@ class TemporalExtractor(BaseDimensionExtractor):
     def extract(self, text: str) -> torch.Tensor:
         """Extract temporal dimensions from text."""
         if not text or not text.strip():
-            return torch.zeros(3, dtype=torch.float32)
+            return torch.zeros(self.config.temporal_dimensions, dtype=torch.float32)
 
         text_lower = text.lower()
 
@@ -192,7 +195,8 @@ class TemporalExtractor(BaseDimensionExtractor):
 class ContextualExtractor(BaseDimensionExtractor):
     """Extract contextual dimensions: work context, problem type, environment factors."""
 
-    def __init__(self) -> None:
+    def __init__(self, config: CognitiveConfig) -> None:
+        self.config = config
         self.work_context_patterns = [
             r"\b(meeting|project|task|assignment|work|job)\b",
             r"\b(client|customer|manager|team|colleague)\b",
@@ -232,7 +236,7 @@ class ContextualExtractor(BaseDimensionExtractor):
     def extract(self, text: str) -> torch.Tensor:
         """Extract contextual dimensions from text."""
         if not text or not text.strip():
-            return torch.zeros(6, dtype=torch.float32)
+            return torch.zeros(self.config.contextual_dimensions, dtype=torch.float32)
 
         text_lower = text.lower()
 
@@ -292,7 +296,8 @@ class ContextualExtractor(BaseDimensionExtractor):
 class SocialExtractor(BaseDimensionExtractor):
     """Extract social dimensions: collaboration, support, interaction patterns."""
 
-    def __init__(self) -> None:
+    def __init__(self, config: CognitiveConfig) -> None:
+        self.config = config
         self.collaboration_patterns = [
             r"\b(work (with|together)|collaborate|team up|partnership)\b",
             r"\b(group (work|project)|joint (effort|venture))\b",
@@ -314,7 +319,7 @@ class SocialExtractor(BaseDimensionExtractor):
     def extract(self, text: str) -> torch.Tensor:
         """Extract social dimensions from text."""
         if not text or not text.strip():
-            return torch.zeros(3, dtype=torch.float32)
+            return torch.zeros(self.config.social_dimensions, dtype=torch.float32)
 
         text_lower = text.lower()
 
@@ -361,21 +366,30 @@ class CognitiveDimensionExtractor(DimensionExtractor):
     cognitive dimensional analysis of text input.
     """
 
-    def __init__(self) -> None:
-        self.emotional_extractor = EmotionalExtractor()
-        self.temporal_extractor = TemporalExtractor()
-        self.contextual_extractor = ContextualExtractor()
-        self.social_extractor = SocialExtractor()
+    def __init__(self, config: CognitiveConfig) -> None:
+        self.config = config
+        self.emotional_extractor = EmotionalExtractor(config)
+        self.temporal_extractor = TemporalExtractor(config)
+        self.contextual_extractor = ContextualExtractor(config)
+        self.social_extractor = SocialExtractor(config)
 
     def extract_dimensions(self, text: str) -> dict[str, torch.Tensor]:
         """Extract all cognitive dimensions from text."""
         if not text or not text.strip():
             # Return zero tensors for empty text
             return {
-                "emotional": torch.zeros(4, dtype=torch.float32),
-                "temporal": torch.zeros(3, dtype=torch.float32),
-                "contextual": torch.zeros(6, dtype=torch.float32),
-                "social": torch.zeros(3, dtype=torch.float32),
+                "emotional": torch.zeros(
+                    self.config.emotional_dimensions, dtype=torch.float32
+                ),
+                "temporal": torch.zeros(
+                    self.config.temporal_dimensions, dtype=torch.float32
+                ),
+                "contextual": torch.zeros(
+                    self.config.contextual_dimensions, dtype=torch.float32
+                ),
+                "social": torch.zeros(
+                    self.config.social_dimensions, dtype=torch.float32
+                ),
             }
 
         try:
@@ -393,10 +407,18 @@ class CognitiveDimensionExtractor(DimensionExtractor):
         except Exception:
             # Fallback to zero tensors on any extraction error
             return {
-                "emotional": torch.zeros(4, dtype=torch.float32),
-                "temporal": torch.zeros(3, dtype=torch.float32),
-                "contextual": torch.zeros(6, dtype=torch.float32),
-                "social": torch.zeros(3, dtype=torch.float32),
+                "emotional": torch.zeros(
+                    self.config.emotional_dimensions, dtype=torch.float32
+                ),
+                "temporal": torch.zeros(
+                    self.config.temporal_dimensions, dtype=torch.float32
+                ),
+                "contextual": torch.zeros(
+                    self.config.contextual_dimensions, dtype=torch.float32
+                ),
+                "social": torch.zeros(
+                    self.config.social_dimensions, dtype=torch.float32
+                ),
             }
 
     def get_all_dimension_names(self) -> dict[str, list[str]]:
@@ -410,4 +432,4 @@ class CognitiveDimensionExtractor(DimensionExtractor):
 
     def get_total_dimensions(self) -> int:
         """Get total number of dimensions across all extractors."""
-        return 4 + 3 + 6 + 3  # emotional + temporal + contextual + social = 16
+        return self.config.get_total_cognitive_dimensions()

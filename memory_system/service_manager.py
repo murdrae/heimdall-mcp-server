@@ -1,0 +1,452 @@
+"""
+Service management for cognitive memory system dependencies.
+
+This module provides automated management of external services required by the
+cognitive memory system, with a focus on Qdrant vector database management.
+"""
+
+import shutil
+import subprocess
+import time
+from collections.abc import Iterator
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+
+import psutil
+import requests
+
+from cognitive_memory.core.config import QdrantConfig
+
+try:
+    import docker
+
+    DOCKER_AVAILABLE = True
+except ImportError:
+    DOCKER_AVAILABLE = False
+
+
+class ServiceStatus(Enum):
+    """Service status enumeration."""
+
+    RUNNING = "running"
+    STOPPED = "stopped"
+    UNKNOWN = "unknown"
+    ERROR = "error"
+
+
+@dataclass
+class QdrantStatus:
+    """Qdrant service status information."""
+
+    status: ServiceStatus
+    port: int | None = None
+    pid: int | None = None
+    container_id: str | None = None
+    uptime_seconds: int | None = None
+    health_status: str | None = None
+    error: str | None = None
+
+
+class QdrantManager:
+    """
+    Manages Qdrant vector database service lifecycle.
+
+    Provides automatic service management with Docker-first approach
+    and local binary fallback for environments without Docker.
+    """
+
+    def __init__(self) -> None:
+        """Initialize Qdrant service manager."""
+        self.container_name = "cognitive-memory-qdrant"
+        self.default_config = QdrantConfig()
+        self.default_port = self.default_config.get_port()
+        self.default_data_dir = Path("./data/qdrant")
+        self.docker_client = None
+
+        if DOCKER_AVAILABLE:
+            try:
+                self.docker_client = docker.from_env()
+                # Test Docker connection
+                self.docker_client.ping()
+            except Exception:
+                self.docker_client = None
+
+    def start(
+        self,
+        port: int | None = None,
+        data_dir: str | None = None,
+        detach: bool = True,
+        force_local: bool = False,
+        wait_timeout: int = 30,
+    ) -> bool:
+        """
+        Start Qdrant service.
+
+        Args:
+            port: Port to run Qdrant on (defaults to config)
+            data_dir: Data directory path
+            detach: Run in background
+            force_local: Force local binary instead of Docker
+            wait_timeout: Seconds to wait for startup
+
+        Returns:
+            bool: True if started successfully
+        """
+        # Use default port if not provided
+        if port is None:
+            port = self.default_port
+
+        # Check if already running
+        status = self.get_status()
+        if status.status == ServiceStatus.RUNNING:
+            if status.port == port:
+                return True
+            else:
+                raise RuntimeError(
+                    f"Qdrant already running on port {status.port}, requested port {port}"
+                )
+
+        # Check port availability
+        if self._is_port_in_use(port):
+            raise RuntimeError(f"Port {port} is already in use")
+
+        # Determine data directory
+        if data_dir:
+            data_path = Path(data_dir)
+        else:
+            data_path = self.default_data_dir
+
+        data_path.mkdir(parents=True, exist_ok=True)
+
+        # Try Docker first (unless forced local)
+        if not force_local and self.docker_client:
+            try:
+                return self._start_docker(port, data_path, detach, wait_timeout)
+            except Exception as e:
+                # Fall back to local binary
+                print(f"Docker start failed ({e}), trying local binary...")
+
+        # Try local binary
+        return self._start_local(port, data_path, detach, wait_timeout)
+
+    def stop(self) -> bool:
+        """
+        Stop Qdrant service.
+
+        Returns:
+            bool: True if stopped successfully
+        """
+        stopped_any = False
+
+        # Try stopping Docker container
+        if self.docker_client:
+            try:
+                container = self.docker_client.containers.get(self.container_name)
+                container.stop(timeout=10)
+                container.remove()
+                stopped_any = True
+            except docker.errors.NotFound:
+                pass
+            except Exception:
+                pass
+
+        # Try stopping local process
+        try:
+            # Find Qdrant processes
+            for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+                try:
+                    if proc.info["name"] and "qdrant" in proc.info["name"].lower():
+                        proc.terminate()
+                        proc.wait(timeout=5)
+                        stopped_any = True
+                except (psutil.NoSuchProcess, psutil.TimeoutExpired):
+                    pass
+        except Exception:
+            pass
+
+        return stopped_any
+
+    def get_status(self) -> QdrantStatus:
+        """
+        Get current Qdrant service status.
+
+        Returns:
+            QdrantStatus: Current status information
+        """
+        # Check Docker container first
+        if self.docker_client:
+            try:
+                container = self.docker_client.containers.get(self.container_name)
+                if container.status == "running":
+                    # Get port mapping
+                    port_info = container.attrs["NetworkSettings"]["Ports"]
+                    port = None
+                    for _container_port, host_bindings in port_info.items():
+                        if host_bindings:
+                            port = int(host_bindings[0]["HostPort"])
+                            break
+
+                    # Simplified uptime calculation (placeholder)
+                    uptime = int(time.time()) - int(time.time())  # Placeholder
+
+                    # Check health
+                    health = self._check_health(port) if port else None
+
+                    return QdrantStatus(
+                        status=ServiceStatus.RUNNING,
+                        port=port,
+                        container_id=container.short_id,
+                        uptime_seconds=uptime,
+                        health_status="healthy" if health else "unhealthy",
+                    )
+            except docker.errors.NotFound:
+                pass
+            except Exception as e:
+                return QdrantStatus(status=ServiceStatus.ERROR, error=str(e))
+
+        # Check local process
+        for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+            try:
+                if proc.info["name"] and "qdrant" in proc.info["name"].lower():
+                    # Try to determine port from command line
+                    port = self.default_port  # Default assumption
+
+                    health = self._check_health(port)
+
+                    return QdrantStatus(
+                        status=ServiceStatus.RUNNING,
+                        port=port,
+                        pid=proc.info["pid"],
+                        health_status="healthy" if health else "unhealthy",
+                    )
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        return QdrantStatus(status=ServiceStatus.STOPPED)
+
+    def get_logs(self, lines: int = 50, follow: bool = False) -> Iterator[str]:
+        """
+        Get Qdrant service logs.
+
+        Args:
+            lines: Number of lines to retrieve
+            follow: Follow log output
+
+        Yields:
+            str: Log lines
+        """
+        # Try Docker logs first
+        if self.docker_client:
+            try:
+                container = self.docker_client.containers.get(self.container_name)
+                logs = container.logs(
+                    stream=follow,
+                    tail=lines,
+                    follow=follow,
+                    timestamps=True,
+                )
+
+                if follow:
+                    for log_line in logs:
+                        yield log_line.decode("utf-8")
+                else:
+                    for line in logs.decode("utf-8").split("\n"):
+                        if line.strip():
+                            yield line
+
+                return
+
+            except docker.errors.NotFound:
+                pass
+
+        # For local binary, logs would be in a file or systemd
+        # This is a simplified implementation
+        yield "Local binary logs not implemented yet"
+
+    def _start_docker(
+        self,
+        port: int,
+        data_path: Path,
+        detach: bool,
+        wait_timeout: int,
+    ) -> bool:
+        """Start Qdrant using Docker."""
+        try:
+            # Remove existing container if any
+            if self.docker_client is None:
+                raise RuntimeError("Docker client not available")
+            try:
+                old_container = self.docker_client.containers.get(self.container_name)
+                old_container.stop(timeout=5)
+                old_container.remove()
+            except docker.errors.NotFound:
+                pass
+
+            # Start new container
+            self.docker_client.containers.run(
+                "qdrant/qdrant:latest",
+                name=self.container_name,
+                ports={f"{port}/tcp": port},
+                volumes={
+                    str(data_path.absolute()): {"bind": "/qdrant/storage", "mode": "rw"}
+                },
+                detach=detach,
+                remove=False,
+                environment={
+                    "QDRANT__SERVICE__HTTP_PORT": str(port),
+                    "QDRANT__SERVICE__GRPC_PORT": str(port + 1),
+                },
+            )
+
+            # Wait for service to be ready
+            return self._wait_for_ready(port, wait_timeout)
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to start Qdrant with Docker: {e}") from e
+
+    def _start_local(
+        self,
+        port: int,
+        data_path: Path,
+        detach: bool,
+        wait_timeout: int,
+    ) -> bool:
+        """Start Qdrant using local binary."""
+        # Check if qdrant binary is available
+        qdrant_path = shutil.which("qdrant")
+        if not qdrant_path:
+            raise RuntimeError(
+                "Qdrant binary not found. Please install Qdrant or use Docker mode."
+            )
+
+        # Build command
+        cmd = [
+            qdrant_path,
+            "--config-path",
+            str(data_path / "config.yaml"),
+            "--storage-path",
+            str(data_path / "storage"),
+        ]
+
+        # Create basic config file
+        config_path = data_path / "config.yaml"
+        if not config_path.exists():
+            config_content = f"""
+service:
+  http_port: {port}
+  grpc_port: {port + 1}
+
+storage:
+  storage_path: {data_path / "storage"}
+"""
+            config_path.write_text(config_content)
+
+        try:
+            if detach:
+                # Start as daemon process
+                subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+            else:
+                # Start in foreground
+                subprocess.run(cmd, check=True)
+
+            # Wait for service to be ready
+            return self._wait_for_ready(port, wait_timeout)
+
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Failed to start Qdrant locally: {e}") from e
+
+    def _wait_for_ready(self, port: int, timeout: int) -> bool:
+        """Wait for Qdrant to be ready."""
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            if self._check_health(port):
+                return True
+            time.sleep(1)
+
+        return False
+
+    def _check_health(self, port: int) -> bool:
+        """Check if Qdrant is healthy."""
+        try:
+            response = requests.get(
+                f"http://localhost:{port}/",
+                timeout=5,
+            )
+            return bool(response.status_code == 200)
+        except Exception:
+            return False
+
+    def _is_port_in_use(self, port: int) -> bool:
+        """Check if a port is in use."""
+        for conn in psutil.net_connections():
+            if conn.laddr.port == port:
+                return True
+        return False
+
+
+class ServiceManager:
+    """
+    Main service manager for all cognitive memory system services.
+
+    Currently manages Qdrant, but extensible for other services.
+    """
+
+    def __init__(self) -> None:
+        """Initialize service manager."""
+        self.qdrant = QdrantManager()
+
+    def start_all(self, config: dict | None = None) -> dict[str, bool]:
+        """
+        Start all required services.
+
+        Args:
+            config: Service configuration
+
+        Returns:
+            Dict[str, bool]: Service start results
+        """
+        results = {}
+
+        # Start Qdrant
+        try:
+            qdrant_config = config.get("qdrant", {}) if config else {}
+            results["qdrant"] = self.qdrant.start(**qdrant_config)
+        except Exception:
+            results["qdrant"] = False
+
+        return results
+
+    def stop_all(self) -> dict[str, bool]:
+        """
+        Stop all services.
+
+        Returns:
+            Dict[str, bool]: Service stop results
+        """
+        results = {}
+
+        # Stop Qdrant
+        try:
+            results["qdrant"] = self.qdrant.stop()
+        except Exception:
+            results["qdrant"] = False
+
+        return results
+
+    def get_status_all(self) -> dict[str, QdrantStatus]:
+        """
+        Get status of all services.
+
+        Returns:
+            Dict[str, QdrantStatus]: Service statuses
+        """
+        return {
+            "qdrant": self.qdrant.get_status(),
+        }

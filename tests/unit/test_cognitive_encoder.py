@@ -112,7 +112,7 @@ class TestCognitiveEncoder:
         """Test encoder initialization."""
         assert self.encoder.semantic_dim == 384
         assert self.encoder.cognitive_dim == 16
-        assert self.encoder.output_dim == 512
+        assert self.encoder.output_dim == 400  # 384 semantic + 16 cognitive
 
         # Check components are initialized
         assert self.encoder.semantic_provider is not None
@@ -125,7 +125,7 @@ class TestCognitiveEncoder:
         embedding = self.encoder.encode(text)
 
         assert isinstance(embedding, torch.Tensor)
-        assert embedding.shape == (512,)
+        assert embedding.shape == (400,)
         assert embedding.dtype == torch.float32
         assert torch.all(torch.isfinite(embedding))
 
@@ -143,7 +143,7 @@ class TestCognitiveEncoder:
         embeddings = self.encoder.encode_batch(texts)
 
         assert isinstance(embeddings, torch.Tensor)
-        assert embeddings.shape == (3, 512)
+        assert embeddings.shape == (3, 400)
         assert embeddings.dtype == torch.float32
         assert torch.all(torch.isfinite(embeddings))
 
@@ -156,14 +156,14 @@ class TestCognitiveEncoder:
         """Test handling of empty text."""
         embedding = self.encoder.encode("")
 
-        assert embedding.shape == (512,)
+        assert embedding.shape == (400,)
         assert torch.all(embedding == 0.0)
 
     def test_empty_batch_handling(self) -> None:
         """Test handling of empty batch."""
         embeddings = self.encoder.encode_batch([])
 
-        assert embeddings.shape == (0, 512)
+        assert embeddings.shape == (0, 400)
 
     def test_mixed_batch_with_empty_texts(self) -> None:
         """Test batch with some empty texts."""
@@ -171,7 +171,7 @@ class TestCognitiveEncoder:
 
         embeddings = self.encoder.encode_batch(texts)
 
-        assert embeddings.shape == (3, 512)
+        assert embeddings.shape == (3, 400)
 
         # Empty text should have zero embedding
         assert torch.all(embeddings[1] == 0.0)
@@ -219,7 +219,7 @@ class TestCognitiveEncoder:
         # Check fusion layer info
         fusion_info = info["fusion_layer"]
         assert fusion_info["input_dim"] == 400  # 384 + 16
-        assert fusion_info["output_dim"] == 512
+        assert fusion_info["output_dim"] == 400
         assert fusion_info["parameters"] > 0
 
     def test_consistency(self) -> None:
@@ -307,7 +307,7 @@ class TestCognitiveEncoderIntegration:
 
         embeddings = encoder.encode_batch(scenarios)
 
-        assert embeddings.shape == (4, 512)
+        assert embeddings.shape == (4, 400)
         assert torch.all(torch.isfinite(embeddings))
 
         # Each scenario should produce a distinct embedding (not identical)

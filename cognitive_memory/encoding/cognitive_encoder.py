@@ -3,8 +3,8 @@ Cognitive encoder with multi-dimensional fusion layer.
 
 This module implements the core cognitive encoding system that combines
 Sentence-BERT semantic embeddings with rule-based cognitive dimensions
-through a learned linear fusion layer to produce rich 512-dimensional
-cognitive memory representations.
+through a learned linear fusion layer to produce rich cognitive memory
+representations with configurable dimensions.
 """
 
 from typing import Any
@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 from loguru import logger
 
-from ..core.config import CognitiveConfig
+from ..core.config import SystemConfig
 from .dimensions import CognitiveDimensionExtractor
 from .sentence_bert import SentenceBERTProvider
 
@@ -22,14 +22,12 @@ class CognitiveFusionLayer(nn.Module):
     """
     Neural fusion layer that combines semantic and dimensional features.
 
-    Takes concatenated Sentence-BERT embeddings (384D) and cognitive dimensions (16D)
-    and transforms them into a unified 512-dimensional cognitive representation
-    through a learned linear transformation.
+    Takes concatenated Sentence-BERT embeddings and cognitive dimensions
+    and transforms them into a unified cognitive representation
+    through a learned linear transformation with configurable output dimensions.
     """
 
-    def __init__(
-        self, semantic_dim: int = 384, cognitive_dim: int = 16, output_dim: int = 512
-    ) -> None:
+    def __init__(self, semantic_dim: int, cognitive_dim: int, output_dim: int) -> None:
         """
         Initialize the fusion layer.
 
@@ -125,6 +123,7 @@ class CognitiveEncoder:
         sentence_bert_model: str | None = None,
         device: str | None = None,
         fusion_weights_path: str | None = None,
+        config: SystemConfig | None = None,
     ) -> None:
         """
         Initialize the cognitive encoder.
@@ -133,8 +132,12 @@ class CognitiveEncoder:
             sentence_bert_model: Name of Sentence-BERT model to use
             device: Device for computation ('cpu', 'cuda', 'mps')
             fusion_weights_path: Path to pre-trained fusion layer weights
+            config: System configuration containing embedding dimensions
         """
-        self.config = CognitiveConfig()
+        # Load configuration
+        if config is None:
+            config = SystemConfig.from_env()
+        self.config = config
 
         # Initialize components
         logger.info("Initializing cognitive encoder components")
@@ -145,12 +148,12 @@ class CognitiveEncoder:
         )
 
         # Initialize cognitive dimension extractor
-        self.dimension_extractor = CognitiveDimensionExtractor()
+        self.dimension_extractor = CognitiveDimensionExtractor(self.config.cognitive)
 
         # Get dimensions for fusion layer
         self.semantic_dim = self.semantic_provider.get_embedding_dimension()
         self.cognitive_dim = self.dimension_extractor.get_total_dimensions()
-        self.output_dim = 512  # Target cognitive embedding dimension
+        self.output_dim = self.semantic_dim + self.cognitive_dim  # Concatenation
 
         # Initialize fusion layer
         self.fusion_layer = CognitiveFusionLayer(
@@ -183,7 +186,7 @@ class CognitiveEncoder:
             context: Optional context information (currently unused)
 
         Returns:
-            torch.Tensor: 512-dimensional cognitive embedding
+            torch.Tensor: Cognitive embedding with configured dimensions
         """
         if not text or not text.strip():
             logger.warning("Empty text provided for cognitive encoding")
@@ -242,7 +245,7 @@ class CognitiveEncoder:
             contexts: Optional list of context information (currently unused)
 
         Returns:
-            torch.Tensor: Batch of 512-dimensional cognitive embeddings
+            torch.Tensor: Batch of cognitive embeddings with configured dimensions
         """
         if not texts:
             logger.warning("Empty text list provided for batch encoding")
@@ -387,6 +390,7 @@ def create_cognitive_encoder(
     sentence_bert_model: str | None = None,
     device: str | None = None,
     fusion_weights_path: str | None = None,
+    config: SystemConfig | None = None,
 ) -> CognitiveEncoder:
     """
     Factory function to create a cognitive encoder.
@@ -395,6 +399,7 @@ def create_cognitive_encoder(
         sentence_bert_model: Name of Sentence-BERT model to use
         device: Device for computation
         fusion_weights_path: Path to pre-trained fusion weights
+        config: System configuration
 
     Returns:
         CognitiveEncoder: Configured encoder instance
@@ -403,4 +408,5 @@ def create_cognitive_encoder(
         sentence_bert_model=sentence_bert_model,
         device=device,
         fusion_weights_path=fusion_weights_path,
+        config=config,
     )

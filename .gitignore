@@ -48,8 +48,7 @@ htmlcov/
 dmypy.json
 
 # Data and models
-data/cognitive_memory.db*
-data/models/*
+data/*
 !data/models/.gitkeep
 
 # Logs

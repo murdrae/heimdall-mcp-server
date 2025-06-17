@@ -14,6 +14,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.models import Distance, PointStruct, VectorParams
 
+from ..core.config import QdrantConfig
 from ..core.interfaces import VectorStorage
 from ..core.memory import CognitiveMemory, SearchResult
 
@@ -35,18 +36,25 @@ class CollectionConfig:
 class QdrantCollectionManager:
     """Manages Qdrant collections for hierarchical memory storage."""
 
-    def __init__(self, client: QdrantClient):
+    def __init__(self, client: QdrantClient, vector_size: int):
         """Initialize collection manager."""
         self.client = client
+        self.vector_size = vector_size
         self.collections = {
             0: CollectionConfig(
-                name="cognitive_concepts", vector_size=512, distance=Distance.COSINE
+                name="cognitive_concepts",
+                vector_size=vector_size,
+                distance=Distance.COSINE,
             ),
             1: CollectionConfig(
-                name="cognitive_contexts", vector_size=512, distance=Distance.COSINE
+                name="cognitive_contexts",
+                vector_size=vector_size,
+                distance=Distance.COSINE,
             ),
             2: CollectionConfig(
-                name="cognitive_episodes", vector_size=512, distance=Distance.COSINE
+                name="cognitive_episodes",
+                vector_size=vector_size,
+                distance=Distance.COSINE,
             ),
         }
 
@@ -236,26 +244,31 @@ class HierarchicalMemoryStorage(VectorStorage):
 
     def __init__(
         self,
-        host: str = "localhost",
-        port: int = 6333,
-        grpc_port: int = 6334,
+        vector_size: int,
+        host: str | None = None,
+        port: int | None = None,
+        grpc_port: int | None = None,
         prefer_grpc: bool = True,
-        timeout: int = 30,
+        timeout: int | None = None,
     ):
         """
         Initialize hierarchical memory storage.
 
         Args:
-            host: Qdrant server host
-            port: Qdrant HTTP port
-            grpc_port: Qdrant gRPC port
+            host: Qdrant server host (defaults to config)
+            port: Qdrant HTTP port (defaults to config)
+            grpc_port: Qdrant gRPC port (defaults to config port + 1)
             prefer_grpc: Whether to prefer gRPC connection
-            timeout: Connection timeout in seconds
+            timeout: Connection timeout in seconds (defaults to config)
+            vector_size: Dimension of embedding vectors (from configuration)
         """
-        self.host = host
-        self.port = port
-        self.grpc_port = grpc_port
-        self.timeout = timeout
+        # Use defaults from config if not provided
+        default_config = QdrantConfig()
+        self.host = host or default_config.get_host()
+        self.port = port or default_config.get_port()
+        self.grpc_port = grpc_port or (self.port + 1)
+        self.timeout = timeout or default_config.timeout
+        self.vector_size = vector_size
 
         # Initialize Qdrant client
         try:
@@ -278,7 +291,7 @@ class HierarchicalMemoryStorage(VectorStorage):
             raise
 
         # Initialize collection manager and search engine
-        self.collection_manager = QdrantCollectionManager(self.client)
+        self.collection_manager = QdrantCollectionManager(self.client, vector_size)
         self.search_engine = VectorSearchEngine(self.client, self.collection_manager)
 
         # Initialize collections
@@ -293,15 +306,17 @@ class HierarchicalMemoryStorage(VectorStorage):
 
         Args:
             id: Unique identifier for the vector
-            vector: 512-dimensional cognitive embedding
+            vector: Cognitive embedding vector (dimension must match configured vector_size)
             metadata: Associated metadata including hierarchy_level
         """
         if not isinstance(vector, torch.Tensor):
             vector = torch.tensor(vector, dtype=torch.float32)
 
         # Validate vector dimensions
-        if vector.shape[-1] != 512:
-            raise ValueError(f"Expected 512-dimensional vector, got {vector.shape[-1]}")
+        if vector.shape[-1] != self.vector_size:
+            raise ValueError(
+                f"Expected {self.vector_size}-dimensional vector, got {vector.shape[-1]}"
+            )
 
         # Extract hierarchy level from metadata
         hierarchy_level = metadata.get("hierarchy_level", 2)  # Default to episodes
@@ -495,23 +510,29 @@ class HierarchicalMemoryStorage(VectorStorage):
 
 
 def create_hierarchical_storage(
-    host: str = "localhost",
-    port: int = 6333,
-    grpc_port: int = 6334,
+    vector_size: int,
+    host: str | None = None,
+    port: int | None = None,
+    grpc_port: int | None = None,
     prefer_grpc: bool = True,
 ) -> HierarchicalMemoryStorage:
     """
     Factory function to create hierarchical memory storage.
 
     Args:
-        host: Qdrant server host
-        port: Qdrant HTTP port
-        grpc_port: Qdrant gRPC port
+        host: Qdrant server host (defaults to config)
+        port: Qdrant HTTP port (defaults to config)
+        grpc_port: Qdrant gRPC port (defaults to config port + 1)
         prefer_grpc: Whether to prefer gRPC connection
+        vector_size: Dimension of embedding vectors (from configuration)
 
     Returns:
         HierarchicalMemoryStorage: Configured storage instance
     """
     return HierarchicalMemoryStorage(
-        host=host, port=port, grpc_port=grpc_port, prefer_grpc=prefer_grpc
+        vector_size=vector_size,
+        host=host,
+        port=port,
+        grpc_port=grpc_port,
+        prefer_grpc=prefer_grpc,
     )

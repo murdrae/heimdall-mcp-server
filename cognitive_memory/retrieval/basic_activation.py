@@ -129,6 +129,9 @@ class BasicActivationEngine(ActivationEngine):
                 similarity = self._compute_cosine_similarity(
                     context, memory.cognitive_embedding
                 )
+                logger.debug(
+                    f"L0 memory similarity: {similarity:.3f} vs threshold {threshold:.3f} for: {memory.content[:50]}"
+                )
                 if similarity >= threshold:
                     starting_memories.append(memory)
 

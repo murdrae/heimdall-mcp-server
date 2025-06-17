@@ -39,8 +39,8 @@ class SentenceBERTProvider(EmbeddingProvider):
         self.config = EmbeddingConfig.from_env()
         self.model_name = model_name or self.config.model_name
 
-        # Auto-detect device if not specified
-        if device is None:
+        # Auto-detect device if not specified or set to 'auto'
+        if device is None or device == "auto":
             if torch.cuda.is_available():
                 self.device = "cuda"
             elif torch.backends.mps.is_available():
@@ -161,7 +161,7 @@ class SentenceBERTProvider(EmbeddingProvider):
                 convert_to_tensor=True,
                 show_progress_bar=False,
                 normalize_embeddings=True,
-                batch_size=32,  # Process in reasonable batches
+                batch_size=self.config.batch_size,  # Use configured batch size
             )
 
             # Ensure tensor is on CPU and float32

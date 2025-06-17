@@ -8,10 +8,17 @@ and retrieving memories.
 """
 
 import argparse
+import json
 import sys
 from typing import Any
 
 from cognitive_memory.core.interfaces import CognitiveSystem
+from cognitive_memory.main import (
+    InitializationError,
+    graceful_shutdown,
+    initialize_system,
+    initialize_with_config,
+)
 
 
 class CognitiveCLI:
@@ -33,7 +40,10 @@ class CognitiveCLI:
         self.interactive_mode = False
 
     def store_experience(
-        self, text: str, context: dict[str, Any] | None = None
+        self,
+        text: str,
+        context: dict[str, Any] | None = None,
+        context_json: str | None = None,
     ) -> bool:
         """
         Store a new experience.
@@ -41,6 +51,7 @@ class CognitiveCLI:
         Args:
             text: Experience text to store
             context: Optional context information
+            context_json: Optional context as JSON string
 
         Returns:
             bool: True if stored successfully
@@ -48,6 +59,14 @@ class CognitiveCLI:
         if not text.strip():
             print("Error: Empty text provided")
             return False
+
+        # Parse JSON context if provided
+        if context_json and not context:
+            try:
+                context = json.loads(context_json)
+            except json.JSONDecodeError as e:
+                print(f"Error: Invalid JSON context - {e}")
+                return False
 
         try:
             memory_id = self.cognitive_system.store_experience(text, context)
@@ -101,9 +120,11 @@ class CognitiveCLI:
                         print(
                             f"  {i}. [{memory.memory_type}] {memory.content[:100]}..."
                         )
+                        # Use similarity score from metadata if available, otherwise fallback to memory strength
+                        score = memory.metadata.get("similarity_score", memory.strength)
                         print(
                             f"     ID: {memory.id}, Level: L{memory.hierarchy_level}, "
-                            f"Strength: {memory.strength:.2f}"
+                            f"Strength: {score:.2f}"
                         )
 
             return True
@@ -359,19 +380,102 @@ Examples:
 def main() -> int:
     """Main CLI entry point."""
     parser = create_cli_parser()
+
+    # Add global options
+    parser.add_argument("--config", help="Path to configuration file (.env format)")
+    parser.add_argument(
+        "--profile",
+        choices=["default", "development", "production", "test"],
+        default="default",
+        help="System initialization profile",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
         parser.print_help()
         return 1
 
-    # Note: In a real implementation, we would create the cognitive system here
-    # with proper dependency injection. For now, this is a placeholder.
-    print("⚠️  CLI interface created but requires system initialization")
-    print("   This CLI needs a factory function to create the cognitive system")
-    print("   with all required dependencies (embedding provider, storage, etc.)")
+    # Initialize cognitive system using factory
+    try:
+        print("🧠 Initializing cognitive memory system...")
 
-    return 0
+        if args.config:
+            cognitive_system = initialize_with_config(args.config)
+        else:
+            cognitive_system = initialize_system(args.profile)
+
+        print("✓ System initialized successfully")
+
+        # Create CLI instance
+        cli = CognitiveCLI(cognitive_system)
+
+        # Dispatch commands
+        exit_code = 0
+
+        try:
+            if args.command == "store":
+                success = cli.store_experience(
+                    text=args.text, context_json=getattr(args, "context", None)
+                )
+                if hasattr(args, "level") and args.level is not None:
+                    # Add hierarchy level to context
+                    context = {"hierarchy_level": args.level}
+                    success = cli.store_experience(args.text, context)
+                exit_code = 0 if success else 1
+
+            elif args.command == "retrieve":
+                success = cli.retrieve_memories(
+                    query=args.query,
+                    types=getattr(args, "types", None),
+                    limit=getattr(args, "limit", 10),
+                )
+                exit_code = 0 if success else 1
+
+            elif args.command == "status":
+                success = cli.show_status(detailed=getattr(args, "detailed", False))
+                exit_code = 0 if success else 1
+
+            elif args.command == "consolidate":
+                success = cli.consolidate_memories(
+                    dry_run=getattr(args, "dry_run", False)
+                )
+                exit_code = 0 if success else 1
+
+            elif args.command == "clear":
+                success = cli.clear_memories(
+                    memory_type=getattr(args, "type", "all"),
+                    confirm=getattr(args, "confirm", False),
+                )
+                exit_code = 0 if success else 1
+
+            elif args.command == "interactive":
+                cli.interactive_mode_loop()
+                exit_code = 0
+
+            else:
+                print(f"Unknown command: {args.command}")
+                exit_code = 1
+
+        finally:
+            # Perform graceful shutdown
+            print("🔄 Shutting down system...")
+            if graceful_shutdown(cognitive_system):
+                print("✓ System shutdown completed")
+            else:
+                print("⚠️ System shutdown completed with warnings")
+
+        return exit_code
+
+    except InitializationError as e:
+        print(f"✗ Failed to initialize cognitive memory system: {e}")
+        return 1
+    except KeyboardInterrupt:
+        print("\n⚠️ Interrupted by user")
+        return 130
+    except Exception as e:
+        print(f"✗ Unexpected error: {e}")
+        return 1
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 import torch
 
+from cognitive_memory.core.config import CognitiveConfig
 from cognitive_memory.encoding import (
     CognitiveDimensionExtractor,
     CognitiveEncoder,
@@ -28,9 +29,10 @@ class TestEncodingPipelineIntegration:
         np.random.seed(42)
         random.seed(42)
 
+        self.config = CognitiveConfig()
         self.encoder = CognitiveEncoder(device="cpu")
         self.semantic_provider = SentenceBERTProvider(device="cpu")
-        self.dimension_extractor = CognitiveDimensionExtractor()
+        self.dimension_extractor = CognitiveDimensionExtractor(self.config)
 
     def test_complete_pipeline_consistency(self) -> None:
         """Test that the complete pipeline produces consistent results."""
@@ -262,7 +264,10 @@ class TestEncodingPipelineIntegration:
 
         embeddings = self.encoder.encode_batch(challenging_inputs)
 
-        assert embeddings.shape == (len(challenging_inputs), 512)
+        final_dim = (
+            self.config.get_total_cognitive_dimensions() + 384
+        )  # cognitive + semantic
+        assert embeddings.shape == (len(challenging_inputs), final_dim)
         assert torch.all(torch.isfinite(embeddings))
 
         # Empty and whitespace should be zero
@@ -280,6 +285,9 @@ class TestEncodingPipelineIntegration:
         text = "Testing factory-created encoder with cognitive dimensions"
         embedding = encoder.encode(text)
 
-        assert embedding.shape == (512,)
+        expected_dim = (
+            CognitiveConfig().get_total_cognitive_dimensions() + 384
+        )  # cognitive + semantic
+        assert embedding.shape == (expected_dim,)
         assert torch.any(embedding != 0.0)
         assert torch.all(torch.isfinite(embedding))

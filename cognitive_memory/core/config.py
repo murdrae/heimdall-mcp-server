@@ -23,6 +23,20 @@ class QdrantConfig:
     timeout: int = 30
     prefer_grpc: bool = False
 
+    def get_port(self) -> int:
+        """Extract port number from URL."""
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.url)
+        return parsed.port or 6333
+
+    def get_host(self) -> str:
+        """Extract host from URL."""
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.url)
+        return parsed.hostname or "localhost"
+
     @classmethod
     def from_env(cls) -> "QdrantConfig":
         """Create configuration from environment variables."""
@@ -60,7 +74,7 @@ class EmbeddingConfig:
 
     model_name: str = "all-MiniLM-L6-v2"
     model_cache_dir: str = "./data/models"
-    embedding_dimension: int = 384
+    embedding_dimension: int = 384  # Sentence-BERT semantic embedding dimension
     batch_size: int = 32
     device: str = "auto"  # auto, cpu, cuda
 
@@ -82,14 +96,23 @@ class EmbeddingConfig:
 class CognitiveConfig:
     """Configuration for cognitive processing parameters."""
 
+    # Activation and retrieval parameters
     activation_threshold: float = 0.7
     bridge_discovery_k: int = 5
     max_activations: int = 50
     consolidation_threshold: int = 100
+
+    # Dimension weights for fusion
     emotional_weight: float = 0.2
     temporal_weight: float = 0.15
     contextual_weight: float = 0.25
     social_weight: float = 0.1
+
+    # Cognitive dimension sizes - ONLY place magic numbers should be defined
+    emotional_dimensions: int = 4
+    temporal_dimensions: int = 3
+    contextual_dimensions: int = 6
+    social_dimensions: int = 3
 
     @classmethod
     def from_env(cls) -> "CognitiveConfig":
@@ -115,6 +138,27 @@ class CognitiveConfig:
                 os.getenv("CONTEXTUAL_WEIGHT", str(cls.contextual_weight))
             ),
             social_weight=float(os.getenv("SOCIAL_WEIGHT", str(cls.social_weight))),
+            emotional_dimensions=int(
+                os.getenv("EMOTIONAL_DIMENSIONS", str(cls.emotional_dimensions))
+            ),
+            temporal_dimensions=int(
+                os.getenv("TEMPORAL_DIMENSIONS", str(cls.temporal_dimensions))
+            ),
+            contextual_dimensions=int(
+                os.getenv("CONTEXTUAL_DIMENSIONS", str(cls.contextual_dimensions))
+            ),
+            social_dimensions=int(
+                os.getenv("SOCIAL_DIMENSIONS", str(cls.social_dimensions))
+            ),
+        )
+
+    def get_total_cognitive_dimensions(self) -> int:
+        """Get total number of cognitive dimensions."""
+        return (
+            self.emotional_dimensions
+            + self.temporal_dimensions
+            + self.contextual_dimensions
+            + self.social_dimensions
         )
 
 
@@ -228,6 +272,13 @@ class SystemConfig:
 
         logger.info("Configuration validation passed")
         return True
+
+    def get_final_embedding_dimension(self) -> int:
+        """Get final embedding dimension (semantic + cognitive)."""
+        return (
+            self.embedding.embedding_dimension
+            + self.cognitive.get_total_cognitive_dimensions()
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert configuration to dictionary for logging/debugging."""

@@ -799,6 +799,107 @@ class DualMemorySystem:
             logger.error("Failed to get memory stats", error=str(e))
             return {"error": str(e)}
 
+    def store_memory(self, memory: CognitiveMemory) -> bool:
+        """Store a cognitive memory (interface compliance)."""
+        if memory.memory_type == MemoryType.EPISODIC.value:
+            return self.store_experience(memory)
+        elif memory.memory_type == MemoryType.SEMANTIC.value:
+            return self.store_knowledge(memory)
+        else:
+            # Default to episodic for unknown types
+            return self.store_experience(memory)
+
+    def retrieve_memory(self, memory_id: str) -> CognitiveMemory | None:
+        """Retrieve a memory by ID (interface compliance)."""
+        return self.access_memory(memory_id)
+
+    def update_memory(self, memory: CognitiveMemory) -> bool:
+        """Update an existing memory (interface compliance)."""
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                cursor.execute(
+                    """
+                    UPDATE memories
+                    SET content = ?, memory_type = ?, hierarchy_level = ?,
+                        dimensions = ?, strength = ?, tags = ?
+                    WHERE id = ?
+                """,
+                    (
+                        memory.content,
+                        memory.memory_type,
+                        memory.hierarchy_level,
+                        json.dumps(memory.dimensions),
+                        memory.strength,
+                        json.dumps(memory.tags) if memory.tags else None,
+                        memory.id,
+                    ),
+                )
+
+                conn.commit()
+                return cursor.rowcount > 0
+
+        except Exception as e:
+            logger.error("Failed to update memory", memory_id=memory.id, error=str(e))
+            return False
+
+    def delete_memory(self, memory_id: str) -> bool:
+        """Delete a memory by ID (interface compliance)."""
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+                conn.commit()
+                return cursor.rowcount > 0
+
+        except Exception as e:
+            logger.error("Failed to delete memory", memory_id=memory_id, error=str(e))
+            return False
+
+    def get_memories_by_level(self, level: int) -> list[CognitiveMemory]:
+        """Get all memories at a specific hierarchy level (interface compliance)."""
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                cursor.execute(
+                    """
+                    SELECT * FROM memories
+                    WHERE hierarchy_level = ?
+                    ORDER BY timestamp DESC
+                """,
+                    (level,),
+                )
+
+                memories = []
+                for row in cursor.fetchall():
+                    dimensions = (
+                        json.loads(row["dimensions"]) if row["dimensions"] else {}
+                    )
+                    tags = json.loads(row["tags"]) if row["tags"] else None
+
+                    memory = CognitiveMemory(
+                        id=row["id"],
+                        content=row["content"],
+                        memory_type=row["memory_type"],
+                        hierarchy_level=row["hierarchy_level"],
+                        dimensions=dimensions,
+                        timestamp=datetime.fromtimestamp(row["timestamp"])
+                        if row["timestamp"]
+                        else datetime.now(),
+                        strength=row["strength"],
+                        access_count=row["access_count"],
+                        tags=tags,
+                    )
+                    memories.append(memory)
+
+                return memories
+
+        except Exception as e:
+            logger.error("Failed to get memories by level", level=level, error=str(e))
+            return []
+
 
 def create_dual_memory_system(
     db_path: str = "data/cognitive_memory.db",

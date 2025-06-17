@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import torch
 
+from cognitive_memory.core.config import SystemConfig
 from cognitive_memory.core.memory import CognitiveMemory
 from cognitive_memory.encoding.cognitive_encoder import CognitiveEncoder
 from cognitive_memory.storage import (
@@ -138,13 +139,17 @@ class TestStoragePipelineIntegration:
     @pytest.fixture
     def mock_encoder(self):
         """Create a mock cognitive encoder for testing."""
+        # Get dimensions from config
+        config = SystemConfig.from_env()
+        vector_size = config.embedding.embedding_dimension
+
         encoder = MagicMock(spec=CognitiveEncoder)
 
         # Mock encode method to return realistic vectors
         def mock_encode(text):
-            # Return a 512-dimensional vector based on text hash
+            # Return a vector with configured dimensions based on text hash
             hash_val = hash(text) % 1000
-            vector = torch.rand(512) * 0.1 + (hash_val / 1000.0)
+            vector = torch.rand(vector_size) * 0.1 + (hash_val / 1000.0)
             return vector
 
         encoder.encode.side_effect = mock_encode
@@ -157,6 +162,10 @@ class TestStoragePipelineIntegration:
     @pytest.fixture
     def storage_pipeline(self, mock_encoder):
         """Create a complete storage pipeline for testing."""
+        # Get dimensions from config
+        config = SystemConfig.from_env()
+        vector_size = config.embedding.embedding_dimension
+
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
             db_path = tmp.name
 
@@ -167,7 +176,7 @@ class TestStoragePipelineIntegration:
         with patch(
             "cognitive_memory.storage.qdrant_storage.QdrantClient", MockQdrantClient
         ):
-            vector_storage = create_hierarchical_storage()
+            vector_storage = create_hierarchical_storage(vector_size=vector_size)
 
         yield {
             "encoder": mock_encoder,
@@ -627,7 +636,10 @@ class TestStoragePipelineIntegration:
 
         # Test vector storage with invalid vector dimensions
         try:
-            invalid_vector = torch.rand(256)  # Wrong dimension (should be 512)
+            # Use half the configured dimension as wrong size
+            config = SystemConfig.from_env()
+            wrong_size = config.embedding.embedding_dimension // 2
+            invalid_vector = torch.rand(wrong_size)  # Wrong dimension
             metadata = {"memory_id": "test", "hierarchy_level": 2}
             vector_storage.store_vector("test_invalid", invalid_vector, metadata)
         except ValueError:

@@ -100,8 +100,7 @@ class CognitiveMemorySystem(CognitiveSystem):
             # Encode the experience
             embedding = self.embedding_provider.encode(text)
 
-            # Determine hierarchy level based on context or default to L2 (episodes)
-            hierarchy_level = 2
+            # Determine hierarchy level based on context or heuristics
             if context and "hierarchy_level" in context:
                 hierarchy_level = context["hierarchy_level"]
                 if hierarchy_level not in [0, 1, 2]:
@@ -109,6 +108,8 @@ class CognitiveMemorySystem(CognitiveSystem):
                         f"Invalid hierarchy level {hierarchy_level}, using L2"
                     )
                     hierarchy_level = 2
+            else:
+                hierarchy_level = self._determine_hierarchy_level(text)
 
             # Create cognitive memory object
             memory = CognitiveMemory(
@@ -121,6 +122,9 @@ class CognitiveMemorySystem(CognitiveSystem):
                 strength=1.0,
                 access_count=0,
             )
+
+            # Attach the embedding to the memory object
+            memory.cognitive_embedding = embedding
 
             # Store in memory persistence
             if not self.memory_storage.store_memory(memory):
@@ -205,7 +209,7 @@ class CognitiveMemorySystem(CognitiveSystem):
                 activation_result = self.activation_engine.activate_memories(
                     context=query_embedding,
                     threshold=self.config.cognitive.activation_threshold,
-                    max_activations=max_results,
+                    max_activations=self.config.cognitive.max_activations,
                 )
 
                 if "core" in types:
@@ -219,6 +223,42 @@ class CognitiveMemorySystem(CognitiveSystem):
                     results["peripheral"] = activation_result.peripheral_memories[
                         : max_results // 2
                     ]
+
+            # Fallback to direct vector similarity search if no core/peripheral memories found
+            if (
+                ("core" in types or "peripheral" in types)
+                and not results["core"]
+                and not results["peripheral"]
+            ):
+                logger.debug(
+                    "No memories activated, falling back to direct vector similarity search"
+                )
+                # Use max_activations to respect cognitive configuration
+                fallback_limit = min(max_results, self.config.cognitive.max_activations)
+                similarity_results = self.vector_storage.search_similar(
+                    query_embedding, k=fallback_limit
+                )
+                # Split results between core and peripheral
+                half = fallback_limit // 2 or 1
+                top_results = similarity_results[:fallback_limit]
+                if "core" in types:
+                    core_memories = []
+                    for result in top_results[:half]:
+                        # Store similarity score in metadata for display
+                        result.memory.metadata["similarity_score"] = (
+                            result.similarity_score
+                        )
+                        core_memories.append(result.memory)
+                    results["core"] = core_memories
+                if "peripheral" in types:
+                    peripheral_memories = []
+                    for result in top_results[half:]:
+                        # Store similarity score in metadata for display
+                        result.memory.metadata["similarity_score"] = (
+                            result.similarity_score
+                        )
+                        peripheral_memories.append(result.memory)
+                    results["peripheral"] = peripheral_memories
 
             # Discover bridge memories if requested
             if "bridge" in types:
@@ -268,6 +308,94 @@ class CognitiveMemorySystem(CognitiveSystem):
                 error=str(e),
             )
             return {"core": [], "peripheral": [], "bridge": []}
+
+    def _determine_hierarchy_level(self, text: str) -> int:
+        """
+        Determine hierarchy level based on content analysis.
+
+        L0 (Concepts): Abstract ideas, principles, concepts, algorithms
+        L1 (Contexts): Situational memories, workflow patterns, meetings
+        L2 (Episodes): Specific experiences, events, activities
+
+        Args:
+            text: The experience text to analyze
+
+        Returns:
+            int: Hierarchy level (0, 1, or 2)
+        """
+        text_lower = text.lower().strip()
+
+        # L0 indicators: abstract concepts, learning, principles
+        concept_keywords = [
+            "concept",
+            "principle",
+            "theory",
+            "algorithm",
+            "pattern",
+            "methodology",
+            "approach",
+            "technique",
+            "strategy",
+            "framework",
+            "architecture",
+            "design pattern",
+            "best practice",
+            "paradigm",
+            "learning",
+            "understanding",
+            "knowledge",
+        ]
+
+        # L1 indicators: contexts, workflows, meetings, planning
+        context_keywords = [
+            "meeting",
+            "collaboration",
+            "planning",
+            "workflow",
+            "process",
+            "sprint",
+            "project",
+            "team",
+            "discussion",
+            "review",
+            "session",
+            "standup",
+            "retrospective",
+            "brainstorm",
+            "about",
+        ]
+
+        # L2 indicators: specific activities and actions
+        activity_keywords = [
+            "working on",
+            "debugging",
+            "implementing",
+            "fixing",
+            "building",
+            "coding",
+            "testing",
+            "deploying",
+            "troubleshooting",
+            "optimizing",
+            "with",
+            "using",
+            "problems",
+        ]
+
+        # Count indicators
+        concept_score = sum(1 for keyword in concept_keywords if keyword in text_lower)
+        context_score = sum(1 for keyword in context_keywords if keyword in text_lower)
+        activity_score = sum(
+            1 for keyword in activity_keywords if keyword in text_lower
+        )
+
+        # Determine level based on highest scoring category
+        if concept_score > context_score and concept_score > activity_score:
+            return 0  # L0: Concepts
+        elif context_score > activity_score:
+            return 1  # L1: Contexts
+        else:
+            return 2  # L2: Episodes (default for specific activities)
 
     def consolidate_memories(self) -> dict[str, int]:
         """

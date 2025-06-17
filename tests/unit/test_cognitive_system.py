@@ -21,6 +21,26 @@ from cognitive_memory.core.interfaces import (
     VectorStorage,
 )
 from cognitive_memory.core.memory import ActivationResult, BridgeMemory, CognitiveMemory
+from tests.factory_utils import (
+    MockEmbeddingProvider,
+    MockMemoryStorage,
+    MockVectorStorage,
+    create_partial_mock_system,
+)
+
+
+def create_fully_mocked_system(config: SystemConfig) -> CognitiveMemorySystem:
+    """Create a CognitiveMemorySystem with all mock components."""
+    components = create_partial_mock_system()
+    return CognitiveMemorySystem(
+        embedding_provider=components["embedding_provider"],
+        vector_storage=components["vector_storage"],
+        memory_storage=components["memory_storage"],
+        connection_graph=components["connection_graph"],
+        activation_engine=components["activation_engine"],
+        bridge_discovery=components["bridge_discovery"],
+        config=config,
+    )
 
 
 @pytest.fixture
@@ -95,6 +115,27 @@ def mock_activation_engine():
 
     mock.activate_memories.return_value = activation_result
     return mock
+
+
+@pytest.fixture
+def factory_cognitive_system(test_config):
+    """Create cognitive system using factory pattern with controlled mocks."""
+    # Create system with all mock components
+    system = create_fully_mocked_system(test_config)
+
+    # Set up some predictable test data
+    from datetime import datetime
+
+    test_memory = CognitiveMemory(
+        id="factory-test-memory",
+        content="Factory test memory content",
+        memory_type="episodic",
+        hierarchy_level=0,
+        timestamp=datetime(2024, 1, 1, 12, 0, 0),
+    )
+    system.memory_storage.stored_memories["factory-test-memory"] = test_memory
+
+    return system
 
 
 @pytest.fixture
@@ -205,8 +246,8 @@ class TestCognitiveMemorySystem:
         # Verify memory storage call
         stored_memory = mock_memory_storage.store_memory.call_args[0][0]
         assert stored_memory.content == test_text
-        assert stored_memory.memory_type == "episodic"
-        assert stored_memory.hierarchy_level == 2
+        assert stored_memory.memory_type == "semantic"
+        assert stored_memory.hierarchy_level == 1
         assert stored_memory.timestamp == fixed_time
 
         # Verify vector storage metadata
@@ -283,6 +324,66 @@ class TestCognitiveMemorySystem:
         assert len(results["core"]) > 0
         assert len(results["bridge"]) > 0
         assert len(results["peripheral"]) == 0  # Not requested
+
+    def test_factory_system_isolation(self, factory_cognitive_system):
+        """Test that factory-created systems provide proper test isolation."""
+        # This test demonstrates that factory-created systems provide isolated testing
+        system = factory_cognitive_system
+
+        # Verify we get the mock components we configured
+        assert isinstance(system.embedding_provider, MockEmbeddingProvider)
+        assert isinstance(system.vector_storage, MockVectorStorage)
+        assert isinstance(system.memory_storage, MockMemoryStorage)
+
+        # Test that we can control the system behavior through the mocks
+        embedding_provider = system.embedding_provider
+        vector_storage = system.vector_storage
+        memory_storage = system.memory_storage
+
+        # Test that call counts are properly isolated (start at 0)
+        assert embedding_provider.call_count == 0
+        assert vector_storage.call_counts["store"] == 0
+        assert memory_storage.call_counts["store"] == 0
+
+        # Perform an operation
+        test_text = "Factory test memory"
+        memory_id = system.store_experience(test_text)
+
+        # Verify that the operations were called and we can track them
+        assert embedding_provider.call_count > 0
+        assert vector_storage.call_counts["store"] > 0
+        assert memory_storage.call_counts["store"] > 0
+        assert memory_id != ""
+
+        # Verify that the test memory we set up is accessible
+        assert "factory-test-memory" in memory_storage.stored_memories
+
+    def test_factory_vs_traditional_mocks_comparison(self, test_config):
+        """Test comparing factory pattern vs traditional mocking approaches."""
+        # Traditional approach - manual mock creation
+        traditional_embedding = Mock(spec=EmbeddingProvider)
+        traditional_embedding.encode.return_value = torch.randn(512)
+        traditional_memory = Mock(spec=MemoryStorage)
+        traditional_memory.store_memory.return_value = True
+
+        # Factory approach - structured mock creation
+        factory_system = create_fully_mocked_system(test_config)
+
+        # The factory approach provides:
+        # 1. Consistent mock behavior across tests
+        # 2. Proper interface compliance validation
+        # 3. Built-in call tracking and test utilities
+        # 4. Easier component substitution
+
+        # Verify factory system has predictable behavior
+        result = factory_system.store_experience("Test experience")
+        assert result != ""  # Factory mocks return valid IDs
+
+        # Verify we can introspect mock behavior
+        embedding_provider = factory_system.embedding_provider
+        assert hasattr(embedding_provider, "call_count")
+        assert hasattr(embedding_provider, "last_input")
+        assert embedding_provider.call_count > 0
 
     def test_retrieve_memories_empty_query(self, cognitive_system):
         """Test retrieval with empty query."""

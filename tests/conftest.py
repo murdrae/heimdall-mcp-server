@@ -16,6 +16,16 @@ from pytest import fixture
 
 from cognitive_memory.core.config import DatabaseConfig, QdrantConfig, SystemConfig
 from cognitive_memory.core.memory import CognitiveMemory
+from cognitive_memory.factory import create_test_system
+from tests.factory_utils import (
+    MockActivationEngine,
+    MockBridgeDiscovery,
+    MockCognitiveSystem,
+    MockConnectionGraph,
+    MockEmbeddingProvider,
+    MockMemoryStorage,
+    MockVectorStorage,
+)
 
 
 @fixture  # type: ignore[misc]
@@ -61,7 +71,8 @@ def sample_memory() -> CognitiveMemory:
         "social": torch.tensor([0.3, 0.7, 0.5]),  # social dimensions
     }
 
-    # Add sample cognitive embedding
+    # Add sample cognitive embedding (deterministic)
+    torch.manual_seed(42)
     memory.cognitive_embedding = torch.randn(512)
 
     return memory
@@ -105,22 +116,6 @@ def sample_memories() -> list[CognitiveMemory]:
 def mock_torch_embedding() -> torch.Tensor:
     """Create a mock embedding vector for testing."""
     return torch.randn(512)
-
-
-class MockEmbeddingProvider:
-    """Mock embedding provider for testing."""
-
-    def encode(self, text: str) -> torch.Tensor:
-        """Return a deterministic embedding based on text hash."""
-        # Simple hash-based embedding for reproducible tests
-        hash_val = hash(text) % 1000000
-        torch.manual_seed(hash_val)
-        return torch.randn(512)
-
-    def encode_batch(self, texts: list[str]) -> torch.Tensor:
-        """Return batch embeddings."""
-        embeddings = [self.encode(text) for text in texts]
-        return torch.stack(embeddings)
 
 
 @fixture  # type: ignore[misc]
@@ -172,3 +167,62 @@ def create_test_vector(size: int = 512, seed: int = 42) -> torch.Tensor:
     """Create a deterministic test vector."""
     torch.manual_seed(seed)
     return torch.randn(size)
+
+
+# Factory testing fixtures
+
+
+@fixture  # type: ignore[misc]
+def mock_embedding_provider_factory() -> MockEmbeddingProvider:
+    """Create mock embedding provider for factory testing."""
+    return MockEmbeddingProvider()
+
+
+@fixture  # type: ignore[misc]
+def mock_vector_storage_factory() -> MockVectorStorage:
+    """Create mock vector storage for factory testing."""
+    return MockVectorStorage()
+
+
+@fixture  # type: ignore[misc]
+def mock_memory_storage_factory() -> MockMemoryStorage:
+    """Create mock memory storage for factory testing."""
+    return MockMemoryStorage()
+
+
+@fixture  # type: ignore[misc]
+def mock_connection_graph_factory() -> MockConnectionGraph:
+    """Create mock connection graph for factory testing."""
+    return MockConnectionGraph()
+
+
+@fixture  # type: ignore[misc]
+def mock_activation_engine_factory() -> MockActivationEngine:
+    """Create mock activation engine for factory testing."""
+    return MockActivationEngine()
+
+
+@fixture  # type: ignore[misc]
+def mock_bridge_discovery_factory() -> MockBridgeDiscovery:
+    """Create mock bridge discovery for factory testing."""
+    return MockBridgeDiscovery()
+
+
+@fixture  # type: ignore[misc]
+def mock_cognitive_system_factory() -> MockCognitiveSystem:
+    """Create mock cognitive system for factory testing."""
+    return MockCognitiveSystem()
+
+
+@fixture  # type: ignore[misc]
+def factory_test_system(test_config: SystemConfig) -> Any:
+    """Create test system using factory with mock components."""
+    return create_test_system(
+        embedding_provider=MockEmbeddingProvider(),
+        vector_storage=MockVectorStorage(),
+        memory_storage=MockMemoryStorage(),
+        connection_graph=MockConnectionGraph(),
+        activation_engine=MockActivationEngine(),
+        bridge_discovery=MockBridgeDiscovery(),
+        config=test_config,
+    )

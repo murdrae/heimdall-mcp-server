@@ -664,14 +664,197 @@ logger.warning("Bridge discovery yielded no results", query_context=context_summ
 logger.error("Qdrant connection failed", error=str(e))
 ```
 
-### API Interface Architecture
+### Infrastructure Overview and User Interaction
+
 ```
-Core Cognitive System
-        │
-        ├── CLI Interface (cognitive-cli)
-        ├── MCP Protocol (JSON-RPC server)
-        └── HTTP API (FastAPI/Flask)
+┌─────────────────────────────────────────────────────────────────┐
+│                    COGNITIVE MEMORY SYSTEM                      │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                      USER INTERFACES                           │
+├─────────────────┬─────────────────┬─────────────────────────────┤
+│   RESEARCHERS   │   WEB CLIENTS   │      AI SYSTEMS/LLMs        │
+│                 │                 │                             │
+│ $ memory_system │ HTTP Requests   │    MCP Protocol Client      │
+│   shell         │ (REST API)      │    (Claude, GPT, etc.)      │
+│                 │                 │                             │
+│ Interactive     │ Web Dashboard   │ JSON-RPC over TCP/stdin     │
+│ CLI Commands    │ API Integration │ Memory operations           │
+└─────────────────┴─────────────────┴─────────────────────────────┘
+         │                 │                        │
+         ▼                 ▼                        ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    UNIFIED CLI LAYER                           │
+│                memory_system [command]                         │
+├─────────────────────────────────────────────────────────────────┤
+│ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
+│ │   qdrant    │ │    serve    │ │    shell    │ │   doctor    │ │
+│ │   start     │ │    http     │ │ interactive │ │ health      │ │
+│ │   stop      │ │    mcp      │ │    REPL     │ │ checks      │ │
+│ │   status    │ │             │ │             │ │             │ │
+│ └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                  COGNITIVE MEMORY CORE                         │
+├─────────────────────────────────────────────────────────────────┤
+│  Multi-dimensional Encoding → Storage → Retrieval → Insights   │
+│                                                                 │
+│  • Experience processing    • Memory formation                  │
+│  • Context analysis        • Association building              │
+│  • Bridge discovery        • Activation spreading              │
+└─────────────────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    STORAGE LAYER                               │
+├─────────────────┬───────────────────────────┬───────────────────┤
+│   VECTOR DB     │      METADATA DB          │   SERVICE MGR     │
+│                 │                           │                   │
+│ ┌─────────────┐ │ ┌─────────────────────────┐ │ ┌─────────────┐ │
+│ │   QDRANT    │ │ │        SQLITE           │ │ │  DOCKER     │ │
+│ │             │ │ │                         │ │ │ CONTAINER   │ │
+│ │ Concepts    │ │ │ • Memory metadata       │ │ │ MANAGER     │ │
+│ │ Contexts    │ │ │ • Connection graph      │ │ │             │ │
+│ │ Episodes    │ │ │ • Usage statistics      │ │ │ Fallback:   │ │
+│ │             │ │ │ • Bridge cache          │ │ │ Local       │ │
+│ │ 512D        │ │ │                         │ │ │ Binary      │ │
+│ │ Vectors     │ │ │ Relationships & Meta    │ │ │             │ │
+│ └─────────────┘ │ └─────────────────────────┘ │ └─────────────┘ │
+│                 │                           │                   │
+│ Port: 6333      │ File: ./data/memory.db    │ Auto-managed      │
+└─────────────────┴───────────────────────────┴───────────────────┘
 ```
+
+### User Interaction Flows
+
+#### 1. Researcher Workflow
+```bash
+# One-time setup
+$ memory_system doctor              # Check system health
+$ memory_system qdrant start       # Start vector database
+$ memory_system shell               # Interactive session
+
+# Daily usage
+cognitive> store "Working on transformer attention mechanisms"
+cognitive> recall "attention patterns"
+cognitive> bridges "neural networks"
+cognitive> exit
+```
+
+#### 2. LLM/AI System Integration (MCP)
+```json
+# LLM connects via MCP protocol
+{
+  "jsonrpc": "2.0",
+  "method": "memory/store",
+  "params": {
+    "experience": "User struggling with Python async/await concepts",
+    "context": "programming_help_session",
+    "dimensions": {
+      "emotional": "frustration",
+      "temporal": "learning_phase",
+      "contextual": "coding_tutorial"
+    }
+  }
+}
+
+# Response with memory formed
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "memory_id": "mem_12345",
+    "associations": ["async_programming", "python_concepts"],
+    "bridges": ["javascript_promises", "concurrent_patterns"]
+  }
+}
+```
+
+#### 3. Web Application Integration
+```bash
+# Start HTTP API server
+$ memory_system serve http --port 8000
+
+# Applications make REST calls
+POST /api/v1/memories
+GET /api/v1/recall?query="machine learning"
+GET /api/v1/bridges?context="neural networks"
+```
+
+### Setup Automation Infrastructure
+
+#### Unified CLI Architecture
+```python
+# memory_system/cli.py
+import typer
+from typing import Optional
+
+app = typer.Typer(help="Cognitive Memory System")
+
+# Service management commands
+qdrant_app = typer.Typer(help="Qdrant vector database management")
+app.add_typer(qdrant_app, name="qdrant")
+
+# Server interface commands
+serve_app = typer.Typer(help="Start interface servers")
+app.add_typer(serve_app, name="serve")
+
+@qdrant_app.command("start")
+def qdrant_start(
+    port: int = 6333,
+    data_dir: Optional[str] = None,
+    detach: bool = True,
+    force_local: bool = False
+):
+    """Start Qdrant vector database"""
+    pass
+
+@serve_app.command("http")
+def serve_http(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    reload: bool = False
+):
+    """Start HTTP API server"""
+    pass
+
+@serve_app.command("mcp")
+def serve_mcp(
+    port: Optional[int] = None,
+    stdin: bool = False
+):
+    """Start MCP protocol server"""
+    pass
+
+@app.command("shell")
+def interactive_shell():
+    """Start interactive cognitive memory shell"""
+    pass
+
+@app.command("doctor")
+def health_check(
+    json_output: bool = False,
+    verbose: bool = False
+):
+    """Run comprehensive health checks"""
+    pass
+```
+
+#### Service Management Flow
+```
+Experience Input → Multi-dimensional Encoding → Vector Storage (Qdrant)
+                                              → Metadata Storage (SQLite)
+                                              → Connection Graph Updates
+                                              → Available for Retrieval
+```
+
+#### How Components Work Together
+1. **Setup Phase**: System checks for Docker, downloads Qdrant binary if needed, creates data directories, initializes collections
+2. **Runtime Architecture**: Single `memory_system` command manages everything, handles Qdrant lifecycle, serves CLI/HTTP/MCP interfaces
+3. **Persistent Storage**: Memories survive restarts via Docker volumes/local files
+4. **AI System Integration**: LLMs connect via MCP for real-time memory operations, context preservation, serendipitous discovery
 
 **API Operations**:
 - `store_experience(text, context)` - Form new memory
