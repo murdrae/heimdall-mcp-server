@@ -7,16 +7,18 @@ This module provides common test fixtures and utilities for unit and integration
 import shutil
 import tempfile
 from collections.abc import Generator
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
-import pytest
 import torch
+from pytest import fixture
 
 from cognitive_memory.core.config import DatabaseConfig, QdrantConfig, SystemConfig
 from cognitive_memory.core.memory import CognitiveMemory
 
 
-@pytest.fixture
+@fixture  # type: ignore[misc]
 def temp_dir() -> Generator[Path]:
     """Create a temporary directory for tests."""
     temp_path = Path(tempfile.mkdtemp())
@@ -26,10 +28,11 @@ def temp_dir() -> Generator[Path]:
         shutil.rmtree(temp_path, ignore_errors=True)
 
 
-@pytest.fixture
+@fixture  # type: ignore[misc]
 def test_config(temp_dir: Path) -> SystemConfig:
     """Create test configuration with temporary paths."""
-    return SystemConfig.from_env()._replace(
+    return replace(
+        SystemConfig.from_env(),
         database=DatabaseConfig(
             path=str(temp_dir / "test_cognitive_memory.db"),
             backup_interval_hours=1,
@@ -39,7 +42,7 @@ def test_config(temp_dir: Path) -> SystemConfig:
     )
 
 
-@pytest.fixture
+@fixture  # type: ignore[misc]
 def sample_memory() -> CognitiveMemory:
     """Create a sample cognitive memory for testing."""
     memory = CognitiveMemory(
@@ -64,7 +67,7 @@ def sample_memory() -> CognitiveMemory:
     return memory
 
 
-@pytest.fixture
+@fixture  # type: ignore[misc]
 def sample_memories() -> list[CognitiveMemory]:
     """Create multiple sample memories for testing."""
     memories = []
@@ -98,7 +101,7 @@ def sample_memories() -> list[CognitiveMemory]:
     return memories
 
 
-@pytest.fixture
+@fixture  # type: ignore[misc]
 def mock_torch_embedding() -> torch.Tensor:
     """Create a mock embedding vector for testing."""
     return torch.randn(512)
@@ -120,14 +123,14 @@ class MockEmbeddingProvider:
         return torch.stack(embeddings)
 
 
-@pytest.fixture
+@fixture  # type: ignore[misc]
 def mock_embedding_provider() -> MockEmbeddingProvider:
     """Create mock embedding provider for testing."""
     return MockEmbeddingProvider()
 
 
 # Pytest markers for test organization
-def pytest_configure(config):
+def pytest_configure(config: Any) -> None:
     """Configure pytest markers."""
     config.addinivalue_line("markers", "unit: marks tests as unit tests")
     config.addinivalue_line("markers", "integration: marks tests as integration tests")

@@ -7,6 +7,7 @@ technical architecture, providing cognitive event logging and debugging.
 
 import sys
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
@@ -52,7 +53,7 @@ def setup_logging(config: LoggingConfig) -> None:
     logger.info("Logging system initialized")
 
 
-def log_cognitive_event(event_type: str, **kwargs) -> None:
+def log_cognitive_event(event_type: str, **kwargs: Any) -> None:
     """
     Log a cognitive event with structured data.
 
@@ -125,7 +126,7 @@ def log_performance_metric(
     )
 
 
-def log_error_with_context(error: Exception, context: str, **kwargs) -> None:
+def log_error_with_context(error: Exception, context: str, **kwargs: Any) -> None:
     """Log error with additional context."""
     logger.error(
         f"Error in {context}: {error}",

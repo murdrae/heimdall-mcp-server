@@ -21,7 +21,7 @@ from cognitive_memory.core.memory import (
 class TestCognitiveMemory:
     """Test CognitiveMemory data structure."""
 
-    def test_memory_creation(self):
+    def test_memory_creation(self) -> None:
         """Test creating a cognitive memory."""
         memory = CognitiveMemory(
             content="Test memory content", level=1, memory_type="episodic"
@@ -35,7 +35,7 @@ class TestCognitiveMemory:
         assert isinstance(memory.timestamp, datetime)
         assert isinstance(memory.last_accessed, datetime)
 
-    def test_memory_update_access(self):
+    def test_memory_update_access(self) -> None:
         """Test updating memory access."""
         memory = CognitiveMemory(content="Test")
         initial_access = memory.last_accessed
@@ -46,7 +46,7 @@ class TestCognitiveMemory:
         assert memory.access_count == initial_count + 1
         assert memory.last_accessed > initial_access
 
-    def test_activation_strength_calculation(self):
+    def test_activation_strength_calculation(self) -> None:
         """Test activation strength calculation."""
         memory = CognitiveMemory(content="Test", access_count=5, importance_score=0.8)
 
@@ -58,7 +58,7 @@ class TestCognitiveMemory:
         strength = memory.calculate_activation_strength(0.1)
         assert 0.0 <= strength <= 1.0
 
-    def test_time_decay(self):
+    def test_time_decay(self) -> None:
         """Test temporal decay calculation."""
         memory = CognitiveMemory(content="Test")
 
@@ -71,7 +71,7 @@ class TestCognitiveMemory:
         old_decay = memory._calculate_time_decay()
         assert old_decay < recent_decay
 
-    def test_memory_serialization(self):
+    def test_memory_serialization(self) -> None:
         """Test memory to/from dict conversion."""
         memory = CognitiveMemory(content="Test memory", level=2, memory_type="semantic")
         memory.dimensions = {
@@ -100,7 +100,7 @@ class TestCognitiveMemory:
 class TestSearchResult:
     """Test SearchResult data structure."""
 
-    def test_search_result_creation(self, sample_memory):
+    def test_search_result_creation(self, sample_memory: CognitiveMemory) -> None:
         """Test creating a search result."""
         result = SearchResult(memory=sample_memory, similarity_score=0.85)
 
@@ -108,7 +108,7 @@ class TestSearchResult:
         assert result.similarity_score == 0.85
         assert result.distance == pytest.approx(0.15)
 
-    def test_custom_distance(self, sample_memory):
+    def test_custom_distance(self, sample_memory: CognitiveMemory) -> None:
         """Test search result with custom distance."""
         result = SearchResult(memory=sample_memory, similarity_score=0.75, distance=0.3)
 
@@ -119,7 +119,9 @@ class TestSearchResult:
 class TestActivationResult:
     """Test ActivationResult data structure."""
 
-    def test_activation_result_creation(self, sample_memories):
+    def test_activation_result_creation(
+        self, sample_memories: list[CognitiveMemory]
+    ) -> None:
         """Test creating an activation result."""
         core_memories = sample_memories[:2]
         peripheral_memories = sample_memories[2:4]
@@ -134,7 +136,7 @@ class TestActivationResult:
         assert len(result.peripheral_memories) == 2
         assert result.total_activated == 4
 
-    def test_get_all_memories(self, sample_memories):
+    def test_get_all_memories(self, sample_memories: list[CognitiveMemory]) -> None:
         """Test getting all activated memories."""
         result = ActivationResult(
             core_memories=sample_memories[:2], peripheral_memories=sample_memories[2:]
@@ -143,7 +145,7 @@ class TestActivationResult:
         all_memories = result.get_all_memories()
         assert len(all_memories) == len(sample_memories)
 
-    def test_get_by_level(self, sample_memories):
+    def test_get_by_level(self, sample_memories: list[CognitiveMemory]) -> None:
         """Test getting memories by level."""
         result = ActivationResult(
             core_memories=sample_memories[:3], peripheral_memories=sample_memories[3:]
@@ -159,7 +161,7 @@ class TestActivationResult:
 class TestBridgeMemory:
     """Test BridgeMemory data structure."""
 
-    def test_bridge_memory_creation(self, sample_memory):
+    def test_bridge_memory_creation(self, sample_memory: CognitiveMemory) -> None:
         """Test creating a bridge memory."""
         bridge = BridgeMemory(
             memory=sample_memory,
@@ -174,7 +176,7 @@ class TestBridgeMemory:
         assert bridge.bridge_score == 0.8
         assert "Bridge connects" in bridge.explanation
 
-    def test_custom_explanation(self, sample_memory):
+    def test_custom_explanation(self, sample_memory: CognitiveMemory) -> None:
         """Test bridge memory with custom explanation."""
         explanation = "Custom bridge explanation"
         bridge = BridgeMemory(
@@ -191,7 +193,7 @@ class TestBridgeMemory:
 class TestMemoryConnection:
     """Test MemoryConnection data structure."""
 
-    def test_connection_creation(self):
+    def test_connection_creation(self) -> None:
         """Test creating a memory connection."""
         connection = MemoryConnection(
             source_id="mem1",
@@ -206,7 +208,7 @@ class TestMemoryConnection:
         assert connection.connection_type == "causal"
         assert connection.activation_count == 0
 
-    def test_connection_activation(self):
+    def test_connection_activation(self) -> None:
         """Test activating a connection."""
         connection = MemoryConnection(
             source_id="mem1", target_id="mem2", connection_strength=0.7
@@ -218,7 +220,7 @@ class TestMemoryConnection:
         assert connection.activation_count == initial_count + 1
         assert connection.last_activated is not None
 
-    def test_strength_decay(self):
+    def test_strength_decay(self) -> None:
         """Test connection strength decay."""
         connection = MemoryConnection(
             source_id="mem1", target_id="mem2", connection_strength=0.9
@@ -237,7 +239,7 @@ class TestMemoryConnection:
 class TestConsolidationResult:
     """Test ConsolidationResult data structure."""
 
-    def test_consolidation_result_creation(self):
+    def test_consolidation_result_creation(self) -> None:
         """Test creating a consolidation result."""
         result = ConsolidationResult(
             episodic_compressed=10,
@@ -253,7 +255,7 @@ class TestConsolidationResult:
         assert result.connections_strengthened == 15
         assert result.consolidation_time_ms == 250.5
 
-    def test_to_dict(self):
+    def test_to_dict(self) -> None:
         """Test converting consolidation result to dict."""
         result = ConsolidationResult(episodic_compressed=5, semantic_created=2)
 
@@ -266,7 +268,7 @@ class TestConsolidationResult:
 class TestSystemStats:
     """Test SystemStats data structure."""
 
-    def test_system_stats_creation(self):
+    def test_system_stats_creation(self) -> None:
         """Test creating system stats."""
         stats = SystemStats(
             total_memories=100,
@@ -280,7 +282,7 @@ class TestSystemStats:
         assert stats.memories_by_type["episodic"] == 60
         assert stats.total_connections == 150
 
-    def test_stats_to_dict(self):
+    def test_stats_to_dict(self) -> None:
         """Test converting stats to dict."""
         stats = SystemStats(total_memories=50, average_activation_time_ms=125.5)
 
