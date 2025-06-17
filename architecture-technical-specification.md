@@ -46,12 +46,12 @@ graph TB
         SQLITE[SQLite + JSON]
         SBERT[Sentence-BERT]
     end
-    
+
     subgraph "Input Processing"
         EXP[Experience Input]
         TXT[Text Preprocessing]
     end
-    
+
     subgraph "Multi-Dimensional Encoding"
         MDE[Multi-Dimensional Encoder]
         RBE[Rule-Based Extractor]
@@ -59,37 +59,37 @@ graph TB
         TEM[Temporal Extraction]
         CON[Context Inference]
     end
-    
+
     subgraph "Memory Storage"
         HMS[Hierarchical Memory Storage]
         L0[L0: Concepts Collection]
-        L1[L1: Contexts Collection] 
+        L1[L1: Contexts Collection]
         L2[L2: Episodes Collection]
         DMS[Dual Memory System]
         EPI[Episodic Memory]
         SEM[Semantic Memory]
     end
-    
+
     subgraph "Cognitive Processing"
         CAE[Context-Driven Activation]
         BFS[BFS Traversal]
         BDM[Bridge Discovery]
         INV[Distance Inversion]
     end
-    
+
     subgraph "Persistence Layer"
         META[Memory Metadata]
         CONN[Connection Graph]
         STATS[Usage Statistics]
     end
-    
+
     EXP --> TXT
     TXT --> MDE
     MDE --> RBE
     MDE --> SEN
     MDE --> TEM
     MDE --> CON
-    
+
     MDE --> HMS
     HMS --> L0
     HMS --> L1
@@ -97,21 +97,21 @@ graph TB
     HMS --> DMS
     DMS --> EPI
     DMS --> SEM
-    
+
     HMS --> CAE
     CAE --> BFS
     CAE --> BDM
     BDM --> INV
-    
+
     HMS --> SQLITE
     SQLITE --> META
     SQLITE --> CONN
     SQLITE --> STATS
-    
+
     SBERT --> MDE
     TORCH --> MDE
     QDRANT --> HMS
-    
+
     style TORCH fill:#ff6b35
     style QDRANT fill:#4a90e2
     style SQLITE fill:#5ac8fa
@@ -126,21 +126,21 @@ graph TB
 ```python
 class DimensionExtractor:
     """Hybrid rule-based + ML approach for multi-modal dimension extraction"""
-    
+
     def __init__(self):
         self.emotional_analyzer = SentimentPipeline("distilbert-base-uncased-finetuned-sst-2-english")
         self.temporal_patterns = self._load_temporal_regex_patterns()
         self.context_classifier = self._initialize_context_classifier()
-        
+
     def extract_dimensions(self, text: str) -> Dict[str, torch.Tensor]:
         """Extract emotional, temporal, contextual, social dimensions from text"""
         return {
             'emotional': self._extract_emotional_dimension(text),
-            'temporal': self._extract_temporal_dimension(text), 
+            'temporal': self._extract_temporal_dimension(text),
             'contextual': self._extract_contextual_dimension(text),
             'social': self._extract_social_dimension(text)
         }
-    
+
     def _extract_emotional_dimension(self, text: str) -> torch.Tensor:
         """Extract frustration, satisfaction, curiosity, stress indicators"""
         # Sentiment analysis + frustration patterns + satisfaction indicators
@@ -149,16 +149,16 @@ class DimensionExtractor:
         satisfaction_score = self._detect_satisfaction_patterns(text)
         curiosity_score = self._detect_curiosity_patterns(text)
         stress_score = self._detect_stress_indicators(text)
-        
-        return torch.tensor([frustration_score, satisfaction_score, 
+
+        return torch.tensor([frustration_score, satisfaction_score,
                            curiosity_score, stress_score])
-    
+
     def _extract_temporal_dimension(self, text: str) -> torch.Tensor:
         """Extract urgency, deadline pressure, time context"""
         urgency_score = self._detect_urgency_patterns(text)
-        deadline_score = self._detect_deadline_patterns(text) 
+        deadline_score = self._detect_deadline_patterns(text)
         time_context = self._extract_time_references(text)
-        
+
         return torch.tensor([urgency_score, deadline_score, time_context])
 ```
 
@@ -166,48 +166,48 @@ class DimensionExtractor:
 ```python
 class CognitiveEncoder(nn.Module):
     """Combines Sentence-BERT with multi-dimensional extraction"""
-    
+
     def __init__(self, base_model_name: str = "all-MiniLM-L6-v2"):
         super().__init__()
         self.sentence_bert = SentenceTransformer(base_model_name)
         self.dimension_extractor = DimensionExtractor()
-        
+
         # Dimension fusion layers
         self.semantic_dim = 384  # Sentence-BERT output dimension
         self.emotional_dim = 4
         self.temporal_dim = 3
         self.contextual_dim = 6
         self.social_dim = 3
-        
+
         # Learned fusion weights
         self.fusion_layer = nn.Linear(
-            self.semantic_dim + self.emotional_dim + self.temporal_dim + 
-            self.contextual_dim + self.social_dim, 
+            self.semantic_dim + self.emotional_dim + self.temporal_dim +
+            self.contextual_dim + self.social_dim,
             512  # Final cognitive embedding dimension
         )
-        
+
     def encode_memory(self, experience_text: str) -> torch.Tensor:
         """Encode experience into multi-dimensional cognitive vector"""
         # Semantic embedding from Sentence-BERT
         semantic_embedding = torch.tensor(
             self.sentence_bert.encode(experience_text)
         )
-        
+
         # Multi-dimensional extraction
         dimensions = self.dimension_extractor.extract_dimensions(experience_text)
-        
+
         # Concatenate all dimensions
         multi_dim_vector = torch.cat([
             semantic_embedding,
             dimensions['emotional'],
-            dimensions['temporal'], 
+            dimensions['temporal'],
             dimensions['contextual'],
             dimensions['social']
         ])
-        
+
         # Learned fusion
         cognitive_embedding = self.fusion_layer(multi_dim_vector)
-        
+
         return cognitive_embedding
 ```
 
@@ -217,16 +217,16 @@ class CognitiveEncoder(nn.Module):
 ```python
 class HierarchicalMemoryStorage:
     """3-tier hierarchy using Qdrant collections"""
-    
+
     def __init__(self, qdrant_client: QdrantClient):
         self.client = qdrant_client
         self.collections = {
             'concepts_l0': 'cognitive_concepts',
-            'contexts_l1': 'cognitive_contexts', 
+            'contexts_l1': 'cognitive_contexts',
             'episodes_l2': 'cognitive_episodes'
         }
         self._initialize_collections()
-    
+
     def _initialize_collections(self):
         """Initialize Qdrant collections for hierarchical storage"""
         for level, collection_name in self.collections.items():
@@ -241,11 +241,11 @@ class HierarchicalMemoryStorage:
                     memmap_threshold=20000
                 )
             )
-    
+
     def store_memory(self, memory: CognitiveMemory, level: int):
         """Store memory at appropriate hierarchy level"""
         collection_name = list(self.collections.values())[level]
-        
+
         self.client.upsert(
             collection_name=collection_name,
             points=[PointStruct(
@@ -268,48 +268,48 @@ class HierarchicalMemoryStorage:
 ```python
 class ActivationEngine:
     """Context-driven activation using Qdrant + BFS traversal"""
-    
-    def __init__(self, memory_storage: HierarchicalMemoryStorage, 
+
+    def __init__(self, memory_storage: HierarchicalMemoryStorage,
                  connection_graph: ConnectionGraph):
         self.storage = memory_storage
         self.connections = connection_graph
-        
-    def activate_memories(self, context_vector: torch.Tensor, 
+
+    def activate_memories(self, context_vector: torch.Tensor,
                          activation_threshold: float = 0.7,
                          max_activations: int = 50) -> ActivationResult:
         """Hierarchical activation spreading through memory levels"""
-        
+
         # Phase 1: Activate L0 concepts
         l0_matches = self.storage.search_level(
-            level=0, 
-            query_vector=context_vector, 
+            level=0,
+            query_vector=context_vector,
             limit=10,
             score_threshold=activation_threshold
         )
-        
+
         activated_memories = set()
         activation_queue = deque(l0_matches)
-        
+
         # Phase 2: BFS through hierarchy
         while activation_queue and len(activated_memories) < max_activations:
             current_memory = activation_queue.popleft()
-            
+
             if current_memory.id in activated_memories:
                 continue
-                
+
             activated_memories.add(current_memory.id)
-            
+
             # Find connected memories
             connected = self.connections.get_connections(
-                current_memory.id, 
+                current_memory.id,
                 min_strength=activation_threshold
             )
-            
+
             # Add to queue for further activation
             for connected_memory in connected:
                 if connected_memory.id not in activated_memories:
                     activation_queue.append(connected_memory)
-        
+
         return ActivationResult(
             core_memories=l0_matches[:5],
             peripheral_memories=list(activated_memories)[5:],
@@ -323,29 +323,29 @@ class ActivationEngine:
 ```python
 class BridgeDiscovery:
     """Simple distance inversion for serendipitous connections"""
-    
+
     def __init__(self, memory_storage: HierarchicalMemoryStorage):
         self.storage = memory_storage
-        
+
     def discover_bridges(self, query_context: torch.Tensor,
                         activated_memories: List[CognitiveMemory],
                         k: int = 5) -> List[BridgeMemory]:
         """Find distant but potentially connected memories"""
-        
+
         # Get all non-activated memories
         all_memories = self.storage.get_all_memories()
         activated_ids = {m.id for m in activated_memories}
         candidates = [m for m in all_memories if m.id not in activated_ids]
-        
+
         bridge_scores = []
-        
+
         for candidate in candidates:
             # Compute novelty (inverse similarity to query)
             direct_similarity = torch.cosine_similarity(
                 query_context, candidate.cognitive_embedding, dim=0
             )
             novelty_score = 1.0 - direct_similarity.item()
-            
+
             # Compute connection potential to activated memories
             connection_potential = 0.0
             for activated_memory in activated_memories:
@@ -355,17 +355,17 @@ class BridgeDiscovery:
                     dim=0
                 )
                 connection_potential = max(connection_potential, similarity.item())
-            
+
             # Combined bridge score
             bridge_score = (novelty_score * 0.6) + (connection_potential * 0.4)
-            
+
             bridge_scores.append(BridgeMemory(
                 memory=candidate,
                 novelty_score=novelty_score,
                 connection_potential=connection_potential,
                 bridge_score=bridge_score
             ))
-        
+
         # Return top-k bridges
         return sorted(bridge_scores, key=lambda x: x.bridge_score, reverse=True)[:k]
 ```
@@ -440,12 +440,12 @@ CREATE INDEX idx_bridge_cache_query ON bridge_cache(query_hash);
 ```python
 class DualMemorySystem:
     """Episodic and semantic memory with consolidation"""
-    
+
     def __init__(self, sqlite_conn: sqlite3.Connection):
         self.db = sqlite_conn
         self.episodic_decay_rate = 0.1  # Fast decay (days)
         self.semantic_decay_rate = 0.01  # Slow decay (months)
-        
+
     def store_episodic_memory(self, memory: CognitiveMemory):
         """Store new episodic memory with fast decay"""
         self.db.execute("""
@@ -458,13 +458,13 @@ class DualMemorySystem:
             json.dumps(memory.dimensions), memory.qdrant_id,
             memory.timestamp, memory.timestamp, self.episodic_decay_rate
         ))
-        
+
     def consolidate_to_semantic(self, pattern_memories: List[CognitiveMemory]):
         """Promote frequently accessed patterns to semantic memory"""
         for memory in pattern_memories:
             # Create semantic memory from pattern
             semantic_memory = self._extract_semantic_pattern(memory)
-            
+
             # Store with slow decay
             self.db.execute("""
                 INSERT INTO memories (
@@ -479,7 +479,7 @@ class DualMemorySystem:
                 semantic_memory.timestamp, self.semantic_decay_rate,
                 semantic_memory.importance_score
             ))
-            
+
             # Compress original episodic memories
             self._compress_episodic_sources(pattern_memories)
 ```
@@ -494,38 +494,38 @@ from typing import List, Dict, Any, Optional
 
 class EmbeddingProvider(ABC):
     """Abstract interface for embedding models"""
-    
+
     @abstractmethod
     def encode(self, text: str) -> torch.Tensor:
         pass
-    
+
     @abstractmethod
     def encode_batch(self, texts: List[str]) -> torch.Tensor:
         pass
 
 class VectorStorage(ABC):
     """Abstract interface for vector databases"""
-    
+
     @abstractmethod
     def store_vector(self, id: str, vector: torch.Tensor, metadata: Dict[str, Any]):
         pass
-    
+
     @abstractmethod
-    def search_similar(self, query_vector: torch.Tensor, k: int, 
+    def search_similar(self, query_vector: torch.Tensor, k: int,
                       filters: Optional[Dict] = None) -> List[SearchResult]:
         pass
 
 class ActivationEngine(ABC):
     """Abstract interface for memory activation"""
-    
+
     @abstractmethod
-    def activate_memories(self, context: torch.Tensor, 
+    def activate_memories(self, context: torch.Tensor,
                          threshold: float) -> ActivationResult:
         pass
 
 class BridgeDiscovery(ABC):
     """Abstract interface for bridge discovery algorithms"""
-    
+
     @abstractmethod
     def discover_bridges(self, context: torch.Tensor,
                         activated: List[CognitiveMemory],
@@ -597,7 +597,7 @@ cognitive_memory/
 
 ### Scalability Targets
 - **Phase 1**: 10K memories, single-user, local deployment
-- **Phase 2**: 100K memories, multi-user, containerized deployment  
+- **Phase 2**: 100K memories, multi-user, containerized deployment
 - **Phase 3**: 1M+ memories, distributed deployment, horizontal scaling
 
 ## Quality Assurance and Testing

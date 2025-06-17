@@ -24,7 +24,7 @@ Brief description of what this milestone encompasses and its objectives.
 
 ## Objectives
 - [ ] Objective 1
-- [ ] Objective 2  
+- [ ] Objective 2
 - [ ] Objective 3
 
 ## Implementation Progress

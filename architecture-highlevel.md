@@ -13,27 +13,27 @@ graph TB
     subgraph "Input Layer"
         EXP[Experience Input]
     end
-    
+
     subgraph "Memory Formation"
         MDE[Multi-Dimensional Encoder]
         HMS[Hierarchical Memory Storage]
         DMS[Dual Memory System]
     end
-    
+
     subgraph "Cognitive Processing"
         CAE[Context-Driven Activation Engine]
         BDM[Bridge Discovery Mechanism]
     end
-    
+
     subgraph "Learning System"
         MLC[Meta-Learning Controller]
         CSE[Cognitive State Evolution]
     end
-    
+
     subgraph "Output Layer"
         CMO[Cognitive Memory Output]
     end
-    
+
     EXP --> MDE
     MDE --> HMS
     HMS --> DMS
@@ -44,7 +44,7 @@ graph TB
     MLC --> MDE
     CSE --> CMO
     BDM --> CMO
-    
+
     style MDE fill:#4a90e2
     style HMS fill:#5ac8fa
     style DMS fill:#007aff
@@ -70,11 +70,11 @@ graph TD
         L0[L0: Concepts<br/>High-level abstractions]
         L1[L1: Contexts<br/>Mid-level scenarios]
         L2[L2: Episodes<br/>Specific experiences]
-        
+
         L0 --> L1
         L1 --> L2
     end
-    
+
     style L0 fill:#e8f1ff
     style L1 fill:#c8e1ff
     style L2 fill:#a8d1ff
@@ -109,11 +109,11 @@ sequenceDiagram
     participant BDM as Bridge Discovery
     participant CSE as Cognitive Evolution
     participant MLC as Meta-Learning
-    
+
     E->>MDE: Raw experience
     MDE->>HMS: Multi-dimensional vector
     Note over HMS: Store in appropriate hierarchy level
-    
+
     loop Cognitive Iteration
         CAE->>HMS: Context query
         HMS->>CAE: Activated memories
@@ -122,7 +122,7 @@ sequenceDiagram
         CSE->>CAE: Updated context
         CSE->>MLC: Success patterns
     end
-    
+
     MLC->>MDE: Encoding adjustments
 ```
 

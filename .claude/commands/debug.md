@@ -69,7 +69,7 @@ GitHub Issue: #[issue-number]
 
 ### 5. Document resolution
 
-- UPDATE GitHub issue with the Debug Report - updated to cover the work done 
+- UPDATE GitHub issue with the Debug Report - updated to cover the work done
 - CLOSE GitHub issue with reference to report
 
 

@@ -6,10 +6,11 @@ testing, and scaling as outlined in the technical specification.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import Any
+
 import torch
 
-from .memory import CognitiveMemory, SearchResult, ActivationResult, BridgeMemory
+from .memory import ActivationResult, BridgeMemory, CognitiveMemory, SearchResult
 
 
 class EmbeddingProvider(ABC):
@@ -21,7 +22,7 @@ class EmbeddingProvider(ABC):
         pass
 
     @abstractmethod
-    def encode_batch(self, texts: List[str]) -> torch.Tensor:
+    def encode_batch(self, texts: list[str]) -> torch.Tensor:
         """Encode multiple texts into vector representations."""
         pass
 
@@ -30,17 +31,16 @@ class VectorStorage(ABC):
     """Abstract interface for vector databases."""
 
     @abstractmethod
-    def store_vector(self, id: str, vector: torch.Tensor, metadata: Dict[str, Any]) -> None:
+    def store_vector(
+        self, id: str, vector: torch.Tensor, metadata: dict[str, Any]
+    ) -> None:
         """Store a vector with associated metadata."""
         pass
 
     @abstractmethod
     def search_similar(
-        self,
-        query_vector: torch.Tensor,
-        k: int,
-        filters: Optional[Dict] = None
-    ) -> List[SearchResult]:
+        self, query_vector: torch.Tensor, k: int, filters: dict | None = None
+    ) -> list[SearchResult]:
         """Search for similar vectors."""
         pass
 
@@ -50,7 +50,9 @@ class VectorStorage(ABC):
         pass
 
     @abstractmethod
-    def update_vector(self, id: str, vector: torch.Tensor, metadata: Dict[str, Any]) -> bool:
+    def update_vector(
+        self, id: str, vector: torch.Tensor, metadata: dict[str, Any]
+    ) -> bool:
         """Update an existing vector and its metadata."""
         pass
 
@@ -60,10 +62,7 @@ class ActivationEngine(ABC):
 
     @abstractmethod
     def activate_memories(
-        self,
-        context: torch.Tensor,
-        threshold: float,
-        max_activations: int = 50
+        self, context: torch.Tensor, threshold: float, max_activations: int = 50
     ) -> ActivationResult:
         """Activate memories based on context with spreading activation."""
         pass
@@ -74,11 +73,8 @@ class BridgeDiscovery(ABC):
 
     @abstractmethod
     def discover_bridges(
-        self,
-        context: torch.Tensor,
-        activated: List[CognitiveMemory],
-        k: int = 5
-    ) -> List[BridgeMemory]:
+        self, context: torch.Tensor, activated: list[CognitiveMemory], k: int = 5
+    ) -> list[BridgeMemory]:
         """Discover bridge memories that create novel connections."""
         pass
 
@@ -87,7 +83,7 @@ class DimensionExtractor(ABC):
     """Abstract interface for multi-dimensional feature extraction."""
 
     @abstractmethod
-    def extract_dimensions(self, text: str) -> Dict[str, torch.Tensor]:
+    def extract_dimensions(self, text: str) -> dict[str, torch.Tensor]:
         """Extract emotional, temporal, contextual, and social dimensions."""
         pass
 
@@ -101,7 +97,7 @@ class MemoryStorage(ABC):
         pass
 
     @abstractmethod
-    def retrieve_memory(self, memory_id: str) -> Optional[CognitiveMemory]:
+    def retrieve_memory(self, memory_id: str) -> CognitiveMemory | None:
         """Retrieve a memory by ID."""
         pass
 
@@ -116,7 +112,7 @@ class MemoryStorage(ABC):
         pass
 
     @abstractmethod
-    def get_memories_by_level(self, level: int) -> List[CognitiveMemory]:
+    def get_memories_by_level(self, level: int) -> list[CognitiveMemory]:
         """Get all memories at a specific hierarchy level."""
         pass
 
@@ -130,26 +126,21 @@ class ConnectionGraph(ABC):
         source_id: str,
         target_id: str,
         strength: float,
-        connection_type: str = 'associative'
+        connection_type: str = "associative",
     ) -> bool:
         """Add a connection between two memories."""
         pass
 
     @abstractmethod
     def get_connections(
-        self,
-        memory_id: str,
-        min_strength: float = 0.0
-    ) -> List[CognitiveMemory]:
+        self, memory_id: str, min_strength: float = 0.0
+    ) -> list[CognitiveMemory]:
         """Get connected memories above minimum strength threshold."""
         pass
 
     @abstractmethod
     def update_connection_strength(
-        self,
-        source_id: str,
-        target_id: str,
-        new_strength: float
+        self, source_id: str, target_id: str, new_strength: float
     ) -> bool:
         """Update the strength of an existing connection."""
         pass
@@ -164,7 +155,7 @@ class CognitiveSystem(ABC):
     """High-level interface for the complete cognitive memory system."""
 
     @abstractmethod
-    def store_experience(self, text: str, context: Optional[Dict[str, Any]] = None) -> str:
+    def store_experience(self, text: str, context: dict[str, Any] | None = None) -> str:
         """Store a new experience and return its memory ID."""
         pass
 
@@ -172,18 +163,18 @@ class CognitiveSystem(ABC):
     def retrieve_memories(
         self,
         query: str,
-        types: List[str] = ['core', 'peripheral', 'bridge'],
-        max_results: int = 20
-    ) -> Dict[str, List[CognitiveMemory]]:
+        types: list[str] | None = None,
+        max_results: int = 20,
+    ) -> dict[str, list[CognitiveMemory]]:
         """Retrieve memories of specified types for a query."""
         pass
 
     @abstractmethod
-    def consolidate_memories(self) -> Dict[str, int]:
+    def consolidate_memories(self) -> dict[str, int]:
         """Trigger episodic to semantic memory consolidation."""
         pass
 
     @abstractmethod
-    def get_memory_stats(self) -> Dict[str, Any]:
+    def get_memory_stats(self) -> dict[str, Any]:
         """Get system statistics and metrics."""
         pass
