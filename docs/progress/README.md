@@ -3,7 +3,7 @@
 ## File Naming Convention
 Progress files are named using the format: `XXX_Description.md`
 - `XXX`: 3-digit zero-padded sequential number (000, 001, 002, etc.)
-- `Description`: Brief descriptive name of the milestone/phase
+- `Description`: Brief descriptive name of the milestone/step
 - Examples: `000_bootstrapping.md`, `001_core_architecture.md`, `002_testing_framework.md`
 
 ## Progress Document Structure
@@ -18,7 +18,7 @@ Brief description of what this milestone encompasses and its objectives.
 
 ## Status
 - **Started**: [Date]
-- **Current Phase**: [Phase name]
+- **Current Step**: [Step name]
 - **Completion**: [Percentage or status]
 - **Expected Completion**: [Date estimate]
 
@@ -29,7 +29,7 @@ Brief description of what this milestone encompasses and its objectives.
 
 ## Implementation Progress
 
-### Phase 1: [Phase Name]
+### Step 1: [Step Name]
 **Status**: [Not Started/In Progress/Completed]
 **Date Range**: [Start Date - End Date]
 
@@ -41,15 +41,15 @@ Brief description of what this milestone encompasses and its objectives.
 - Description of ongoing work
 - Blockers or challenges
 
-#### Next Steps
+#### Next Tasks
 - Planned next actions
 - Dependencies
 
-### Phase 2: [Phase Name]
+### Step 2: [Step Name]
 **Status**: [Not Started/In Progress/Completed]
 **Date Range**: [Start Date - End Date]
 
-[Repeat structure as needed for additional phases]
+[Repeat structure as needed for additional steps]
 
 ## Technical Notes
 Key technical decisions, architecture choices, or implementation details.
@@ -78,6 +78,6 @@ Key technical decisions, architecture choices, or implementation details.
 1. **Sequential Numbering**: Always use the next available sequential number
 2. **Regular Updates**: Update progress documents frequently as work progresses
 3. **Status Tracking**: Keep the status section current with accurate completion percentages
-4. **Phase Management**: Break complex milestones into logical phases
+4. **Step Management**: Break complex milestones into logical steps
 5. **Documentation**: Include relevant technical notes and decisions
 6. **Dependencies**: Clearly identify and track dependencies between milestones

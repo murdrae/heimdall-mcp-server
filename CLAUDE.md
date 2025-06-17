@@ -68,14 +68,7 @@ pytest --cov=cognitive_memory --cov-report=html
 - **NEVER BYPASS COMMIT HOOKS**
 
 ```bash
-# Lint and format (enforced on commit)
-ruff check --fix
-ruff format
-
-# Type checking (strict mode)
-mypy cognitive_memory/
-
-# Run all quality gates
+# Run all quality gates - this already wraps everything
 pre-commit run --all-files
 ```
 
@@ -169,3 +162,11 @@ logger.warning("Bridge discovery yielded no results", query_context=context_summ
 1. **Read Progress Documentation**: Always check `docs/progress/` before starting.
 2. **READ and FOLLOW** `./docs/progress/README.md` on any development tasks
 3. **Update Progress**: Document significant changes in appropriate progress file
+4. **ALWAYS** commit at milestones. Never git add all files, manually list the files you worked on.
+
+## Testing Methodology
+
+1. Work on 1 test file at a time.
+2. Make sure tests are meaningful, cover edge cases, aim for high coverage happy and bad paths
+3. Make sure tests PASS or capture bugs before moving to next test files.
+4 After you finish working in a test file, update progress and move to the next test file
