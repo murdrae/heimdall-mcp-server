@@ -42,67 +42,74 @@ class EmotionalExtractor(BaseDimensionExtractor):
         self.sentiment_analyzer = pipeline(
             "sentiment-analysis",
             model="cardiffnlp/twitter-roberta-base-sentiment-latest",
-            return_all_scores=True
+            return_all_scores=True,
         )
 
         # Define emotional pattern dictionaries
         self.frustration_patterns = [
-            r'\b(frustrated?|annoying|stuck|blocked|difficult|problem)\b',
-            r'\b(why (is|does|won\'t)|not working|fails?|errors?)\b',
-            r'\b(hate|terrible|awful|stupid|ridiculous)\b'
+            r"\b(frustrated?|annoying|stuck|blocked|difficult|problem)\b",
+            r"\b(why (is|does|won\'t)|not working|fails?|errors?)\b",
+            r"\b(hate|terrible|awful|stupid|ridiculous)\b",
         ]
 
         self.satisfaction_patterns = [
-            r'\b(great|excellent|perfect|amazing|wonderful)\b',
-            r'\b(solved|fixed|working|successful|achieved)\b',
-            r'\b(love|enjoy|satisfied|pleased|happy)\b'
+            r"\b(great|excellent|perfect|amazing|wonderful)\b",
+            r"\b(solved|fixed|working|successful|achieved)\b",
+            r"\b(love|enjoy|satisfied|pleased|happy)\b",
         ]
 
         self.curiosity_patterns = [
-            r'\b(how (does|to)|why|what if|wondering|curious)\b',
-            r'\b(explore|investigate|learn|understand|discover)\b',
-            r'\b(interesting|fascinating|intriguing)\b'
+            r"\b(how (does|to)|why|what if|wondering|curious)\b",
+            r"\b(explore|investigate|learn|understand|discover)\b",
+            r"\b(interesting|fascinating|intriguing)\b",
         ]
 
         self.stress_patterns = [
-            r'\b(deadline|urgent|pressure|stress|worried)\b',
-            r'\b(overwhelming|too much|can\'t handle|breaking down)\b',
-            r'\b(anxious|panic|rush|hurry|emergency)\b'
+            r"\b(deadline|urgent|pressure|stress|worried)\b",
+            r"\b(overwhelming|too much|can\'t handle|breaking down)\b",
+            r"\b(anxious|panic|rush|hurry|emergency)\b",
         ]
 
     def extract(self, text: str) -> torch.Tensor:
         """Extract emotional dimensions from text."""
         if not text or not text.strip():
             return torch.zeros(4, dtype=torch.float32)
-            
+
         text_lower = text.lower()
 
         # Calculate pattern-based scores
-        frustration = self._calculate_pattern_score(text_lower, self.frustration_patterns)
-        satisfaction = self._calculate_pattern_score(text_lower, self.satisfaction_patterns)
+        frustration = self._calculate_pattern_score(
+            text_lower, self.frustration_patterns
+        )
+        satisfaction = self._calculate_pattern_score(
+            text_lower, self.satisfaction_patterns
+        )
         curiosity = self._calculate_pattern_score(text_lower, self.curiosity_patterns)
         stress = self._calculate_pattern_score(text_lower, self.stress_patterns)
 
         # Enhance with sentiment analysis
         sentiment_scores = self.sentiment_analyzer(text)[0]
-        sentiment_dict = {s['label'].lower(): s['score'] for s in sentiment_scores}
+        sentiment_dict = {s["label"].lower(): s["score"] for s in sentiment_scores}
 
         # Adjust scores based on sentiment
-        if 'negative' in sentiment_dict:
-            frustration += sentiment_dict['negative'] * 0.3
-            stress += sentiment_dict['negative'] * 0.2
+        if "negative" in sentiment_dict:
+            frustration += sentiment_dict["negative"] * 0.3
+            stress += sentiment_dict["negative"] * 0.2
 
-        if 'positive' in sentiment_dict:
-            satisfaction += sentiment_dict['positive'] * 0.4
-            curiosity += sentiment_dict['positive'] * 0.1
+        if "positive" in sentiment_dict:
+            satisfaction += sentiment_dict["positive"] * 0.4
+            curiosity += sentiment_dict["positive"] * 0.1
 
         # Normalize to [0, 1] range
-        dimensions = torch.tensor([
-            min(1.0, frustration),
-            min(1.0, satisfaction),
-            min(1.0, curiosity),
-            min(1.0, stress)
-        ], dtype=torch.float32)
+        dimensions = torch.tensor(
+            [
+                min(1.0, frustration),
+                min(1.0, satisfaction),
+                min(1.0, curiosity),
+                min(1.0, stress),
+            ],
+            dtype=torch.float32,
+        )
 
         return dimensions
 
@@ -124,46 +131,48 @@ class TemporalExtractor(BaseDimensionExtractor):
 
     def __init__(self) -> None:
         self.urgency_patterns = [
-            r'\b(asap|immediately|urgent|quickly|fast|soon)\b',
-            r'\b(right now|right away|time sensitive|critical)\b',
-            r'\b(need (to|it) (now|today|immediately))\b'
+            r"\b(asap|immediately|urgent|quickly|fast|soon)\b",
+            r"\b(right now|right away|time sensitive|critical)\b",
+            r"\b(need (to|it) (now|today|immediately))\b",
         ]
 
         self.deadline_patterns = [
-            r'\b(deadline|due (date|today|tomorrow|by))\b',
-            r'\b(must (finish|complete|deliver) by)\b',
-            r'\b((in|within) \d+ (hours?|days?|weeks?))\b'
+            r"\b(deadline|due (date|today|tomorrow|by))\b",
+            r"\b(must (finish|complete|deliver) by)\b",
+            r"\b((in|within) \d+ (hours?|days?|weeks?))\b",
         ]
 
         self.time_context_patterns = [
-            r'\b(morning|afternoon|evening|night|today|tomorrow)\b',
-            r'\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b',
-            r'\b(this (week|month|year)|next (week|month))\b'
+            r"\b(morning|afternoon|evening|night|today|tomorrow)\b",
+            r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+            r"\b(this (week|month|year)|next (week|month))\b",
         ]
 
     def extract(self, text: str) -> torch.Tensor:
         """Extract temporal dimensions from text."""
         if not text or not text.strip():
             return torch.zeros(3, dtype=torch.float32)
-            
+
         text_lower = text.lower()
 
         urgency = self._calculate_pattern_score(text_lower, self.urgency_patterns)
-        deadline_pressure = self._calculate_pattern_score(text_lower, self.deadline_patterns)
-        time_context = self._calculate_pattern_score(text_lower, self.time_context_patterns)
+        deadline_pressure = self._calculate_pattern_score(
+            text_lower, self.deadline_patterns
+        )
+        time_context = self._calculate_pattern_score(
+            text_lower, self.time_context_patterns
+        )
 
         # Boost urgency if specific time indicators are present
-        if re.search(r'\b(today|now|immediately)\b', text_lower):
+        if re.search(r"\b(today|now|immediately)\b", text_lower):
             urgency = min(1.0, urgency + 0.3)
 
-        if re.search(r'\b(tomorrow|due|deadline)\b', text_lower):
+        if re.search(r"\b(tomorrow|due|deadline)\b", text_lower):
             deadline_pressure = min(1.0, deadline_pressure + 0.2)
 
-        dimensions = torch.tensor([
-            urgency,
-            deadline_pressure,
-            time_context
-        ], dtype=torch.float32)
+        dimensions = torch.tensor(
+            [urgency, deadline_pressure, time_context], dtype=torch.float32
+        )
 
         return dimensions
 
@@ -185,63 +194,78 @@ class ContextualExtractor(BaseDimensionExtractor):
 
     def __init__(self) -> None:
         self.work_context_patterns = [
-            r'\b(meeting|project|task|assignment|work|job)\b',
-            r'\b(client|customer|manager|team|colleague)\b',
-            r'\b(office|remote|home|workplace)\b'
+            r"\b(meeting|project|task|assignment|work|job)\b",
+            r"\b(client|customer|manager|team|colleague)\b",
+            r"\b(office|remote|home|workplace)\b",
         ]
 
         self.technical_patterns = [
-            r'\b(code|programming|software|bug|debug|algorithm)\b',
-            r'\b(database|server|api|framework|library)\b',
-            r'\b(python|javascript|java|sql|html|css)\b'
+            r"\b(code|programming|software|bug|debug|algorithm)\b",
+            r"\b(database|server|api|framework|library)\b",
+            r"\b(python|javascript|java|sql|html|css)\b",
         ]
 
         self.creative_patterns = [
-            r'\b(design|creative|artistic|visual|aesthetic)\b',
-            r'\b(brainstorm|idea|concept|inspiration|innovative)\b',
-            r'\b(write|writing|content|story|narrative)\b'
+            r"\b(design|creative|artistic|visual|aesthetic)\b",
+            r"\b(brainstorm|idea|concept|inspiration|innovative)\b",
+            r"\b(write|writing|content|story|narrative)\b",
         ]
 
         self.analytical_patterns = [
-            r'\b(analyze|data|statistics|metrics|research)\b',
-            r'\b(calculate|formula|equation|mathematical)\b',
-            r'\b(report|analysis|findings|conclusions)\b'
+            r"\b(analyze|data|statistics|metrics|research)\b",
+            r"\b(calculate|formula|equation|mathematical)\b",
+            r"\b(report|analysis|findings|conclusions)\b",
         ]
 
         self.collaborative_patterns = [
-            r'\b(team|group|together|collaborate|shared)\b',
-            r'\b(discussion|meeting|feedback|review)\b',
-            r'\b(help|support|assist|cooperate)\b'
+            r"\b(team|group|together|collaborate|shared)\b",
+            r"\b(discussion|meeting|feedback|review)\b",
+            r"\b(help|support|assist|cooperate)\b",
         ]
 
         self.individual_patterns = [
-            r'\b(alone|solo|individual|personal|private)\b',
-            r'\b(focus|concentrate|quiet|undisturbed)\b',
-            r'\b(my own|by myself|independently)\b'
+            r"\b(alone|solo|individual|personal|private)\b",
+            r"\b(focus|concentrate|quiet|undisturbed)\b",
+            r"\b(my own|by myself|independently)\b",
         ]
 
     def extract(self, text: str) -> torch.Tensor:
         """Extract contextual dimensions from text."""
         if not text or not text.strip():
             return torch.zeros(6, dtype=torch.float32)
-            
+
         text_lower = text.lower()
 
-        work_context = self._calculate_pattern_score(text_lower, self.work_context_patterns)
-        technical_context = self._calculate_pattern_score(text_lower, self.technical_patterns)
-        creative_context = self._calculate_pattern_score(text_lower, self.creative_patterns)
-        analytical_context = self._calculate_pattern_score(text_lower, self.analytical_patterns)
-        collaborative_context = self._calculate_pattern_score(text_lower, self.collaborative_patterns)
-        individual_context = self._calculate_pattern_score(text_lower, self.individual_patterns)
+        work_context = self._calculate_pattern_score(
+            text_lower, self.work_context_patterns
+        )
+        technical_context = self._calculate_pattern_score(
+            text_lower, self.technical_patterns
+        )
+        creative_context = self._calculate_pattern_score(
+            text_lower, self.creative_patterns
+        )
+        analytical_context = self._calculate_pattern_score(
+            text_lower, self.analytical_patterns
+        )
+        collaborative_context = self._calculate_pattern_score(
+            text_lower, self.collaborative_patterns
+        )
+        individual_context = self._calculate_pattern_score(
+            text_lower, self.individual_patterns
+        )
 
-        dimensions = torch.tensor([
-            work_context,
-            technical_context,
-            creative_context,
-            analytical_context,
-            collaborative_context,
-            individual_context
-        ], dtype=torch.float32)
+        dimensions = torch.tensor(
+            [
+                work_context,
+                technical_context,
+                creative_context,
+                analytical_context,
+                collaborative_context,
+                individual_context,
+            ],
+            dtype=torch.float32,
+        )
 
         return dimensions
 
@@ -261,7 +285,7 @@ class ContextualExtractor(BaseDimensionExtractor):
             "creative_context",
             "analytical_context",
             "collaborative_context",
-            "individual_context"
+            "individual_context",
         ]
 
 
@@ -270,47 +294,49 @@ class SocialExtractor(BaseDimensionExtractor):
 
     def __init__(self) -> None:
         self.collaboration_patterns = [
-            r'\b(work (with|together)|collaborate|team up|partnership)\b',
-            r'\b(group (work|project)|joint (effort|venture))\b',
-            r'\b(coordinate|synchronize|align|integrate)\b'
+            r"\b(work (with|together)|collaborate|team up|partnership)\b",
+            r"\b(group (work|project)|joint (effort|venture))\b",
+            r"\b(coordinate|synchronize|align|integrate)\b",
         ]
 
         self.support_patterns = [
-            r'\b(help|support|assist|guide|mentor)\b',
-            r'\b(advice|guidance|feedback|suggestions)\b',
-            r'\b(encourage|motivate|reassure|back up)\b'
+            r"\b(help|support|assist|guide|mentor)\b",
+            r"\b(advice|guidance|feedback|suggestions)\b",
+            r"\b(encourage|motivate|reassure|back up)\b",
         ]
 
         self.interaction_patterns = [
-            r'\b(discuss|talk|communicate|share|explain)\b',
-            r'\b(meeting|call|chat|conversation|dialogue)\b',
-            r'\b(present|demonstrate|show|teach)\b'
+            r"\b(discuss|talk|communicate|share|explain)\b",
+            r"\b(meeting|call|chat|conversation|dialogue)\b",
+            r"\b(present|demonstrate|show|teach)\b",
         ]
 
     def extract(self, text: str) -> torch.Tensor:
         """Extract social dimensions from text."""
         if not text or not text.strip():
             return torch.zeros(3, dtype=torch.float32)
-            
+
         text_lower = text.lower()
 
-        collaboration = self._calculate_pattern_score(text_lower, self.collaboration_patterns)
+        collaboration = self._calculate_pattern_score(
+            text_lower, self.collaboration_patterns
+        )
         support = self._calculate_pattern_score(text_lower, self.support_patterns)
-        interaction = self._calculate_pattern_score(text_lower, self.interaction_patterns)
+        interaction = self._calculate_pattern_score(
+            text_lower, self.interaction_patterns
+        )
 
         # Boost collaboration if team-oriented language is present
-        if re.search(r'\b(we|us|our|team|together)\b', text_lower):
+        if re.search(r"\b(we|us|our|team|together)\b", text_lower):
             collaboration = min(1.0, collaboration + 0.2)
 
         # Boost support if help-seeking language is present
-        if re.search(r'\b(need help|can you|would you|please)\b', text_lower):
+        if re.search(r"\b(need help|can you|would you|please)\b", text_lower):
             support = min(1.0, support + 0.2)
 
-        dimensions = torch.tensor([
-            collaboration,
-            support,
-            interaction
-        ], dtype=torch.float32)
+        dimensions = torch.tensor(
+            [collaboration, support, interaction], dtype=torch.float32
+        )
 
         return dimensions
 
@@ -349,7 +375,7 @@ class CognitiveDimensionExtractor(DimensionExtractor):
                 "emotional": torch.zeros(4, dtype=torch.float32),
                 "temporal": torch.zeros(3, dtype=torch.float32),
                 "contextual": torch.zeros(6, dtype=torch.float32),
-                "social": torch.zeros(3, dtype=torch.float32)
+                "social": torch.zeros(3, dtype=torch.float32),
             }
 
         try:
@@ -362,7 +388,7 @@ class CognitiveDimensionExtractor(DimensionExtractor):
                 "emotional": emotional_dims,
                 "temporal": temporal_dims,
                 "contextual": contextual_dims,
-                "social": social_dims
+                "social": social_dims,
             }
         except Exception:
             # Fallback to zero tensors on any extraction error
@@ -370,7 +396,7 @@ class CognitiveDimensionExtractor(DimensionExtractor):
                 "emotional": torch.zeros(4, dtype=torch.float32),
                 "temporal": torch.zeros(3, dtype=torch.float32),
                 "contextual": torch.zeros(6, dtype=torch.float32),
-                "social": torch.zeros(3, dtype=torch.float32)
+                "social": torch.zeros(3, dtype=torch.float32),
             }
 
     def get_all_dimension_names(self) -> dict[str, list[str]]:
@@ -379,10 +405,9 @@ class CognitiveDimensionExtractor(DimensionExtractor):
             "emotional": self.emotional_extractor.get_dimension_names(),
             "temporal": self.temporal_extractor.get_dimension_names(),
             "contextual": self.contextual_extractor.get_dimension_names(),
-            "social": self.social_extractor.get_dimension_names()
+            "social": self.social_extractor.get_dimension_names(),
         }
 
     def get_total_dimensions(self) -> int:
         """Get total number of dimensions across all extractors."""
         return 4 + 3 + 6 + 3  # emotional + temporal + contextual + social = 16
-

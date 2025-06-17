@@ -134,24 +134,24 @@ graph TB
     subgraph "User Interface Layer"
         CLI[CLI Interface]
     end
-    
+
     subgraph "System Coordination"
         CS[Cognitive System]
         CM[Config Manager]
     end
-    
+
     subgraph "Core Subsystems"
         ENC[Encoding]
         STO[Storage]
         RET[Retrieval]
     end
-    
+
     CLI --> CS
     CS --> CM
     CS --> ENC
     CS --> STO
     CS --> RET
-    
+
     ENC --> STO
     STO --> RET
 ```
@@ -170,7 +170,7 @@ graph TB
 # Memory formation
 cognitive-cli store <text> [--context <json>] [--level <0|1|2>]
 
-# Memory retrieval  
+# Memory retrieval
 cognitive-cli retrieve <query> [--types core,peripheral,bridge] [--limit <n>]
 
 # System status
@@ -257,6 +257,6 @@ cognitive-cli interactive [--prompt <string>]
 - Abstract base class patterns in Python
 
 ## Change Log
-- **2025-06-17**: Step 004 progress document created  
+- **2025-06-17**: Step 004 progress document created
 - **2025-06-17**: Interface and CLI scope defined
 - **2025-06-17**: Architecture and command specifications planned

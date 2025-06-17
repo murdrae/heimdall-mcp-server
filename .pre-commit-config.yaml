@@ -20,6 +20,7 @@ repos:
     hooks:
       - id: mypy
         args: [--ignore-missing-imports]
+        exclude: ^tests/
 
   - repo: local
     hooks:

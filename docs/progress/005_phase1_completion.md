@@ -89,7 +89,7 @@ End-to-End Workflows:
 │   ├── Storage → Dual memory system (episodic/semantic)
 │   └── Connection graph updates
 ├── Memory Retrieval Pipeline
-│   ├── Query → Context vector generation  
+│   ├── Query → Context vector generation
 │   ├── Context → Activation spreading (BFS)
 │   ├── Activation → Similarity search
 │   ├── Search → Bridge discovery

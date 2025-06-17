@@ -47,7 +47,7 @@ def sample_memory() -> CognitiveMemory:
     """Create a sample cognitive memory for testing."""
     memory = CognitiveMemory(
         content="This is a test memory about learning Python programming",
-        level=0,
+        hierarchy_level=0,
         memory_type="episodic",
     )
 
@@ -83,7 +83,7 @@ def sample_memories() -> list[CognitiveMemory]:
     for i, content in enumerate(contents):
         memory = CognitiveMemory(
             content=content,
-            level=i % 3,  # Distribute across levels
+            hierarchy_level=i % 3,  # Distribute across levels
             memory_type="episodic" if i % 2 == 0 else "semantic",
         )
 
@@ -144,7 +144,7 @@ def assert_memory_equal(
     """Assert that two memories are equal, optionally ignoring timestamps."""
     assert memory1.id == memory2.id
     assert memory1.content == memory2.content
-    assert memory1.level == memory2.level
+    assert memory1.hierarchy_level == memory2.hierarchy_level
     assert memory1.memory_type == memory2.memory_type
     assert memory1.access_count == memory2.access_count
     assert memory1.importance_score == memory2.importance_score

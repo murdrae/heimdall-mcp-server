@@ -21,7 +21,7 @@ class CognitiveMemory:
 
     id: str = field(default_factory=lambda: str(uuid4()))
     content: str = ""
-    level: int = 0  # 0=concept, 1=context, 2=episode
+    hierarchy_level: int = 0  # 0=concept, 1=context, 2=episode
     cognitive_embedding: torch.Tensor | None = None
     dimensions: dict[str, torch.Tensor] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
@@ -32,6 +32,10 @@ class CognitiveMemory:
     memory_type: str = "episodic"  # 'episodic' or 'semantic'
     decay_rate: float = 0.1
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    # Additional attributes for storage compatibility
+    strength: float = 1.0  # Memory strength (0.0-1.0)
+    tags: list[str] | None = None  # Optional tags for categorization
 
     def update_access(self) -> None:
         """Update access timestamp and increment access count."""
@@ -65,7 +69,7 @@ class CognitiveMemory:
         return {
             "id": self.id,
             "content": self.content,
-            "level": self.level,
+            "hierarchy_level": self.hierarchy_level,
             "cognitive_embedding": self.cognitive_embedding.tolist()
             if self.cognitive_embedding is not None
             else None,
@@ -86,7 +90,7 @@ class CognitiveMemory:
         memory = cls(
             id=data["id"],
             content=data["content"],
-            level=data["level"],
+            hierarchy_level=data.get("hierarchy_level", data.get("level", 0)),
             timestamp=datetime.fromisoformat(data["timestamp"]),
             last_accessed=datetime.fromisoformat(data["last_accessed"]),
             access_count=data["access_count"],
@@ -112,10 +116,20 @@ class SearchResult:
     memory: CognitiveMemory
     similarity_score: float
     distance: float = 0.0
+    metadata: dict[str, Any] = field(default_factory=dict)
+    combined_score: float = 0.0
+    recency_score: float = 0.0
 
     def __post_init__(self) -> None:
         if self.distance == 0.0:
             self.distance = 1.0 - self.similarity_score
+        if self.combined_score == 0.0:
+            self.combined_score = self.similarity_score
+
+    @property
+    def score(self) -> float:
+        """Alias for similarity_score for compatibility."""
+        return self.similarity_score
 
 
 @dataclass
@@ -137,7 +151,7 @@ class ActivationResult:
 
     def get_by_level(self, level: int) -> list[CognitiveMemory]:
         """Get activated memories by hierarchy level."""
-        return [m for m in self.get_all_memories() if m.level == level]
+        return [m for m in self.get_all_memories() if m.hierarchy_level == level]
 
 
 @dataclass

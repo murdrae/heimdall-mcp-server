@@ -24,11 +24,11 @@ class TestCognitiveMemory:
     def test_memory_creation(self) -> None:
         """Test creating a cognitive memory."""
         memory = CognitiveMemory(
-            content="Test memory content", level=1, memory_type="episodic"
+            content="Test memory content", hierarchy_level=1, memory_type="episodic"
         )
 
         assert memory.content == "Test memory content"
-        assert memory.level == 1
+        assert memory.hierarchy_level == 1
         assert memory.memory_type == "episodic"
         assert memory.access_count == 0
         assert memory.importance_score == 0.0
@@ -73,7 +73,9 @@ class TestCognitiveMemory:
 
     def test_memory_serialization(self) -> None:
         """Test memory to/from dict conversion."""
-        memory = CognitiveMemory(content="Test memory", level=2, memory_type="semantic")
+        memory = CognitiveMemory(
+            content="Test memory", hierarchy_level=2, memory_type="semantic"
+        )
         memory.dimensions = {
             "emotional": torch.tensor([0.1, 0.2, 0.3, 0.4]),
             "temporal": torch.tensor([0.5, 0.6, 0.7]),
@@ -84,12 +86,12 @@ class TestCognitiveMemory:
         memory_dict = memory.to_dict()
         assert isinstance(memory_dict, dict)
         assert memory_dict["content"] == "Test memory"
-        assert memory_dict["level"] == 2
+        assert memory_dict["hierarchy_level"] == 2
 
         # Convert back from dict
         reconstructed = CognitiveMemory.from_dict(memory_dict)
         assert reconstructed.content == memory.content
-        assert reconstructed.level == memory.level
+        assert reconstructed.hierarchy_level == memory.hierarchy_level
         assert reconstructed.memory_type == memory.memory_type
 
         # Check dimensions
@@ -154,8 +156,8 @@ class TestActivationResult:
         level_0_memories = result.get_by_level(0)
         level_1_memories = result.get_by_level(1)
 
-        assert all(mem.level == 0 for mem in level_0_memories)
-        assert all(mem.level == 1 for mem in level_1_memories)
+        assert all(mem.hierarchy_level == 0 for mem in level_0_memories)
+        assert all(mem.hierarchy_level == 1 for mem in level_1_memories)
 
 
 class TestBridgeMemory:
