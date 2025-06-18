@@ -44,7 +44,7 @@ Query → ActivationEngine → ConnectionGraph → BridgeDiscovery → SearchRes
 ### Interface-Driven Design
 **Core Interfaces**: `EmbeddingProvider`, `VectorStorage`, `ActivationEngine`, `BridgeDiscovery`, `MemoryStorage`, `ConnectionGraph`, `CognitiveSystem`, `DimensionExtractor`
 
-- Component swapping (vector stores, embedding models, algorithms)  
+- Component swapping (vector stores, embedding models, algorithms)
 - Easy unit testing with mock implementations
 - Research iteration and algorithm comparison
 
@@ -75,7 +75,7 @@ Essential commands after `pip install -e .`:
 ```bash
 # Quick start - automated setup
 memory_system doctor          # Check system health
-memory_system qdrant start    # Start vector database  
+memory_system qdrant start    # Start vector database
 memory_system shell           # Interactive memory operations
 
 # When done
@@ -125,7 +125,7 @@ cognitive-memory/
 │   │   └── logging_setup.py # Structured cognitive event logging
 │   ├── encoding/          # Multi-dimensional encoding
 │   │   ├── sentence_bert.py   # SentenceBERT implementation
-│   │   ├── dimensions.py      # Rule-based dimension extraction  
+│   │   ├── dimensions.py      # Rule-based dimension extraction
 │   │   └── cognitive_encoder.py # Multi-dimensional encoding
 │   ├── storage/           # Memory persistence
 │   │   ├── qdrant_storage.py    # Qdrant vector storage
@@ -134,7 +134,7 @@ cognitive-memory/
 │   └── retrieval/         # Activation spreading and bridge discovery
 │       ├── basic_activation.py  # Simple activation spreading
 │       └── similarity_search.py # Cosine similarity retrieval
-├── interfaces/            # API implementations  
+├── interfaces/            # API implementations
 │   ├── cli.py            # Command-line interface (memory_system)
 │   ├── mcp_server.py     # MCP protocol server
 │   └── http_api.py       # HTTP REST API

@@ -114,6 +114,22 @@ class CognitiveConfig:
     contextual_dimensions: int = 6
     social_dimensions: int = 3
 
+    # Memory loading parameters
+    max_tokens_per_chunk: int = 250
+    code_block_lines: int = 8
+    strength_floor: float = 0.15
+
+    # Base connection weights
+    hierarchical_weight: float = 0.80
+    sequential_weight: float = 0.70
+    associative_weight: float = 0.50
+
+    # Relevance scoring weights (must sum to 1.0)
+    semantic_alpha: float = 0.45
+    lexical_beta: float = 0.25
+    structural_gamma: float = 0.15
+    explicit_delta: float = 0.15
+
     @classmethod
     def from_env(cls) -> "CognitiveConfig":
         """Create configuration from environment variables."""
@@ -150,6 +166,28 @@ class CognitiveConfig:
             social_dimensions=int(
                 os.getenv("SOCIAL_DIMENSIONS", str(cls.social_dimensions))
             ),
+            max_tokens_per_chunk=int(
+                os.getenv("MAX_TOKENS_PER_CHUNK", str(cls.max_tokens_per_chunk))
+            ),
+            code_block_lines=int(
+                os.getenv("CODE_BLOCK_LINES", str(cls.code_block_lines))
+            ),
+            strength_floor=float(os.getenv("STRENGTH_FLOOR", str(cls.strength_floor))),
+            hierarchical_weight=float(
+                os.getenv("HIERARCHICAL_WEIGHT", str(cls.hierarchical_weight))
+            ),
+            sequential_weight=float(
+                os.getenv("SEQUENTIAL_WEIGHT", str(cls.sequential_weight))
+            ),
+            associative_weight=float(
+                os.getenv("ASSOCIATIVE_WEIGHT", str(cls.associative_weight))
+            ),
+            semantic_alpha=float(os.getenv("SEMANTIC_ALPHA", str(cls.semantic_alpha))),
+            lexical_beta=float(os.getenv("LEXICAL_BETA", str(cls.lexical_beta))),
+            structural_gamma=float(
+                os.getenv("STRUCTURAL_GAMMA", str(cls.structural_gamma))
+            ),
+            explicit_delta=float(os.getenv("EXPLICIT_DELTA", str(cls.explicit_delta))),
         )
 
     def get_total_cognitive_dimensions(self) -> int:
@@ -264,6 +302,34 @@ class SystemConfig:
             logger.warning(
                 f"Dimension weights sum to {total_weight:.2f}, consider normalizing"
             )
+
+        # Validate memory loading parameters
+        if self.cognitive.max_tokens_per_chunk <= 0:
+            errors.append("Max tokens per chunk must be positive")
+
+        if self.cognitive.code_block_lines <= 0:
+            errors.append("Code block lines must be positive")
+
+        if not 0.0 <= self.cognitive.strength_floor <= 1.0:
+            errors.append("Strength floor must be between 0.0 and 1.0")
+
+        # Validate connection weights
+        if not 0.0 <= self.cognitive.hierarchical_weight <= 1.0:
+            errors.append("Hierarchical weight must be between 0.0 and 1.0")
+        if not 0.0 <= self.cognitive.sequential_weight <= 1.0:
+            errors.append("Sequential weight must be between 0.0 and 1.0")
+        if not 0.0 <= self.cognitive.associative_weight <= 1.0:
+            errors.append("Associative weight must be between 0.0 and 1.0")
+
+        # Validate relevance scoring weights sum to 1.0
+        relevance_sum = (
+            self.cognitive.semantic_alpha
+            + self.cognitive.lexical_beta
+            + self.cognitive.structural_gamma
+            + self.cognitive.explicit_delta
+        )
+        if abs(relevance_sum - 1.0) > 0.01:
+            errors.append(f"Relevance weights must sum to 1.0, got {relevance_sum:.3f}")
 
         if errors:
             for error in errors:

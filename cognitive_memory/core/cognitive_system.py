@@ -20,6 +20,7 @@ from .interfaces import (
     CognitiveSystem,
     ConnectionGraph,
     EmbeddingProvider,
+    MemoryLoader,
     MemoryStorage,
     VectorStorage,
 )
@@ -556,6 +557,159 @@ class CognitiveMemorySystem(CognitiveSystem):
                 "memory_counts": {},
                 "storage_stats": {},
             }
+
+    def load_memories_from_source(
+        self, loader: MemoryLoader, source_path: str, **kwargs: Any
+    ) -> dict[str, Any]:
+        """
+        Load memories from external source using specified loader.
+
+        Args:
+            loader: MemoryLoader instance to use
+            source_path: Path to the source content
+            **kwargs: Additional parameters for the loader
+
+        Returns:
+            Dictionary containing load results and statistics
+        """
+        if not loader.validate_source(source_path):
+            error_msg = f"Source validation failed for {source_path}"
+            logger.error(error_msg)
+            return {
+                "success": False,
+                "error": error_msg,
+                "memories_loaded": 0,
+                "connections_created": 0,
+                "processing_time": 0.0,
+            }
+
+        start_time = time.time()
+
+        try:
+            logger.info(f"Starting memory loading from {source_path}")
+
+            # Load memories from source
+            memories = loader.load_from_source(source_path, **kwargs)
+            logger.info(f"Loaded {len(memories)} raw memories from source")
+
+            # Store memories in the system
+            stored_count = 0
+            failed_count = 0
+
+            for memory in memories:
+                try:
+                    # Encode the memory content
+                    embedding = self.embedding_provider.encode(memory.content)
+                    memory.cognitive_embedding = embedding
+
+                    # Store in memory persistence
+                    if self.memory_storage.store_memory(memory):
+                        # Store in vector storage with metadata
+                        vector_metadata = {
+                            "memory_id": memory.id,
+                            "content": memory.content,
+                            "hierarchy_level": memory.hierarchy_level,
+                            "timestamp": memory.timestamp.timestamp()
+                            if memory.timestamp
+                            else time.time(),
+                            "source_type": "loaded",
+                            **memory.metadata,
+                        }
+
+                        self.vector_storage.store_vector(
+                            memory.id, embedding, vector_metadata
+                        )
+                        stored_count += 1
+
+                        logger.debug(
+                            f"Stored memory L{memory.hierarchy_level}: {memory.metadata.get('title', 'Untitled')[:50]}"
+                        )
+                    else:
+                        failed_count += 1
+                        logger.warning(f"Failed to store memory: {memory.id}")
+
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"Error storing memory {memory.id}: {e}")
+
+            # Extract and store connections
+            connections_created = 0
+            connections_failed = 0
+
+            if stored_count > 0:
+                try:
+                    connections = loader.extract_connections(memories)
+                    logger.info(f"Extracted {len(connections)} potential connections")
+
+                    for source_id, target_id, strength, connection_type in connections:
+                        try:
+                            if self.connection_graph.add_connection(
+                                source_id, target_id, strength, connection_type
+                            ):
+                                connections_created += 1
+                            else:
+                                connections_failed += 1
+                        except Exception as e:
+                            connections_failed += 1
+                            logger.debug(
+                                f"Failed to store connection {source_id} -> {target_id}: {e}"
+                            )
+
+                except Exception as e:
+                    logger.error(f"Failed to extract connections: {e}")
+
+            processing_time = time.time() - start_time
+
+            # Prepare results
+            results = {
+                "success": True,
+                "source_path": source_path,
+                "loader_type": loader.__class__.__name__,
+                "memories_loaded": stored_count,
+                "memories_failed": failed_count,
+                "connections_created": connections_created,
+                "connections_failed": connections_failed,
+                "processing_time": processing_time,
+                "hierarchy_distribution": self._calculate_hierarchy_distribution(
+                    memories
+                ),
+                "error": None,
+            }
+
+            logger.info(
+                "Memory loading completed successfully",
+                **{k: v for k, v in results.items() if k != "error"},
+            )
+
+            return results
+
+        except Exception as e:
+            processing_time = time.time() - start_time
+            error_msg = f"Memory loading failed: {str(e)}"
+            logger.error(error_msg)
+
+            return {
+                "success": False,
+                "error": error_msg,
+                "source_path": source_path,
+                "loader_type": loader.__class__.__name__,
+                "memories_loaded": 0,
+                "connections_created": 0,
+                "processing_time": processing_time,
+            }
+
+    def _calculate_hierarchy_distribution(
+        self, memories: list[CognitiveMemory]
+    ) -> dict[str, int]:
+        """Calculate distribution of memories across hierarchy levels."""
+        distribution = {"L0": 0, "L1": 0, "L2": 0}
+
+        for memory in memories:
+            level_key = f"L{memory.hierarchy_level}"
+            if level_key in distribution:
+                distribution[level_key] += 1
+
+        return distribution
 
 
 def create_cognitive_system(

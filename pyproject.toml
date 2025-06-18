@@ -118,6 +118,10 @@ module = [
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
+env = [
+    "PYTHONHASHSEED = 0",
+    "CUBLAS_WORKSPACE_CONFIG = :4096:8"
+]
 minversion = "7.0"
 addopts = "-ra -q --strict-markers --strict-config"
 testpaths = ["tests"]

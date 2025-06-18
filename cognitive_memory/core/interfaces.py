@@ -151,6 +151,64 @@ class ConnectionGraph(ABC):
         pass
 
 
+class MemoryLoader(ABC):
+    """Abstract interface for loading external content into cognitive memory."""
+
+    @abstractmethod
+    def load_from_source(
+        self, source_path: str, **kwargs: Any
+    ) -> list[CognitiveMemory]:
+        """
+        Load cognitive memories from an external source.
+
+        Args:
+            source_path: Path to the source content
+            **kwargs: Loader-specific parameters
+
+        Returns:
+            List of CognitiveMemory objects created from the source
+        """
+        pass
+
+    @abstractmethod
+    def extract_connections(
+        self, memories: list[CognitiveMemory]
+    ) -> list[tuple[str, str, float, str]]:
+        """
+        Extract connections between memories.
+
+        Args:
+            memories: List of memories to analyze for connections
+
+        Returns:
+            List of tuples: (source_id, target_id, strength, connection_type)
+        """
+        pass
+
+    @abstractmethod
+    def validate_source(self, source_path: str) -> bool:
+        """
+        Validate that the source can be processed by this loader.
+
+        Args:
+            source_path: Path to validate
+
+        Returns:
+            True if source is valid for this loader
+        """
+        pass
+
+    @abstractmethod
+    def get_supported_extensions(self) -> list[str]:
+        """
+        Get list of file extensions supported by this loader.
+
+        Returns:
+            List of supported file extensions (e.g., ['.md', '.markdown'])
+        """
+        pass
+
+
 class CognitiveSystem(ABC):
     """High-level interface for the complete cognitive memory system."""
 
@@ -177,4 +235,21 @@ class CognitiveSystem(ABC):
     @abstractmethod
     def get_memory_stats(self) -> dict[str, Any]:
         """Get system statistics and metrics."""
+        pass
+
+    @abstractmethod
+    def load_memories_from_source(
+        self, loader: MemoryLoader, source_path: str, **kwargs: Any
+    ) -> dict[str, Any]:
+        """
+        Load memories from external source using specified loader.
+
+        Args:
+            loader: MemoryLoader instance to use
+            source_path: Path to the source content
+            **kwargs: Additional parameters for the loader
+
+        Returns:
+            Dictionary containing load results and statistics
+        """
         pass

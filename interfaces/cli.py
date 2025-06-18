@@ -13,6 +13,7 @@ import sys
 from typing import Any
 
 from cognitive_memory.core.interfaces import CognitiveSystem
+from cognitive_memory.loaders import MarkdownMemoryLoader
 from cognitive_memory.main import (
     InitializationError,
     graceful_shutdown,
@@ -220,6 +221,130 @@ class CognitiveCLI:
             print(f"✗ Error during consolidation: {e}")
             return False
 
+    def load_memories(
+        self,
+        source_path: str,
+        loader_type: str = "markdown",
+        dry_run: bool = False,
+        **kwargs: Any,
+    ) -> bool:
+        """
+        Load memories from external source.
+
+        Args:
+            source_path: Path to the source file
+            loader_type: Type of loader to use (currently only 'markdown')
+            dry_run: If True, validate and show what would be loaded
+            **kwargs: Additional loader parameters
+
+        Returns:
+            bool: True if loading completed successfully
+        """
+        if loader_type != "markdown":
+            print(f"✗ Unsupported loader type: {loader_type}")
+            print("   Currently supported: markdown")
+            return False
+
+        try:
+            # Import config function - we need it for the loader
+            from cognitive_memory.core.config import get_config
+
+            config = get_config()
+
+            # Create the appropriate loader
+            loader = MarkdownMemoryLoader(config.cognitive)
+
+            # Validate source
+            if not loader.validate_source(source_path):
+                print(f"✗ Source validation failed: {source_path}")
+                return False
+
+            if dry_run:
+                print(f"🔍 Dry run mode: analyzing {source_path}")
+                try:
+                    # Load memories without storing them
+                    memories = loader.load_from_source(source_path, **kwargs)
+                    connections = loader.extract_connections(memories)
+
+                    print(f"✓ Would load {len(memories)} memories:")
+
+                    # Show hierarchy distribution
+                    hierarchy_dist = {"L0": 0, "L1": 0, "L2": 0}
+                    for memory in memories:
+                        level_key = f"L{memory.hierarchy_level}"
+                        if level_key in hierarchy_dist:
+                            hierarchy_dist[level_key] += 1
+
+                    for level, count in hierarchy_dist.items():
+                        level_name = {
+                            "L0": "Concepts",
+                            "L1": "Contexts",
+                            "L2": "Episodes",
+                        }[level]
+                        print(f"  {level} ({level_name}): {count} memories")
+
+                    print(f"✓ Would create {len(connections)} connections")
+
+                    # Show sample memories
+                    print("\nSample memories:")
+                    for i, memory in enumerate(memories[:5]):
+                        title = memory.metadata.get("title", "Untitled")
+                        print(f"  {i + 1}. L{memory.hierarchy_level}: {title[:60]}...")
+
+                    if len(memories) > 5:
+                        print(f"  ... and {len(memories) - 5} more")
+
+                    return True
+
+                except Exception as e:
+                    print(f"✗ Error during dry run: {e}")
+                    return False
+            else:
+                print(f"📁 Loading memories from {source_path}...")
+
+                # Perform actual loading
+                results = self.cognitive_system.load_memories_from_source(
+                    loader, source_path, **kwargs
+                )
+
+                if results["success"]:
+                    print("✓ Memory loading completed successfully")
+                    print(f"  Memories loaded: {results['memories_loaded']}")
+                    print(f"  Connections created: {results['connections_created']}")
+                    print(f"  Processing time: {results['processing_time']:.2f}s")
+
+                    # Show hierarchy distribution
+                    if "hierarchy_distribution" in results:
+                        print("  Hierarchy distribution:")
+                        for level, count in results["hierarchy_distribution"].items():
+                            level_name = {
+                                "L0": "Concepts",
+                                "L1": "Contexts",
+                                "L2": "Episodes",
+                            }[level]
+                            print(f"    {level} ({level_name}): {count}")
+
+                    if results["memories_failed"] > 0:
+                        print(
+                            f"  ⚠️ Failed to load {results['memories_failed']} memories"
+                        )
+
+                    if results["connections_failed"] > 0:
+                        print(
+                            f"  ⚠️ Failed to create {results['connections_failed']} connections"
+                        )
+
+                    return True
+                else:
+                    print(
+                        f"✗ Memory loading failed: {results.get('error', 'Unknown error')}"
+                    )
+                    return False
+
+        except Exception as e:
+            print(f"✗ Error loading memories: {e}")
+            return False
+
     def clear_memories(self, memory_type: str = "all", confirm: bool = False) -> bool:
         """
         Clear memories (placeholder - not implemented for safety).
@@ -277,6 +402,13 @@ class CognitiveCLI:
                 elif command.lower() == "consolidate":
                     self.consolidate_memories()
 
+                elif command.startswith("load "):
+                    source_path = command[5:].strip()
+                    if source_path:
+                        self.load_memories(source_path)
+                    else:
+                        print("Usage: load <file_path>")
+
                 else:
                     print(f"Unknown command: {command}")
                     print("Type 'help' for available commands")
@@ -296,6 +428,7 @@ class CognitiveCLI:
         print("  store <text>           - Store new experience")
         print("  retrieve <query>       - Retrieve memories")
         print("  bridges <query>        - Show bridge connections")
+        print("  load <file_path>       - Load memories from file")
         print("  status                 - Show system status")
         print("  config                 - Show detailed configuration")
         print("  consolidate            - Trigger memory consolidation")
@@ -356,6 +489,24 @@ Examples:
     )
     consolidate_parser.add_argument(
         "--dry-run", action="store_true", help="Show what would be consolidated"
+    )
+
+    # Load command
+    load_parser = subparsers.add_parser(
+        "load", help="Load memories from external source"
+    )
+    load_parser.add_argument("source_path", help="Path to source file")
+    load_parser.add_argument(
+        "--loader-type",
+        choices=["markdown"],
+        default="markdown",
+        help="Type of loader to use",
+    )
+    load_parser.add_argument(
+        "--dry-run", action="store_true", help="Analyze source without loading memories"
+    )
+    load_parser.add_argument(
+        "--chunk-size", type=int, help="Override maximum tokens per chunk"
     )
 
     # Clear command (placeholder)
@@ -439,6 +590,19 @@ def main() -> int:
             elif args.command == "consolidate":
                 success = cli.consolidate_memories(
                     dry_run=getattr(args, "dry_run", False)
+                )
+                exit_code = 0 if success else 1
+
+            elif args.command == "load":
+                kwargs = {}
+                if hasattr(args, "chunk_size") and args.chunk_size:
+                    kwargs["max_tokens_per_chunk"] = args.chunk_size
+
+                success = cli.load_memories(
+                    source_path=args.source_path,
+                    loader_type=getattr(args, "loader_type", "markdown"),
+                    dry_run=getattr(args, "dry_run", False),
+                    **kwargs,
                 )
                 exit_code = 0 if success else 1
 

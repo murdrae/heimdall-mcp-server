@@ -17,3 +17,4 @@ pre-commit>=3.0.0
 pip-tools>=7.0.0
 
 pytest-docker>=2.0.0  # Docker testing utilities
+pytest-env>=1.0.0
