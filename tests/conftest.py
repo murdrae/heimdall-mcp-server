@@ -132,6 +132,7 @@ def pytest_configure(config: Any) -> None:
     """Configure pytest markers."""
     config.addinivalue_line("markers", "unit: marks tests as unit tests")
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
+    config.addinivalue_line("markers", "e2e: marks tests as end-to-end tests")
     config.addinivalue_line("markers", "slow: marks tests as slow running")
 
 
