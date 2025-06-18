@@ -26,6 +26,7 @@ from tests.factory_utils import (
     MockMemoryStorage,
     MockVectorStorage,
 )
+from tests.test_utils import setup_deterministic_testing
 
 
 @fixture  # type: ignore[misc]
@@ -98,7 +99,8 @@ def sample_memories() -> list[CognitiveMemory]:
             memory_type="episodic" if i % 2 == 0 else "semantic",
         )
 
-        # Add random dimensions
+        # Add deterministic dimensions
+        torch.manual_seed(42 + i)  # Different seed per memory
         memory.dimensions = {
             "emotional": torch.rand(4),
             "temporal": torch.rand(3),
@@ -115,6 +117,7 @@ def sample_memories() -> list[CognitiveMemory]:
 @fixture  # type: ignore[misc]
 def mock_torch_embedding() -> torch.Tensor:
     """Create a mock embedding vector for testing."""
+    torch.manual_seed(42)
     return torch.randn(512)
 
 
@@ -130,6 +133,11 @@ def pytest_configure(config: Any) -> None:
     config.addinivalue_line("markers", "unit: marks tests as unit tests")
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
     config.addinivalue_line("markers", "slow: marks tests as slow running")
+
+
+def pytest_runtest_setup(item: Any) -> None:
+    """Set up deterministic behavior before each test."""
+    setup_deterministic_testing(seed=42)
 
 
 # Test utilities

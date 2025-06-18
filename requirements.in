@@ -15,3 +15,8 @@ docker>=6.0.0          # Docker container management for Qdrant
 psutil>=5.9.0          # System monitoring and process management
 requests>=2.31.0       # HTTP requests for health checks
 prompt_toolkit>=3.0.0
+
+
+# Text and sentiment analysis
+spacy
+vaderSentiment

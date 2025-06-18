@@ -177,6 +177,17 @@ class CognitiveEncoder:
             device=self.semantic_provider.device,
         )
 
+    def reset_weights(self, seed: int = 42) -> None:
+        """
+        Reset fusion layer weights deterministically for testing.
+
+        Args:
+            seed: Random seed for deterministic weight initialization
+        """
+        torch.manual_seed(seed)
+        self.fusion_layer._initialize_weights()
+        logger.debug("Fusion layer weights reset", seed=seed)
+
     def encode(self, text: str, context: dict[str, Any] | None = None) -> torch.Tensor:
         """
         Encode text into a cognitive memory representation.

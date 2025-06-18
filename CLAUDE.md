@@ -19,31 +19,42 @@ This is a **cognitive memory system for Large Language Models** implementing tru
 
 ## Architecture Summary
 
-### Cognitive Architecture (from Technical Specification)
-- **Multi-dimensional Encoding**: 4 dimensions (emotional, temporal, contextual, social) + Sentence-BERT semantic embeddings fused via learned weights
-- **Hierarchical Memory Storage**: 3-tier hierarchy using Qdrant collections:
-  - L0: Concepts Collection (abstract ideas)
-  - L1: Contexts Collection (situational memories)
-  - L2: Episodes Collection (specific experiences)
-- **Activation Spreading**: Context-driven activation using BFS traversal through memory connections
-- **Bridge Discovery**: Distance inversion algorithm to find serendipitous connections between distant concepts
+### Technology Stack
+- **Vector Database**: Qdrant (hierarchical collections, production-ready)
+- **ML Framework**: PyTorch + Sentence-BERT (all-MiniLM-L6-v2, 384D)
+- **Memory Persistence**: SQLite + JSON (metadata, connections, statistics)
+- **Language**: Python 3.13 (latest features, async support)
+
+### Cognitive Architecture
+- **Multi-dimensional Encoding**: 4 dimensions (emotional, temporal, contextual, social) + Sentence-BERT (384D vectors)
+- **Hierarchical Storage**: 3-tier Qdrant collections (L0: Concepts, L1: Contexts, L2: Episodes)
+- **Activation Spreading**: BFS traversal through memory connections with threshold-based activation
+- **Bridge Discovery**: Distance inversion algorithm for serendipitous connections between distant concepts
 - **Dual Memory System**: Episodic (fast decay) and semantic (slow decay) with automatic consolidation
-- Refer `./docs/architecture-technical-specification.md`
+
+### Data Flow & Interface Connections
+```
+Experience Input → DimensionExtractor → EmbeddingProvider → CognitiveSystem
+                                                               ↓
+                                          VectorStorage ← MemoryStorage → SQLite
+                                               ↓
+Query → ActivationEngine → ConnectionGraph → BridgeDiscovery → SearchResults
+```
 
 ### Interface-Driven Design
-All components implement abstract interfaces for:
-- Component swapping (vector stores, embedding models, algorithms)
+**Core Interfaces**: `EmbeddingProvider`, `VectorStorage`, `ActivationEngine`, `BridgeDiscovery`, `MemoryStorage`, `ConnectionGraph`, `CognitiveSystem`, `DimensionExtractor`
+
+- Component swapping (vector stores, embedding models, algorithms)  
 - Easy unit testing with mock implementations
-- Scaling from local to distributed deployment
 - Research iteration and algorithm comparison
 
-**Core Interfaces**: `EmbeddingProvider`, `VectorStorage`, `ActivationEngine`, `BridgeDiscovery`, `MemoryStorage`, `ConnectionGraph`, `CognitiveSystem`, `DimensionExtractor`
+Refer to `./docs/architecture-technical-specification.md` for detailed technical implementation.
 
 ## Development Commands
 
 ### Environment Setup
 
-- **ALWAY USE VENV AT ROOT OF REPOSITORY**
+- **ALWAYS USE VENV AT ROOT OF REPOSITORY**
 ```bash
 # Python 3.13 virtual environment
 python3 -m venv venv
@@ -52,6 +63,23 @@ source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 pip install -r requirements-dev.txt  # Development tools
+
+# Install package in development mode
+pip install -e .
+```
+
+### CLI Usage
+
+Essential commands after `pip install -e .`:
+
+```bash
+# Quick start - automated setup
+memory_system doctor          # Check system health
+memory_system qdrant start    # Start vector database  
+memory_system shell           # Interactive memory operations
+
+# When done
+memory_system qdrant stop     # Stop services
 ```
 
 ### Testing Strategy
@@ -85,7 +113,7 @@ SENTENCE_BERT_MODEL=all-MiniLM-L6-v2
 # Cognitive Parameters
 ```
 
-## Project Structure (Technical Specification)
+## Project Structure
 
 ```
 cognitive-memory/
@@ -95,11 +123,19 @@ cognitive-memory/
 │   │   ├── memory.py      # CognitiveMemory, SearchResult, ActivationResult
 │   │   ├── config.py      # Configuration management with validation
 │   │   └── logging_setup.py # Structured cognitive event logging
-│   ├── encoding/          # Multi-dimensional encoding (Phase 1)
-│   ├── storage/           # Memory persistence implementations
+│   ├── encoding/          # Multi-dimensional encoding
+│   │   ├── sentence_bert.py   # SentenceBERT implementation
+│   │   ├── dimensions.py      # Rule-based dimension extraction  
+│   │   └── cognitive_encoder.py # Multi-dimensional encoding
+│   ├── storage/           # Memory persistence
+│   │   ├── qdrant_storage.py    # Qdrant vector storage
+│   │   ├── sqlite_persistence.py # SQLite metadata storage
+│   │   └── dual_memory.py       # Episodic/semantic system
 │   └── retrieval/         # Activation spreading and bridge discovery
-├── interfaces/            # API implementations
-│   ├── cli.py            # Command-line interface (cognitive-cli)
+│       ├── basic_activation.py  # Simple activation spreading
+│       └── similarity_search.py # Cosine similarity retrieval
+├── interfaces/            # API implementations  
+│   ├── cli.py            # Command-line interface (memory_system)
 │   ├── mcp_server.py     # MCP protocol server
 │   └── http_api.py       # HTTP REST API
 ├── data/                 # Local storage
@@ -108,7 +144,9 @@ cognitive-memory/
 ├── tests/               # Comprehensive test suite
 │   ├── unit/           # Component isolation tests
 │   └── integration/    # End-to-end cognitive workflows
-└── docs/progress/      # Progress tracking (REQUIRED READING)
+└── docs/               # Documentation
+    ├── progress/       # Progress tracking (REQUIRED READING)
+    └── architecture-technical-specification.md
 ```
 
 ## Development Phase Status
