@@ -5,10 +5,18 @@ This module provides an enhanced interactive REPL for the cognitive memory syste
 with rich formatting, command completion, and intuitive cognitive operations.
 """
 
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import (
+    Completer,
+    Completion,
+    PathCompleter,
+    WordCompleter,
+)
+from prompt_toolkit.document import Document
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style
 from rich.console import Console
@@ -16,6 +24,128 @@ from rich.panel import Panel
 from rich.table import Table
 
 from cognitive_memory.core.interfaces import CognitiveSystem
+
+
+class CognitiveShellCompleter(Completer):
+    """
+    Custom completer for cognitive memory shell commands.
+
+    Provides completion for:
+    - Command names
+    - File paths for load command
+    - --recursive flag for load command
+    """
+
+    def __init__(self) -> None:
+        """Initialize the completer with command definitions."""
+        # Define main commands
+        self.commands = [
+            "store",
+            "retrieve",
+            "recall",
+            "bridges",
+            "connect",
+            "status",
+            "config",
+            "consolidate",
+            "session",
+            "load",
+            "clear",
+            "help",
+            "quit",
+            "exit",
+        ]
+
+        # Create sub-completers
+        self.command_completer = WordCompleter(self.commands, ignore_case=True)
+        self.path_completer = PathCompleter()
+
+        # Load command specific flags
+        self.load_flags = ["--recursive", "-r", "--dry-run"]
+
+    def get_completions(
+        self, document: Document, complete_event: Any
+    ) -> Generator[Completion]:
+        """Generate completions based on current input."""
+        text = document.text
+        words = text.split()
+
+        if not words:
+            # No input yet - suggest commands
+            yield from self.command_completer.get_completions(document, complete_event)
+            return
+
+        command = words[0].lower()
+
+        if len(words) == 1 and not text.endswith(" "):
+            # Still typing the command
+            yield from self.command_completer.get_completions(document, complete_event)
+            return
+
+        if command == "load":
+            # Special handling for load command
+            if len(words) >= 2:
+                # Get the current word being typed
+                current_word = words[-1] if not text.endswith(" ") else ""
+
+                # Check if it's a flag
+                if current_word.startswith("-"):
+                    for flag in self.load_flags:
+                        if flag.startswith(current_word):
+                            yield Completion(
+                                flag,
+                                start_position=-len(current_word),
+                                display=flag,
+                                display_meta="flag option",
+                            )
+                else:
+                    # Path completion for load command
+                    # Create a document with just the path part
+                    if text.endswith(" "):
+                        path_document = Document("")
+                    else:
+                        path_start = text.rfind(" ") + 1
+                        path_text = text[path_start:]
+                        # Skip flags when finding path position
+                        if not path_text.startswith("-"):
+                            path_document = Document(path_text)
+                            completions = list(
+                                self.path_completer.get_completions(
+                                    path_document, complete_event
+                                )
+                            )
+                            for completion in completions:
+                                # Add metadata to distinguish files vs directories
+                                try:
+                                    full_path = Path(path_text + completion.text)
+                                    if full_path.exists():
+                                        if full_path.is_dir():
+                                            meta = "directory"
+                                        elif full_path.suffix.lower() in [
+                                            ".md",
+                                            ".markdown",
+                                            ".mdown",
+                                            ".mkd",
+                                        ]:
+                                            meta = "markdown file"
+                                        else:
+                                            meta = "file"
+                                    else:
+                                        meta = completion.display_meta or ""
+                                except Exception:
+                                    meta = completion.display_meta or ""
+
+                                yield Completion(
+                                    completion.text,
+                                    start_position=completion.start_position,
+                                    display=completion.display,
+                                    display_meta=meta,
+                                )
+            else:
+                # First argument after load - suggest paths
+                yield from self.path_completer.get_completions(
+                    Document(""), complete_event
+                )
 
 
 class InteractiveShell:
@@ -47,18 +177,28 @@ class InteractiveShell:
             "bridges_discovered": 0,
         }
 
-        # Set up prompt_toolkit session with history and styling
+        # Set up prompt_toolkit session with history, styling, and completion
         history_file = Path.home() / ".cognitive_memory_history"
         self.prompt_style = Style.from_dict(
             {
                 "prompt": "#00aa00 bold",  # Bright green, similar to original
+                "completion-menu": "bg:#888888 #ffffff",
+                "completion-menu.completion": "bg:#888888 #ffffff",
+                "completion-menu.completion.current": "bg:#444444 #ffffff bold",
+                "completion-menu.meta.completion": "bg:#999999 #000000",
+                "completion-menu.meta.completion.current": "bg:#444444 #ffffff",
             }
         )
+
+        # Create completer instance
+        self.completer = CognitiveShellCompleter()
 
         self.prompt_session: PromptSession[str] = PromptSession(
             history=FileHistory(str(history_file)),
             enable_history_search=True,
             style=self.prompt_style,
+            completer=self.completer,
+            complete_while_typing=True,
         )
 
     def run(self) -> None:
@@ -94,7 +234,14 @@ class InteractiveShell:
             "Welcome to your cognitive memory system! This shell provides intuitive\n"
             "commands for storing experiences, retrieving memories, and discovering\n"
             "serendipitous connections.\n\n"
-            "[dim]Type 'help' for commands, 'quit' to exit[/dim]",
+            "[dim]🧠 Memory Types:[/dim]\n"
+            "[dim]  🎯 Core: Most relevant to your query[/dim]\n"
+            "[dim]  🌐 Peripheral: Contextual associations[/dim]\n"
+            "[dim]  🌉 Bridge: Creative connections between distant concepts[/dim]\n\n"
+            "[dim]💡 Tips:[/dim]\n"
+            "[dim]  • Type 'help' for commands, 'quit' to exit[/dim]\n"
+            "[dim]  • Use TAB for command and path completion[/dim]\n"
+            "[dim]  • Try 'load docs/' + TAB to browse directories[/dim]",
             title="Welcome",
             border_style="blue",
         )
@@ -137,7 +284,11 @@ class InteractiveShell:
         # Retrieve memories
         elif command.startswith("retrieve ") or command.startswith("recall "):
             # Use original command to preserve case in queries
-            query = original_command.split(" ", 1)[1].strip() if " " in original_command else ""
+            query = (
+                original_command.split(" ", 1)[1].strip()
+                if " " in original_command
+                else ""
+            )
             if query:
                 self._retrieve_memories(query)
             else:
@@ -146,7 +297,11 @@ class InteractiveShell:
         # Bridge discovery
         elif command.startswith("bridges ") or command.startswith("connect "):
             # Use original command to preserve case in queries
-            query = original_command.split(" ", 1)[1].strip() if " " in original_command else ""
+            query = (
+                original_command.split(" ", 1)[1].strip()
+                if " " in original_command
+                else ""
+            )
             if query:
                 self._discover_bridges(query)
             else:
@@ -175,15 +330,22 @@ class InteractiveShell:
             self.console.clear()
 
         # Load memories from file
-        elif command.startswith("load "):
-            # Use original command to preserve case-sensitive file paths
-            file_path = original_command[5:].strip()
-            if file_path:
-                self._load_memories(file_path)
+        elif command.startswith("load"):
+            # Handle "load" command with or without arguments
+            if command == "load":
+                self.console.print("[bold red]❌ Please provide a file path[/bold red]")
+                self.console.print("[dim]Usage: load <file_path> [--recursive][/dim]")
             else:
-                self.console.print(
-                    "[bold red]❌ Please provide a file path[/bold red]"
-                )
+                # Use original command to preserve case-sensitive file paths
+                args = original_command[5:].strip().split()
+                if args:
+                    file_path = args[0]
+                    recursive = "--recursive" in args or "-r" in args
+                    self._load_memories(file_path, recursive=recursive)
+                else:
+                    self.console.print(
+                        "[bold red]❌ Please provide a file path[/bold red]"
+                    )
 
         # Unknown command
         else:
@@ -209,17 +371,25 @@ class InteractiveShell:
             ),
             (
                 "retrieve <query>",
-                "Retrieve related memories",
+                "Retrieve all memory types (core/peripheral/bridge)",
                 "retrieve 'machine learning'",
             ),
             ("recall <query>", "Same as retrieve", "recall 'debugging issues'"),
-            ("bridges <query>", "Discover connections", "bridges 'programming'"),
+            (
+                "bridges <query>",
+                "Focus on bridge connections only",
+                "bridges 'programming'",
+            ),
             ("connect <query>", "Same as bridges", "connect 'algorithms'"),
             ("status", "Show system status", "status"),
             ("config", "Show configuration", "config"),
             ("consolidate", "Organize memories", "consolidate"),
             ("session", "Show session stats", "session"),
-            ("load <file>", "Load memories from file", "load document.md"),
+            (
+                "load <file> [--recursive]",
+                "Load memories from file or directory",
+                "load docs/ --recursive",
+            ),
             ("clear", "Clear screen", "clear"),
             ("help", "Show this help", "help"),
             ("quit", "Exit shell", "quit"),
@@ -229,6 +399,12 @@ class InteractiveShell:
             help_table.add_row(cmd, desc, example)
 
         self.console.print(help_table)
+
+        # Add completion tip
+        self.console.print(
+            "\n[dim]💡 Use TAB for command and path completion. "
+            "For example: 'load docs/' + TAB[/dim]"
+        )
 
     def _store_experience(self, text: str) -> None:
         """Store a new experience."""
@@ -251,11 +427,14 @@ class InteractiveShell:
 
             results = self.cognitive_system.retrieve_memories(
                 query=query,
-                types=["core", "peripheral"],
+                types=["core", "peripheral", "bridge"],
                 max_results=10,
             )
 
-            total_results = sum(len(memories) for memories in results.values())
+            # Count total results (handle BridgeMemory objects in bridge results)
+            total_results = 0
+            for _memory_type, memories in results.items():
+                total_results += len(memories)
 
             if total_results == 0:
                 self.console.print(
@@ -269,10 +448,30 @@ class InteractiveShell:
 
             for memory_type, memories in results.items():
                 if memories:
+                    # Choose appropriate styling for each memory type
+                    if memory_type == "core":
+                        border_style = "blue"
+                        title_style = "🎯 CORE MEMORIES"
+                    elif memory_type == "peripheral":
+                        border_style = "dim"
+                        title_style = "🌐 PERIPHERAL MEMORIES"
+                    elif memory_type == "bridge":
+                        border_style = "magenta"
+                        title_style = "🌉 BRIDGE MEMORIES"
+                    else:
+                        border_style = "white"
+                        title_style = f"{memory_type.upper()} MEMORIES"
+
+                    # Use bridge-specific formatting for bridge memories
+                    if memory_type == "bridge":
+                        content = self._format_bridges(memories)
+                    else:
+                        content = self._format_memories(memories)
+
                     type_panel = Panel(
-                        self._format_memories(memories),
-                        title=f"{memory_type.upper()} MEMORIES ({len(memories)})",
-                        border_style="blue" if memory_type == "core" else "dim",
+                        content,
+                        title=f"{title_style} ({len(memories)})",
+                        border_style=border_style,
                     )
                     self.console.print(type_panel)
 
@@ -412,30 +611,28 @@ class InteractiveShell:
                 f"[bold red]❌ Error during consolidation: {e}[/bold red]"
             )
 
-    def _load_memories(self, file_path: str) -> None:
+    def _load_memories(self, file_path: str, recursive: bool = False) -> None:
         """Load memories from a file using CognitiveCLI."""
         try:
             # Import and use the existing CognitiveCLI implementation
             from interfaces.cli import CognitiveCLI
-            
+
             cli = CognitiveCLI(self.cognitive_system)
-            
+
             self.console.print(
                 f"[bold blue]📁 Loading memories from {file_path}...[/bold blue]"
             )
-            
+
             # Use the existing load_memories implementation
-            success = cli.load_memories(file_path)
-            
+            success = cli.load_memories(file_path, recursive=recursive)
+
             if success:
                 self.console.print(
                     "[bold green]✅ Memory loading completed successfully[/bold green]"
                 )
             else:
-                self.console.print(
-                    "[bold red]❌ Memory loading failed[/bold red]"
-                )
-                
+                self.console.print("[bold red]❌ Memory loading failed[/bold red]")
+
         except Exception as e:
             self.console.print(f"[bold red]❌ Error loading memories: {e}[/bold red]")
 
@@ -463,47 +660,47 @@ class InteractiveShell:
         for i, memory in enumerate(memories, 1):
             # Get title from metadata if available
             title = memory.metadata.get("title", "")
-            
+
             # Smart content preview
             content_preview = self._create_content_preview(memory.content, title)
-            
+
             # Memory header with type and title
             if title:
                 lines.append(f"{i}. [{memory.memory_type}] {title}")
             else:
                 lines.append(f"{i}. [{memory.memory_type}] Memory")
-            
+
             # Content preview with proper indentation
-            for line in content_preview.split('\n'):
+            for line in content_preview.split("\n"):
                 lines.append(f"   {line}")
-            
+
             # Metadata line
             score = memory.metadata.get("similarity_score", memory.strength)
             lines.append(
                 f"   ID: {memory.id}, Level: L{memory.hierarchy_level}, Strength: {score:.2f}"
             )
             lines.append("")  # Empty line for separation
-            
+
         return "\n".join(lines)
 
     def _create_content_preview(self, content: str, title: str = "") -> str:
         """Create an intelligent preview of memory content."""
-        lines = content.strip().split('\n')
+        lines = content.strip().split("\n")
         preview_lines = []
-        
+
         # Remove title from content if it's already shown
         if title and lines and title.strip() in lines[0]:
             lines = lines[1:]
-        
+
         # Smart preview strategy
         max_lines = 4
         max_chars_per_line = 120
-        
+
         for line in lines[:max_lines]:
             line = line.strip()
             if not line:
                 continue
-                
+
             # Truncate long lines smartly at word boundaries
             if len(line) > max_chars_per_line:
                 words = line.split()
@@ -514,28 +711,48 @@ class InteractiveShell:
                     else:
                         break
                 line = truncated.strip() + "..."
-                
+
             preview_lines.append(line)
-        
+
         # Add continuation indicator if there's more content
-        remaining_lines = len([l for l in lines[max_lines:] if l.strip()])
+        remaining_lines = len([line for line in lines[max_lines:] if line.strip()])
         if remaining_lines > 0:
             preview_lines.append(f"... (+{remaining_lines} more lines)")
-            
-        return '\n'.join(preview_lines)
+
+        return "\n".join(preview_lines)
 
     def _format_bridges(self, bridges: list[Any]) -> str:
         """Format bridge connections for display."""
         lines = []
-        for i, bridge in enumerate(bridges, 1):
-            content = (
-                bridge.content[:80] + "..."
-                if len(bridge.content) > 80
-                else bridge.content
-            )
-            lines.append(f"{i}. {content}")
-            lines.append(
-                f"   Novelty: {getattr(bridge, 'novelty_score', 0):.2f}, "
-                f"Connection: {getattr(bridge, 'connection_potential', 0):.2f}"
-            )
+        for i, bridge_item in enumerate(bridges, 1):
+            # Handle BridgeMemory objects properly
+            if hasattr(bridge_item, "memory"):
+                # This is a BridgeMemory object
+                memory = bridge_item.memory
+                content = (
+                    memory.content[:80] + "..."
+                    if len(memory.content) > 80
+                    else memory.content
+                )
+                lines.append(f"{i}. {content}")
+                lines.append(
+                    f"   Novelty: {bridge_item.novelty_score:.2f}, "
+                    f"Connection: {bridge_item.connection_potential:.2f}, "
+                    f"Bridge Score: {bridge_item.bridge_score:.2f}"
+                )
+                if bridge_item.explanation:
+                    lines.append(f"   {bridge_item.explanation}")
+            else:
+                # Fallback for regular CognitiveMemory objects (backward compatibility)
+                content = (
+                    bridge_item.content[:80] + "..."
+                    if len(bridge_item.content) > 80
+                    else bridge_item.content
+                )
+                lines.append(f"{i}. {content}")
+                lines.append(
+                    f"   Novelty: {getattr(bridge_item, 'novelty_score', 0):.2f}, "
+                    f"Connection: {getattr(bridge_item, 'connection_potential', 0):.2f}"
+                )
+            lines.append("")  # Empty line for separation
         return "\n".join(lines)

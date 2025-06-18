@@ -223,7 +223,7 @@ class CognitiveSystem(ABC):
         query: str,
         types: list[str] | None = None,
         max_results: int = 20,
-    ) -> dict[str, list[CognitiveMemory]]:
+    ) -> dict[str, list[CognitiveMemory | BridgeMemory]]:
         """Retrieve memories of specified types for a query."""
         pass
 

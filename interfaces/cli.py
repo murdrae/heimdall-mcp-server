@@ -117,16 +117,39 @@ class CognitiveCLI:
             for memory_type, memories in results.items():
                 if memories:
                     print(f"\n{memory_type.upper()} MEMORIES ({len(memories)}):")
-                    for i, memory in enumerate(memories, 1):
-                        print(
-                            f"  {i}. [{memory.memory_type}] {memory.content[:100]}..."
-                        )
-                        # Use similarity score from metadata if available, otherwise fallback to memory strength
-                        score = memory.metadata.get("similarity_score", memory.strength)
-                        print(
-                            f"     ID: {memory.id}, Level: L{memory.hierarchy_level}, "
-                            f"Strength: {score:.2f}"
-                        )
+                    for i, memory_item in enumerate(memories, 1):
+                        # Handle bridge memories (BridgeMemory objects) vs regular memories (CognitiveMemory)
+                        if memory_type == "bridge" and hasattr(memory_item, "memory"):
+                            # Type narrowing for BridgeMemory
+                            from cognitive_memory.core.memory import BridgeMemory
+
+                            bridge_mem = memory_item
+                            assert isinstance(bridge_mem, BridgeMemory)
+                            memory = bridge_mem.memory
+                            print(f"  {i}. [bridge] {memory.content[:100]}...")
+                            print(
+                                f"     ID: {memory.id}, Level: L{memory.hierarchy_level}, "
+                                f"Novelty: {bridge_mem.novelty_score:.2f}, "
+                                f"Connection: {bridge_mem.connection_potential:.2f}, "
+                                f"Bridge Score: {bridge_mem.bridge_score:.2f}"
+                            )
+                        else:
+                            # Regular CognitiveMemory object
+                            from cognitive_memory.core.memory import CognitiveMemory
+
+                            assert isinstance(memory_item, CognitiveMemory)
+                            memory = memory_item
+                            print(
+                                f"  {i}. [{memory.memory_type}] {memory.content[:100]}..."
+                            )
+                            # Use similarity score from metadata if available, otherwise fallback to memory strength
+                            score = memory.metadata.get(
+                                "similarity_score", memory.strength
+                            )
+                            print(
+                                f"     ID: {memory.id}, Level: L{memory.hierarchy_level}, "
+                                f"Strength: {score:.2f}"
+                            )
 
             return True
 
@@ -226,15 +249,17 @@ class CognitiveCLI:
         source_path: str,
         loader_type: str = "markdown",
         dry_run: bool = False,
+        recursive: bool = False,
         **kwargs: Any,
     ) -> bool:
         """
         Load memories from external source.
 
         Args:
-            source_path: Path to the source file
+            source_path: Path to the source file or directory
             loader_type: Type of loader to use (currently only 'markdown')
             dry_run: If True, validate and show what would be loaded
+            recursive: If True and source_path is a directory, recursively find all markdown files
             **kwargs: Additional loader parameters
 
         Returns:
@@ -247,6 +272,8 @@ class CognitiveCLI:
 
         try:
             # Import config function - we need it for the loader
+            from pathlib import Path
+
             from cognitive_memory.core.config import get_config
 
             config = get_config()
@@ -254,69 +281,145 @@ class CognitiveCLI:
             # Create the appropriate loader
             loader = MarkdownMemoryLoader(config.cognitive)
 
-            # Validate source
-            if not loader.validate_source(source_path):
-                print(f"✗ Source validation failed: {source_path}")
-                return False
+            # Handle directory vs file input
+            source_path_obj = Path(source_path)
 
-            if dry_run:
-                print(f"🔍 Dry run mode: analyzing {source_path}")
-                try:
-                    # Load memories without storing them
-                    memories = loader.load_from_source(source_path, **kwargs)
-                    connections = loader.extract_connections(memories)
+            if source_path_obj.is_dir():
+                if not recursive:
+                    print(
+                        f"✗ {source_path} is a directory. Use --recursive to load all markdown files in the directory."
+                    )
+                    return False
 
-                    print(f"✓ Would load {len(memories)} memories:")
+                # Find all markdown files in directory
+                markdown_files: list[Path] = []
+                extensions = loader.get_supported_extensions()
 
-                    # Show hierarchy distribution
-                    hierarchy_dist = {"L0": 0, "L1": 0, "L2": 0}
-                    for memory in memories:
-                        level_key = f"L{memory.hierarchy_level}"
-                        if level_key in hierarchy_dist:
-                            hierarchy_dist[level_key] += 1
+                for ext in extensions:
+                    markdown_files.extend(source_path_obj.rglob(f"*{ext}"))
 
-                    for level, count in hierarchy_dist.items():
+                if not markdown_files:
+                    print(f"✗ No markdown files found in directory: {source_path}")
+                    return False
+
+                print(f"📁 Found {len(markdown_files)} markdown files in {source_path}")
+                if not dry_run:
+                    print("   Files to process:")
+                    for f in sorted(markdown_files):
+                        rel_path = f.relative_to(source_path_obj)
+                        print(f"     - {rel_path}")
+
+                # Process each file
+                total_success = True
+                total_memories_loaded = 0
+                total_connections_created = 0
+                total_processing_time = 0.0
+                hierarchy_dist_combined = {"L0": 0, "L1": 0, "L2": 0}
+                total_memories_failed = 0
+                total_connections_failed = 0
+
+                for markdown_file in sorted(markdown_files):
+                    file_path_str = str(markdown_file)
+
+                    # Validate individual file
+                    if not loader.validate_source(file_path_str):
+                        print(
+                            f"⚠️ Skipping invalid file: {markdown_file.relative_to(source_path_obj)}"
+                        )
+                        continue
+
+                    if dry_run:
+                        print(
+                            f"\n📄 Analyzing: {markdown_file.relative_to(source_path_obj)}"
+                        )
+                        try:
+                            # Load memories without storing them
+                            memories = loader.load_from_source(file_path_str, **kwargs)
+                            connections = loader.extract_connections(memories)
+
+                            print(f"   Would load {len(memories)} memories")
+
+                            # Count hierarchy distribution
+                            for memory in memories:
+                                level_key = f"L{memory.hierarchy_level}"
+                                if level_key in hierarchy_dist_combined:
+                                    hierarchy_dist_combined[level_key] += 1
+
+                            print(f"   Would create {len(connections)} connections")
+
+                        except Exception as e:
+                            print(
+                                f"   ✗ Error analyzing {markdown_file.relative_to(source_path_obj)}: {e}"
+                            )
+                            total_success = False
+                    else:
+                        print(
+                            f"\n📄 Loading: {markdown_file.relative_to(source_path_obj)}"
+                        )
+                        try:
+                            # Perform actual loading
+                            results = self.cognitive_system.load_memories_from_source(
+                                loader, file_path_str, **kwargs
+                            )
+
+                            if results["success"]:
+                                total_memories_loaded += results["memories_loaded"]
+                                total_connections_created += results[
+                                    "connections_created"
+                                ]
+                                total_processing_time += results["processing_time"]
+                                total_memories_failed += results["memories_failed"]
+                                total_connections_failed += results[
+                                    "connections_failed"
+                                ]
+
+                                # Aggregate hierarchy distribution
+                                if "hierarchy_distribution" in results:
+                                    for level, count in results[
+                                        "hierarchy_distribution"
+                                    ].items():
+                                        if level in hierarchy_dist_combined:
+                                            hierarchy_dist_combined[level] += count
+
+                                print(
+                                    f"   ✓ Loaded {results['memories_loaded']} memories, {results['connections_created']} connections"
+                                )
+                            else:
+                                print(
+                                    f"   ✗ Failed to load {markdown_file.relative_to(source_path_obj)}: {results.get('error', 'Unknown error')}"
+                                )
+                                total_success = False
+
+                        except Exception as e:
+                            print(
+                                f"   ✗ Error loading {markdown_file.relative_to(source_path_obj)}: {e}"
+                            )
+                            total_success = False
+
+                # Show summary
+                if dry_run:
+                    print(
+                        f"\n✓ Dry run complete: Would load {sum(hierarchy_dist_combined.values())} total memories"
+                    )
+                    print("  Combined hierarchy distribution:")
+                    for level, count in hierarchy_dist_combined.items():
                         level_name = {
                             "L0": "Concepts",
                             "L1": "Contexts",
                             "L2": "Episodes",
                         }[level]
-                        print(f"  {level} ({level_name}): {count} memories")
+                        print(f"    {level} ({level_name}): {count} memories")
+                else:
+                    print(
+                        f"\n{'✓' if total_success else '⚠️'} Directory loading {'completed successfully' if total_success else 'completed with errors'}"
+                    )
+                    print(f"  Total memories loaded: {total_memories_loaded}")
+                    print(f"  Total connections created: {total_connections_created}")
+                    print(f"  Total processing time: {total_processing_time:.2f}s")
 
-                    print(f"✓ Would create {len(connections)} connections")
-
-                    # Show sample memories
-                    print("\nSample memories:")
-                    for i, memory in enumerate(memories[:5]):
-                        title = memory.metadata.get("title", "Untitled")
-                        print(f"  {i + 1}. L{memory.hierarchy_level}: {title[:60]}...")
-
-                    if len(memories) > 5:
-                        print(f"  ... and {len(memories) - 5} more")
-
-                    return True
-
-                except Exception as e:
-                    print(f"✗ Error during dry run: {e}")
-                    return False
-            else:
-                print(f"📁 Loading memories from {source_path}...")
-
-                # Perform actual loading
-                results = self.cognitive_system.load_memories_from_source(
-                    loader, source_path, **kwargs
-                )
-
-                if results["success"]:
-                    print("✓ Memory loading completed successfully")
-                    print(f"  Memories loaded: {results['memories_loaded']}")
-                    print(f"  Connections created: {results['connections_created']}")
-                    print(f"  Processing time: {results['processing_time']:.2f}s")
-
-                    # Show hierarchy distribution
-                    if "hierarchy_distribution" in results:
-                        print("  Hierarchy distribution:")
-                        for level, count in results["hierarchy_distribution"].items():
+                    if hierarchy_dist_combined:
+                        print("  Combined hierarchy distribution:")
+                        for level, count in hierarchy_dist_combined.items():
                             level_name = {
                                 "L0": "Concepts",
                                 "L1": "Contexts",
@@ -324,22 +427,108 @@ class CognitiveCLI:
                             }[level]
                             print(f"    {level} ({level_name}): {count}")
 
-                    if results["memories_failed"] > 0:
+                    if total_memories_failed > 0:
+                        print(f"  ⚠️ Total failed memories: {total_memories_failed}")
+                    if total_connections_failed > 0:
                         print(
-                            f"  ⚠️ Failed to load {results['memories_failed']} memories"
+                            f"  ⚠️ Total failed connections: {total_connections_failed}"
                         )
 
-                    if results["connections_failed"] > 0:
-                        print(
-                            f"  ⚠️ Failed to create {results['connections_failed']} connections"
-                        )
-
-                    return True
-                else:
-                    print(
-                        f"✗ Memory loading failed: {results.get('error', 'Unknown error')}"
-                    )
+                return total_success
+            else:
+                # Single file processing (existing logic)
+                # Validate source
+                if not loader.validate_source(source_path):
+                    print(f"✗ Source validation failed: {source_path}")
                     return False
+
+                if dry_run:
+                    print(f"🔍 Dry run mode: analyzing {source_path}")
+                    try:
+                        # Load memories without storing them
+                        memories = loader.load_from_source(source_path, **kwargs)
+                        connections = loader.extract_connections(memories)
+
+                        print(f"✓ Would load {len(memories)} memories:")
+
+                        # Show hierarchy distribution
+                        hierarchy_dist = {"L0": 0, "L1": 0, "L2": 0}
+                        for memory in memories:
+                            level_key = f"L{memory.hierarchy_level}"
+                            if level_key in hierarchy_dist:
+                                hierarchy_dist[level_key] += 1
+
+                        for level, count in hierarchy_dist.items():
+                            level_name = {
+                                "L0": "Concepts",
+                                "L1": "Contexts",
+                                "L2": "Episodes",
+                            }[level]
+                            print(f"  {level} ({level_name}): {count} memories")
+
+                        print(f"✓ Would create {len(connections)} connections")
+
+                        # Show sample memories
+                        print("\nSample memories:")
+                        for i, memory in enumerate(memories[:5]):
+                            title = memory.metadata.get("title", "Untitled")
+                            print(
+                                f"  {i + 1}. L{memory.hierarchy_level}: {title[:60]}..."
+                            )
+
+                        if len(memories) > 5:
+                            print(f"  ... and {len(memories) - 5} more")
+
+                        return True
+
+                    except Exception as e:
+                        print(f"✗ Error during dry run: {e}")
+                        return False
+                else:
+                    print(f"📁 Loading memories from {source_path}...")
+
+                    # Perform actual loading
+                    results = self.cognitive_system.load_memories_from_source(
+                        loader, source_path, **kwargs
+                    )
+
+                    if results["success"]:
+                        print("✓ Memory loading completed successfully")
+                        print(f"  Memories loaded: {results['memories_loaded']}")
+                        print(
+                            f"  Connections created: {results['connections_created']}"
+                        )
+                        print(f"  Processing time: {results['processing_time']:.2f}s")
+
+                        # Show hierarchy distribution
+                        if "hierarchy_distribution" in results:
+                            print("  Hierarchy distribution:")
+                            for level, count in results[
+                                "hierarchy_distribution"
+                            ].items():
+                                level_name = {
+                                    "L0": "Concepts",
+                                    "L1": "Contexts",
+                                    "L2": "Episodes",
+                                }[level]
+                                print(f"    {level} ({level_name}): {count}")
+
+                        if results["memories_failed"] > 0:
+                            print(
+                                f"  ⚠️ Failed to load {results['memories_failed']} memories"
+                            )
+
+                        if results["connections_failed"] > 0:
+                            print(
+                                f"  ⚠️ Failed to create {results['connections_failed']} connections"
+                            )
+
+                        return True
+                    else:
+                        print(
+                            f"✗ Memory loading failed: {results.get('error', 'Unknown error')}"
+                        )
+                        return False
 
         except Exception as e:
             print(f"✗ Error loading memories: {e}")
@@ -508,6 +697,11 @@ Examples:
     load_parser.add_argument(
         "--chunk-size", type=int, help="Override maximum tokens per chunk"
     )
+    load_parser.add_argument(
+        "--recursive",
+        action="store_true",
+        help="Recursively find all markdown files in directory",
+    )
 
     # Clear command (placeholder)
     clear_parser = subparsers.add_parser("clear", help="Clear memories")
@@ -602,6 +796,7 @@ def main() -> int:
                     source_path=args.source_path,
                     loader_type=getattr(args, "loader_type", "markdown"),
                     dry_run=getattr(args, "dry_run", False),
+                    recursive=getattr(args, "recursive", False),
                     **kwargs,
                 )
                 exit_code = 0 if success else 1

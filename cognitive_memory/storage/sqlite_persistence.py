@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import torch
 from loguru import logger
 
 from ..core.interfaces import ConnectionGraph, MemoryStorage
@@ -196,6 +197,11 @@ class MemoryMetadataStore(MemoryStorage):
                     else memory.timestamp
                 )
 
+                # Serialize cognitive embedding to JSON if present
+                embedding_json = None
+                if memory.cognitive_embedding is not None:
+                    embedding_json = json.dumps(memory.cognitive_embedding.tolist())
+
                 cursor.execute(
                     """
                     INSERT OR REPLACE INTO memories (
@@ -203,8 +209,8 @@ class MemoryMetadataStore(MemoryStorage):
                         dimensions, timestamp, strength, access_count,
                         last_accessed, created_at, updated_at,
                         decay_rate, importance_score, consolidation_status,
-                        tags, context_metadata
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        tags, context_metadata, cognitive_embedding
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                     (
                         memory.id,
@@ -223,6 +229,7 @@ class MemoryMetadataStore(MemoryStorage):
                         "none",  # consolidation_status
                         tags_json,
                         None,  # context_metadata
+                        embedding_json,  # cognitive_embedding
                     ),
                 )
 
@@ -411,7 +418,18 @@ class MemoryMetadataStore(MemoryStorage):
             else datetime.now()
         )
 
-        return CognitiveMemory(
+        # Deserialize cognitive embedding from JSON if present
+        cognitive_embedding = None
+        if "cognitive_embedding" in row.keys() and row["cognitive_embedding"]:
+            try:
+                embedding_list = json.loads(row["cognitive_embedding"])
+                cognitive_embedding = torch.tensor(embedding_list)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(
+                    f"Failed to deserialize cognitive embedding for memory {row['id']}: {e}"
+                )
+
+        memory = CognitiveMemory(
             id=row["id"],
             content=row["content"],
             memory_type=row["memory_type"],
@@ -428,6 +446,11 @@ class MemoryMetadataStore(MemoryStorage):
             else 0.0,
             decay_rate=row["decay_rate"] if "decay_rate" in row.keys() else 0.1,
         )
+
+        # Set the cognitive embedding after creation
+        memory.cognitive_embedding = cognitive_embedding
+
+        return memory
 
 
 class ConnectionGraphStore(ConnectionGraph):
@@ -664,7 +687,18 @@ class ConnectionGraphStore(ConnectionGraph):
             else datetime.now()
         )
 
-        return CognitiveMemory(
+        # Deserialize cognitive embedding from JSON if present
+        cognitive_embedding = None
+        if "cognitive_embedding" in row.keys() and row["cognitive_embedding"]:
+            try:
+                embedding_list = json.loads(row["cognitive_embedding"])
+                cognitive_embedding = torch.tensor(embedding_list)
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(
+                    f"Failed to deserialize cognitive embedding for memory {row['id']}: {e}"
+                )
+
+        memory = CognitiveMemory(
             id=row["id"],
             content=row["content"],
             memory_type=row["memory_type"],
@@ -681,6 +715,11 @@ class ConnectionGraphStore(ConnectionGraph):
             else 0.0,
             decay_rate=row["decay_rate"] if "decay_rate" in row.keys() else 0.1,
         )
+
+        # Set the cognitive embedding after creation
+        memory.cognitive_embedding = cognitive_embedding
+
+        return memory
 
 
 def create_sqlite_persistence(

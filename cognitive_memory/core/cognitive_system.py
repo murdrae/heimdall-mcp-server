@@ -24,7 +24,7 @@ from .interfaces import (
     MemoryStorage,
     VectorStorage,
 )
-from .memory import CognitiveMemory
+from .memory import BridgeMemory, CognitiveMemory
 
 
 class CognitiveMemorySystem(CognitiveSystem):
@@ -176,7 +176,7 @@ class CognitiveMemorySystem(CognitiveSystem):
         query: str,
         types: list[str] | None = None,
         max_results: int = 20,
-    ) -> dict[str, list[CognitiveMemory]]:
+    ) -> dict[str, list[CognitiveMemory | BridgeMemory]]:
         """
         Retrieve memories of specified types for a query.
 
@@ -199,7 +199,7 @@ class CognitiveMemorySystem(CognitiveSystem):
             # Encode the query
             query_embedding = self.embedding_provider.encode(query.strip())
 
-            results: dict[str, list[CognitiveMemory]] = {
+            results: dict[str, list[CognitiveMemory | BridgeMemory]] = {
                 "core": [],
                 "peripheral": [],
                 "bridge": [],
@@ -215,15 +215,15 @@ class CognitiveMemorySystem(CognitiveSystem):
 
                 if "core" in types:
                     # Take top scoring memories as core
-                    results["core"] = activation_result.core_memories[
-                        : max_results // 2
-                    ]
+                    results["core"].extend(
+                        activation_result.core_memories[: max_results // 2]
+                    )
 
                 if "peripheral" in types:
                     # Take remaining activated memories as peripheral
-                    results["peripheral"] = activation_result.peripheral_memories[
-                        : max_results // 2
-                    ]
+                    results["peripheral"].extend(
+                        activation_result.peripheral_memories[: max_results // 2]
+                    )
 
             # Fallback to direct vector similarity search if no core/peripheral memories found
             if (
@@ -250,7 +250,7 @@ class CognitiveMemorySystem(CognitiveSystem):
                             result.similarity_score
                         )
                         core_memories.append(result.memory)
-                    results["core"] = core_memories
+                    results["core"].extend(core_memories)
                 if "peripheral" in types:
                     peripheral_memories = []
                     for result in top_results[half:]:
@@ -259,7 +259,7 @@ class CognitiveMemorySystem(CognitiveSystem):
                             result.similarity_score
                         )
                         peripheral_memories.append(result.memory)
-                    results["peripheral"] = peripheral_memories
+                    results["peripheral"].extend(peripheral_memories)
 
             # Discover bridge memories if requested
             if "bridge" in types:
@@ -270,22 +270,27 @@ class CognitiveMemorySystem(CognitiveSystem):
                 if results["peripheral"]:
                     activated_memories.extend(results["peripheral"])
 
-                # If no activated memories, do basic similarity search
+                # If no activated memories, use a smaller subset for bridge discovery context
                 if not activated_memories:
                     similarity_results = self.vector_storage.search_similar(
-                        query_embedding, k=10
+                        query_embedding,
+                        k=5,  # Use fewer as activated to leave candidates
                     )
                     activated_memories = [
                         result.memory for result in similarity_results
                     ]
 
                 if activated_memories:
+                    # Filter to only CognitiveMemory objects for bridge discovery
+                    cognitive_memories = [
+                        m for m in activated_memories if isinstance(m, CognitiveMemory)
+                    ]
                     bridge_memories = self.bridge_discovery.discover_bridges(
                         context=query_embedding,
-                        activated=activated_memories,
+                        activated=cognitive_memories,
                         k=self.config.cognitive.bridge_discovery_k,
                     )
-                    results["bridge"] = [bridge.memory for bridge in bridge_memories]
+                    results["bridge"].extend(bridge_memories)
 
             # Log retrieval statistics
             total_retrieved = sum(len(memories) for memories in results.values())
