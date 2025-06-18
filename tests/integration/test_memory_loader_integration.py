@@ -24,6 +24,8 @@ from tests.factory_utils import (
 )
 
 
+@pytest.mark.slow
+@pytest.mark.integration
 class TestMemoryLoaderIntegration:
     """Integration tests for memory loader with cognitive system."""
 
@@ -415,6 +417,8 @@ Additional information for section {i} subsection 2.
         assert distribution["L2"] > 0  # Episodes
 
 
+@pytest.mark.slow
+@pytest.mark.integration
 class TestMemoryLoaderSystemIntegration:
     """Test memory loader integration with real system components."""
 
@@ -574,6 +578,8 @@ Content for section 2.
         assert "max_activations" in config
 
 
+@pytest.mark.slow
+@pytest.mark.integration
 class TestMemoryLoaderErrorScenarios:
     """Test error handling scenarios in memory loader integration."""
 
@@ -605,9 +611,16 @@ class TestMemoryLoaderErrorScenarios:
 
         invalid_loader = InvalidLoader()
 
-        # This should fail because the loader doesn't implement the full interface
-        with pytest.raises(AttributeError):
-            error_test_system.load_memories_from_source(invalid_loader, "/fake/path")
+        # This should fail gracefully because the loader doesn't implement the full interface
+        results = error_test_system.load_memories_from_source(
+            invalid_loader, "/fake/path"
+        )
+
+        # Should return error response instead of raising exception
+        assert results["success"] is False
+        assert "error" in results
+        assert results["memories_loaded"] == 0
+        assert results["connections_created"] == 0
 
     def test_corrupted_source_file(self, error_test_system, tmp_path):
         """Test handling of corrupted or invalid source files."""

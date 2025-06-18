@@ -78,6 +78,7 @@ class TestDatabaseManager:
                     "002_memory_connections",
                     "003_bridge_cache",
                     "004_retrieval_stats",
+                    "005_add_embedding_column",
                 ]
 
                 assert expected_migrations == migrations
