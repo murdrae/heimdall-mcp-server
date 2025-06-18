@@ -322,6 +322,49 @@ def interactive_shell(
         raise typer.Exit(1) from e
 
 
+@app.command("load")  # type: ignore[misc]
+def load_memories(
+    source_path: str = typer.Argument(..., help="Path to the source file to load"),
+    loader_type: str = typer.Option("markdown", help="Type of loader to use"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be loaded without actually loading"),
+    config: str | None = typer.Option(None, help="Path to configuration file"),
+) -> None:
+    """Load memories from external source file."""
+    try:
+        # Initialize cognitive system
+        if config:
+            cognitive_system = initialize_with_config(config)
+        else:
+            cognitive_system = initialize_system("default")
+        
+        # Create CLI interface and delegate to it
+        from interfaces.cli import CognitiveCLI
+        cli = CognitiveCLI(cognitive_system)
+        
+        # Delegate to the CognitiveCLI class which handles all the logic
+        success = cli.load_memories(
+            source_path=source_path,
+            loader_type=loader_type,
+            dry_run=dry_run
+        )
+        
+        if not success:
+            raise typer.Exit(1)
+            
+    except InitializationError as e:
+        console.print(f"❌ Failed to initialize system: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    except Exception as e:
+        console.print(f"❌ Error: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    finally:
+        # Graceful shutdown
+        try:
+            graceful_shutdown(cognitive_system)
+        except Exception:
+            pass  # Ignore shutdown errors
+
+
 @app.command("doctor")  # type: ignore[misc]
 def health_check(
     json_output: bool = typer.Option(

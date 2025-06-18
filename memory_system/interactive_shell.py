@@ -110,6 +110,8 @@ class InteractiveShell:
         Returns:
             bool: True if should exit shell
         """
+        # Store original command for file path handling
+        original_command = command
         command = command.lower()
 
         # Exit commands
@@ -123,7 +125,8 @@ class InteractiveShell:
 
         # Store experience
         elif command.startswith("store "):
-            text = command[6:].strip()
+            # Use original command to preserve case and formatting
+            text = original_command[6:].strip()
             if text:
                 self._store_experience(text)
             else:
@@ -133,7 +136,8 @@ class InteractiveShell:
 
         # Retrieve memories
         elif command.startswith("retrieve ") or command.startswith("recall "):
-            query = command.split(" ", 1)[1].strip() if " " in command else ""
+            # Use original command to preserve case in queries
+            query = original_command.split(" ", 1)[1].strip() if " " in original_command else ""
             if query:
                 self._retrieve_memories(query)
             else:
@@ -141,7 +145,8 @@ class InteractiveShell:
 
         # Bridge discovery
         elif command.startswith("bridges ") or command.startswith("connect "):
-            query = command.split(" ", 1)[1].strip() if " " in command else ""
+            # Use original command to preserve case in queries
+            query = original_command.split(" ", 1)[1].strip() if " " in original_command else ""
             if query:
                 self._discover_bridges(query)
             else:
@@ -168,6 +173,17 @@ class InteractiveShell:
         # Clear screen
         elif command in ["clear", "cls"]:
             self.console.clear()
+
+        # Load memories from file
+        elif command.startswith("load "):
+            # Use original command to preserve case-sensitive file paths
+            file_path = original_command[5:].strip()
+            if file_path:
+                self._load_memories(file_path)
+            else:
+                self.console.print(
+                    "[bold red]❌ Please provide a file path[/bold red]"
+                )
 
         # Unknown command
         else:
@@ -203,6 +219,7 @@ class InteractiveShell:
             ("config", "Show configuration", "config"),
             ("consolidate", "Organize memories", "consolidate"),
             ("session", "Show session stats", "session"),
+            ("load <file>", "Load memories from file", "load document.md"),
             ("clear", "Clear screen", "clear"),
             ("help", "Show this help", "help"),
             ("quit", "Exit shell", "quit"),
@@ -395,6 +412,33 @@ class InteractiveShell:
                 f"[bold red]❌ Error during consolidation: {e}[/bold red]"
             )
 
+    def _load_memories(self, file_path: str) -> None:
+        """Load memories from a file using CognitiveCLI."""
+        try:
+            # Import and use the existing CognitiveCLI implementation
+            from interfaces.cli import CognitiveCLI
+            
+            cli = CognitiveCLI(self.cognitive_system)
+            
+            self.console.print(
+                f"[bold blue]📁 Loading memories from {file_path}...[/bold blue]"
+            )
+            
+            # Use the existing load_memories implementation
+            success = cli.load_memories(file_path)
+            
+            if success:
+                self.console.print(
+                    "[bold green]✅ Memory loading completed successfully[/bold green]"
+                )
+            else:
+                self.console.print(
+                    "[bold red]❌ Memory loading failed[/bold red]"
+                )
+                
+        except Exception as e:
+            self.console.print(f"[bold red]❌ Error loading memories: {e}[/bold red]")
+
     def _show_session_summary(self) -> None:
         """Show session statistics."""
         summary_table = Table(
@@ -414,21 +458,71 @@ class InteractiveShell:
         self.console.print(summary_table)
 
     def _format_memories(self, memories: list[Any]) -> str:
-        """Format memories for display."""
+        """Format memories for display with intelligent multiline handling."""
         lines = []
         for i, memory in enumerate(memories, 1):
-            content = (
-                memory.content[:80] + "..."
-                if len(memory.content) > 80
-                else memory.content
-            )
-            lines.append(f"{i}. [{memory.memory_type}] {content}")
-            # Use similarity score from metadata if available, otherwise fallback to memory strength
+            # Get title from metadata if available
+            title = memory.metadata.get("title", "")
+            
+            # Smart content preview
+            content_preview = self._create_content_preview(memory.content, title)
+            
+            # Memory header with type and title
+            if title:
+                lines.append(f"{i}. [{memory.memory_type}] {title}")
+            else:
+                lines.append(f"{i}. [{memory.memory_type}] Memory")
+            
+            # Content preview with proper indentation
+            for line in content_preview.split('\n'):
+                lines.append(f"   {line}")
+            
+            # Metadata line
             score = memory.metadata.get("similarity_score", memory.strength)
             lines.append(
                 f"   ID: {memory.id}, Level: L{memory.hierarchy_level}, Strength: {score:.2f}"
             )
+            lines.append("")  # Empty line for separation
+            
         return "\n".join(lines)
+
+    def _create_content_preview(self, content: str, title: str = "") -> str:
+        """Create an intelligent preview of memory content."""
+        lines = content.strip().split('\n')
+        preview_lines = []
+        
+        # Remove title from content if it's already shown
+        if title and lines and title.strip() in lines[0]:
+            lines = lines[1:]
+        
+        # Smart preview strategy
+        max_lines = 4
+        max_chars_per_line = 120
+        
+        for line in lines[:max_lines]:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Truncate long lines smartly at word boundaries
+            if len(line) > max_chars_per_line:
+                words = line.split()
+                truncated = ""
+                for word in words:
+                    if len(truncated + word + " ") <= max_chars_per_line - 3:
+                        truncated += word + " "
+                    else:
+                        break
+                line = truncated.strip() + "..."
+                
+            preview_lines.append(line)
+        
+        # Add continuation indicator if there's more content
+        remaining_lines = len([l for l in lines[max_lines:] if l.strip()])
+        if remaining_lines > 0:
+            preview_lines.append(f"... (+{remaining_lines} more lines)")
+            
+        return '\n'.join(preview_lines)
 
     def _format_bridges(self, bridges: list[Any]) -> str:
         """Format bridge connections for display."""
