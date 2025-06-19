@@ -50,6 +50,9 @@ class CognitiveShellCompleter(Completer):
             "consolidate",
             "session",
             "load",
+            "git-load",
+            "git-status",
+            "git-patterns",
             "clear",
             "help",
             "quit",
@@ -82,15 +85,19 @@ class CognitiveShellCompleter(Completer):
             yield from self.command_completer.get_completions(document, complete_event)
             return
 
-        if command == "load":
-            # Special handling for load command
+        if command in ["load", "git-load"]:
+            # Special handling for load and git-load commands
             if len(words) >= 2:
                 # Get the current word being typed
                 current_word = words[-1] if not text.endswith(" ") else ""
 
                 # Check if it's a flag
                 if current_word.startswith("-"):
-                    for flag in self.load_flags:
+                    flags = self.load_flags.copy()
+                    if command == "git-load":
+                        flags.extend(["--time-window", "--refresh"])
+                    
+                    for flag in flags:
                         if flag.startswith(current_word):
                             yield Completion(
                                 flag,
@@ -120,7 +127,10 @@ class CognitiveShellCompleter(Completer):
                                     full_path = Path(path_text + completion.text)
                                     if full_path.exists():
                                         if full_path.is_dir():
-                                            meta = "directory"
+                                            if command == "git-load" and (full_path / ".git").exists():
+                                                meta = "git repository"
+                                            else:
+                                                meta = "directory"
                                         elif full_path.suffix.lower() in [
                                             ".md",
                                             ".markdown",
@@ -347,6 +357,56 @@ class InteractiveShell:
                         "[bold red]❌ Please provide a file path[/bold red]"
                     )
 
+        # Git commands
+        elif command.startswith("git-load"):
+            # Handle "git-load" command with or without arguments
+            if command == "git-load":
+                self.console.print("[bold red]❌ Please provide a repository path[/bold red]")
+                self.console.print("[dim]Usage: git-load <repo_path> [--dry-run] [--time-window 3m][/dim]")
+            else:
+                # Use original command to preserve case-sensitive paths
+                args = original_command[8:].strip().split()
+                if args:
+                    repo_path = args[0]
+                    dry_run = "--dry-run" in args
+                    self._load_git_patterns(repo_path, dry_run=dry_run)
+                else:
+                    self.console.print(
+                        "[bold red]❌ Please provide a repository path[/bold red]"
+                    )
+
+        elif command.startswith("git-status"):
+            # Handle "git-status" command
+            args = original_command[10:].strip().split() if len(original_command) > 10 else []
+            repo_path = args[0] if args else None
+            self._show_git_status(repo_path)
+
+        elif command.startswith("git-patterns"):
+            # Handle "git-patterns" command
+            if command == "git-patterns":
+                self.console.print("[bold red]❌ Please provide a search query[/bold red]")
+                self.console.print("[dim]Usage: git-patterns <query> [--type cochange|hotspot|solution][/dim]")
+            else:
+                # Parse arguments
+                args = original_command[12:].strip().split()
+                if args:
+                    # Extract query (everything that's not a flag)
+                    query_parts = []
+                    pattern_type = None
+                    i = 0
+                    while i < len(args):
+                        if args[i] == "--type" and i + 1 < len(args):
+                            pattern_type = args[i + 1]
+                            i += 2
+                        else:
+                            query_parts.append(args[i])
+                            i += 1
+                    
+                    query = " ".join(query_parts)
+                    self._search_git_patterns(query, pattern_type)
+                else:
+                    self.console.print("[bold red]❌ Please provide a search query[/bold red]")
+
         # Unknown command
         else:
             self.console.print(f"[bold red]❌ Unknown command: {command}[/bold red]")
@@ -389,6 +449,21 @@ class InteractiveShell:
                 "load <file> [--recursive]",
                 "Load memories from file or directory",
                 "load docs/ --recursive",
+            ),
+            (
+                "git-load <repo> [--dry-run]",
+                "Load git repository patterns",
+                "git-load /path/to/repo --dry-run",
+            ),
+            (
+                "git-status [repo]",
+                "Show git pattern analysis status",
+                "git-status /path/to/repo",
+            ),
+            (
+                "git-patterns <query> [--type]",
+                "Search git patterns",
+                "git-patterns auth --type cochange",
             ),
             ("clear", "Clear screen", "clear"),
             ("help", "Show this help", "help"),
@@ -635,6 +710,65 @@ class InteractiveShell:
 
         except Exception as e:
             self.console.print(f"[bold red]❌ Error loading memories: {e}[/bold red]")
+
+    def _load_git_patterns(self, repo_path: str, dry_run: bool = False) -> None:
+        """Load git patterns using CognitiveCLI."""
+        try:
+            # Import and use the existing CognitiveCLI implementation
+            from interfaces.cli import CognitiveCLI
+
+            cli = CognitiveCLI(self.cognitive_system)
+
+            self.console.print(
+                f"[bold blue]📁 Loading git patterns from {repo_path}...[/bold blue]"
+            )
+
+            # Use the existing load_git_patterns implementation
+            success = cli.load_git_patterns(repo_path, dry_run=dry_run)
+
+            if success:
+                self.console.print(
+                    "[bold green]✅ Git pattern loading completed successfully[/bold green]"
+                )
+            else:
+                self.console.print("[bold red]❌ Git pattern loading failed[/bold red]")
+
+        except Exception as e:
+            self.console.print(f"[bold red]❌ Error loading git patterns: {e}[/bold red]")
+
+    def _show_git_status(self, repo_path: str | None = None) -> None:
+        """Show git analysis status using CognitiveCLI."""
+        try:
+            # Import and use the existing CognitiveCLI implementation
+            from interfaces.cli import CognitiveCLI
+
+            cli = CognitiveCLI(self.cognitive_system)
+
+            # Use the existing show_git_status implementation
+            success = cli.show_git_status(repo_path)
+
+            if not success:
+                self.console.print("[bold red]❌ Failed to retrieve git status[/bold red]")
+
+        except Exception as e:
+            self.console.print(f"[bold red]❌ Error showing git status: {e}[/bold red]")
+
+    def _search_git_patterns(self, query: str, pattern_type: str | None = None) -> None:
+        """Search git patterns using CognitiveCLI."""
+        try:
+            # Import and use the existing CognitiveCLI implementation
+            from interfaces.cli import CognitiveCLI
+
+            cli = CognitiveCLI(self.cognitive_system)
+
+            # Use the existing search_git_patterns implementation
+            success = cli.search_git_patterns(query, pattern_type=pattern_type)
+
+            if not success:
+                self.console.print("[bold red]❌ Failed to search git patterns[/bold red]")
+
+        except Exception as e:
+            self.console.print(f"[bold red]❌ Error searching git patterns: {e}[/bold red]")
 
     def _show_session_summary(self) -> None:
         """Show session statistics."""

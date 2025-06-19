@@ -294,14 +294,15 @@ class CognitiveCLI:
             # Handle directory vs file input
             source_path_obj = Path(source_path)
 
-            if source_path_obj.is_dir():
+            if source_path_obj.is_dir() and not (loader_type == "git" and (source_path_obj / ".git").exists()):
+                # Handle directory processing for non-git loaders
                 if not recursive:
                     print(
                         f"✗ {source_path} is a directory. Use --recursive to load all markdown files in the directory."
                     )
                     return False
 
-                # Find all markdown files in directory
+                # Find all files in directory
                 markdown_files: list[Path] = []
                 extensions = loader.get_supported_extensions()
 
@@ -558,6 +559,150 @@ class CognitiveCLI:
         print("⚠️  Memory clearing not implemented for safety")
         print("   Use database tools directly if needed")
         return False
+
+    def load_git_patterns(
+        self,
+        repo_path: str,
+        dry_run: bool = False,
+        refresh: bool = False,
+        **kwargs: Any,
+    ) -> bool:
+        """
+        Load git repository patterns into cognitive memory.
+        
+        This method delegates to the existing load_memories() method with git loader type.
+        The system automatically handles pattern updates via deterministic IDs and upserts.
+
+        Args:
+            repo_path: Path to git repository
+            dry_run: If True, show patterns without storing
+            refresh: Ignored - system handles updates automatically
+            **kwargs: Additional loader parameters (e.g., time_window)
+
+        Returns:
+            bool: True if loading completed successfully
+        """
+        # Delegate to existing load_memories method with git loader type
+        return self.load_memories(
+            source_path=repo_path,
+            loader_type="git", 
+            dry_run=dry_run,
+            **kwargs
+        )
+
+    def show_git_status(self, repo_path: str | None = None) -> bool:
+        """
+        Show git analysis status and pattern statistics.
+        
+        This method extends the existing show_status() method with git-specific information.
+
+        Args:
+            repo_path: Optional repository path to analyze
+
+        Returns:
+            bool: True if status retrieved successfully
+        """
+        try:
+            if repo_path:
+                from pathlib import Path
+                
+                repo_path_obj = Path(repo_path)
+                if not repo_path_obj.exists():
+                    print(f"✗ Repository path does not exist: {repo_path}")
+                    return False
+                
+                if not (repo_path_obj / ".git").exists():
+                    print(f"✗ Not a git repository: {repo_path}")
+                    return False
+
+                print(f"📊 Git Analysis Status for: {repo_path}")
+                print("=" * 50)
+                
+                # Use existing search functionality to find git patterns
+                return self.search_git_patterns("", limit=0)  # Just show counts
+            else:
+                # Show overall status using existing method, then add git-specific info
+                print("📊 System Status with Git Analysis")
+                print("=" * 40)
+                
+                success = self.show_status(detailed=False)
+                if success:
+                    print("\n" + "=" * 40)
+                    # Add git pattern summary
+                    self.search_git_patterns("", limit=0)  # Just show counts
+                
+                return success
+
+        except Exception as e:
+            print(f"✗ Error retrieving git status: {e}")
+            return False
+
+    def search_git_patterns(
+        self,
+        query: str,
+        pattern_type: str | None = None,
+        limit: int = 10
+    ) -> bool:
+        """
+        Search for specific git patterns.
+        
+        This method extends the existing retrieve_memories() method with git pattern filtering.
+
+        Args:
+            query: Search query
+            pattern_type: Optional pattern type filter (cochange, hotspot, solution)
+            limit: Maximum results to show
+
+        Returns:
+            bool: True if search completed successfully
+        """
+        try:
+            # Build search query - use git-specific terms
+            search_query = f"git pattern {query}" if query.strip() else "git pattern"
+            if pattern_type:
+                search_query = f"{pattern_type} {search_query}"
+
+            # Use existing retrieve_memories method
+            success = self.retrieve_memories(
+                query=search_query,
+                types=["core", "peripheral"],
+                limit=limit * 2  # Get more to filter for git patterns
+            )
+
+            # If this was just a count request (limit=0), show git pattern summary
+            if limit == 0 and success:
+                print("\n📊 Git Pattern Summary:")
+                results = self.cognitive_system.retrieve_memories(
+                    query="git pattern",
+                    types=["core", "peripheral"],
+                    max_results=1000
+                )
+                
+                total_patterns = sum(len(memories) for memories in results.values())
+                print(f"  Total git patterns: {total_patterns}")
+                
+                # Count by pattern type (simplified)
+                pattern_counts = {"cochange": 0, "hotspot": 0, "solution": 0}
+                for memory_type, memories in results.items():
+                    for memory in memories:
+                        if memory.id.startswith("git::"):
+                            pattern_type_found = memory.metadata.get("pattern_type", "unknown")
+                            if pattern_type_found in pattern_counts:
+                                pattern_counts[pattern_type_found] += 1
+                
+                for ptype, count in pattern_counts.items():
+                    type_name = {
+                        "cochange": "Co-change patterns",
+                        "hotspot": "Maintenance hotspots",
+                        "solution": "Solution patterns"
+                    }[ptype]
+                    print(f"  {type_name}: {count}")
+
+            return success
+
+        except Exception as e:
+            print(f"✗ Error searching git patterns: {e}")
+            return False
 
     def interactive_mode_loop(self) -> None:
         """Run interactive mode with command prompt."""
