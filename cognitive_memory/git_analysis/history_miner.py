@@ -31,7 +31,14 @@ except ImportError:
 
 from loguru import logger
 
-from .data_structures import CommitEvent, FileChangeEvent, ProblemCommit
+from .data_structures import (
+    CoChangePattern,
+    CommitEvent,
+    FileChangeEvent,
+    MaintenanceHotspot,
+    ProblemCommit,
+    SolutionPattern,
+)
 from .security import (
     validate_repository_path,
 )
@@ -602,12 +609,14 @@ class GitHistoryMiner:
                     error=str(e),
                 )
 
-            # Create problem commit
+            # Create problem commit data
             problem_data = {
-                "hash": commit_hash,
-                "message": commit.message.strip(),
-                "files": files,
-                "problem_keywords": found_keywords,
+                "commit_hash": commit_hash,
+                "problem_type": ", ".join(found_keywords)
+                if found_keywords
+                else "unknown",
+                "affected_files": files,
+                "fix_description": commit.message.strip(),
                 "confidence_score": confidence_score,
             }
 
@@ -743,6 +752,310 @@ class GitHistoryMiner:
         except Exception as e:
             logger.error("Failed to collect repository statistics", error=str(e))
             return {}
+
+    def extract_cochange_patterns(
+        self, max_commits: int = 1000, min_confidence: float = 0.3, min_support: int = 3
+    ) -> list[CoChangePattern]:
+        """Extract co-change patterns from repository history.
+
+        Analyzes commit history to identify files that frequently change
+        together with statistical confidence scoring.
+
+        Args:
+            max_commits: Maximum number of commits to analyze
+            min_confidence: Minimum confidence threshold for patterns
+            min_support: Minimum co-change occurrences required
+
+        Returns:
+            List of validated CoChangePattern objects
+
+        Raises:
+            ValueError: If repository is not valid
+        """
+        if not self.validate_repository():
+            raise ValueError("Repository validation failed")
+
+        try:
+            logger.info(
+                "Starting co-change pattern extraction",
+                max_commits=max_commits,
+                min_confidence=min_confidence,
+                min_support=min_support,
+            )
+
+            # Extract commit history
+            commits = list(self.extract_commit_history(max_commits=max_commits))
+
+            if len(commits) < min_support:
+                logger.warning(
+                    "Insufficient commits for pattern analysis",
+                    commit_count=len(commits),
+                    min_support=min_support,
+                )
+                return []
+
+            # Import here to avoid circular imports
+            from .pattern_detector import PatternDetector
+
+            # Create pattern detector
+            detector = PatternDetector(min_confidence=min_confidence)
+
+            # Detect patterns
+            pattern_data = detector.detect_cochange_patterns(commits, min_support)
+
+            # Convert to validated objects
+            patterns = []
+            for data in pattern_data:
+                try:
+                    pattern = CoChangePattern.from_dict(data)
+                    patterns.append(pattern)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to create CoChangePattern",
+                        pattern_data=data,
+                        error=str(e),
+                    )
+                    continue
+
+            logger.info(
+                "Co-change pattern extraction completed",
+                patterns_extracted=len(patterns),
+            )
+
+            return patterns
+
+        except Exception as e:
+            logger.error("Co-change pattern extraction failed", error=str(e))
+            raise
+
+    def extract_maintenance_hotspots(
+        self, max_commits: int = 1000, min_confidence: float = 0.3
+    ) -> list[MaintenanceHotspot]:
+        """Extract maintenance hotspots from repository history.
+
+        Identifies files with high problem frequency and analyzes
+        trends over time to determine maintenance risk.
+
+        Args:
+            max_commits: Maximum number of commits to analyze
+            min_confidence: Minimum confidence threshold for hotspots
+
+        Returns:
+            List of validated MaintenanceHotspot objects
+
+        Raises:
+            ValueError: If repository is not valid
+        """
+        if not self.validate_repository():
+            raise ValueError("Repository validation failed")
+
+        try:
+            logger.info(
+                "Starting maintenance hotspot extraction",
+                max_commits=max_commits,
+                min_confidence=min_confidence,
+            )
+
+            # Extract commit history and problem commits
+            commits = list(self.extract_commit_history(max_commits=max_commits))
+            problem_commits = list(self.find_problem_commits(max_commits=max_commits))
+
+            if len(commits) < 10:  # Need reasonable sample size
+                logger.warning(
+                    "Insufficient commits for hotspot analysis",
+                    commit_count=len(commits),
+                )
+                return []
+
+            # Import here to avoid circular imports
+            from .pattern_detector import PatternDetector
+
+            # Create pattern detector
+            detector = PatternDetector(min_confidence=min_confidence)
+
+            # Detect hotspots
+            hotspot_data = detector.detect_maintenance_hotspots(
+                commits, problem_commits
+            )
+
+            # Convert to validated objects
+            hotspots = []
+            for data in hotspot_data:
+                try:
+                    hotspot = MaintenanceHotspot.from_dict(data)
+                    hotspots.append(hotspot)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to create MaintenanceHotspot",
+                        hotspot_data=data,
+                        error=str(e),
+                    )
+                    continue
+
+            logger.info(
+                "Maintenance hotspot extraction completed",
+                hotspots_extracted=len(hotspots),
+            )
+
+            return hotspots
+
+        except Exception as e:
+            logger.error("Maintenance hotspot extraction failed", error=str(e))
+            raise
+
+    def extract_solution_patterns(
+        self, max_commits: int = 1000, min_confidence: float = 0.3
+    ) -> list[SolutionPattern]:
+        """Extract solution patterns from repository history.
+
+        Analyzes problem-fixing commits to identify successful
+        solution approaches with statistical validation.
+
+        Args:
+            max_commits: Maximum number of commits to analyze
+            min_confidence: Minimum confidence threshold for patterns
+
+        Returns:
+            List of validated SolutionPattern objects
+
+        Raises:
+            ValueError: If repository is not valid
+        """
+        if not self.validate_repository():
+            raise ValueError("Repository validation failed")
+
+        try:
+            logger.info(
+                "Starting solution pattern extraction",
+                max_commits=max_commits,
+                min_confidence=min_confidence,
+            )
+
+            # Extract problem commits
+            problem_commits = list(self.find_problem_commits(max_commits=max_commits))
+
+            if len(problem_commits) < 5:  # Need reasonable sample size
+                logger.warning(
+                    "Insufficient problem commits for solution analysis",
+                    problem_commit_count=len(problem_commits),
+                )
+                return []
+
+            # Import here to avoid circular imports
+            from .pattern_detector import PatternDetector
+
+            # Create pattern detector
+            detector = PatternDetector(min_confidence=min_confidence)
+
+            # Detect solution patterns
+            pattern_data = detector.detect_solution_patterns(problem_commits)
+
+            # Convert to validated objects
+            patterns = []
+            for data in pattern_data:
+                try:
+                    pattern = SolutionPattern.from_dict(data)
+                    patterns.append(pattern)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to create SolutionPattern",
+                        pattern_data=data,
+                        error=str(e),
+                    )
+                    continue
+
+            logger.info(
+                "Solution pattern extraction completed",
+                patterns_extracted=len(patterns),
+            )
+
+            return patterns
+
+        except Exception as e:
+            logger.error("Solution pattern extraction failed", error=str(e))
+            raise
+
+    def extract_all_patterns(
+        self, max_commits: int = 1000, min_confidence: float = 0.3, min_support: int = 3
+    ) -> dict[str, Any]:
+        """Extract all pattern types from repository history.
+
+        Convenience method to extract co-change patterns, maintenance hotspots,
+        and solution patterns in a single operation.
+
+        Args:
+            max_commits: Maximum number of commits to analyze
+            min_confidence: Minimum confidence threshold for patterns
+            min_support: Minimum co-change occurrences required
+
+        Returns:
+            Dictionary containing all pattern types with metadata
+
+        Raises:
+            ValueError: If repository is not valid
+        """
+        if not self.validate_repository():
+            raise ValueError("Repository validation failed")
+
+        try:
+            logger.info(
+                "Starting comprehensive pattern extraction",
+                max_commits=max_commits,
+                min_confidence=min_confidence,
+                min_support=min_support,
+            )
+
+            start_time = datetime.now()
+
+            # Extract all pattern types
+            cochange_patterns = self.extract_cochange_patterns(
+                max_commits, min_confidence, min_support
+            )
+
+            maintenance_hotspots = self.extract_maintenance_hotspots(
+                max_commits, min_confidence
+            )
+
+            solution_patterns = self.extract_solution_patterns(
+                max_commits, min_confidence
+            )
+
+            end_time = datetime.now()
+            extraction_time = (end_time - start_time).total_seconds()
+
+            # Compile results
+            results = {
+                "cochange_patterns": cochange_patterns,
+                "maintenance_hotspots": maintenance_hotspots,
+                "solution_patterns": solution_patterns,
+                "metadata": {
+                    "extraction_time_seconds": extraction_time,
+                    "max_commits_analyzed": max_commits,
+                    "min_confidence_threshold": min_confidence,
+                    "min_support_threshold": min_support,
+                    "repository_path": str(self.repository_path),
+                    "extracted_at": end_time.isoformat(),
+                    "pattern_counts": {
+                        "cochange_patterns": len(cochange_patterns),
+                        "maintenance_hotspots": len(maintenance_hotspots),
+                        "solution_patterns": len(solution_patterns),
+                    },
+                },
+            }
+
+            logger.info(
+                "Comprehensive pattern extraction completed",
+                cochange_patterns=len(cochange_patterns),
+                maintenance_hotspots=len(maintenance_hotspots),
+                solution_patterns=len(solution_patterns),
+                extraction_time=extraction_time,
+            )
+
+            return results
+
+        except Exception as e:
+            logger.error("Comprehensive pattern extraction failed", error=str(e))
+            raise
 
 
 # Utility functions for external use
