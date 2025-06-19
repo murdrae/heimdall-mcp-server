@@ -41,12 +41,12 @@ check_container_running() {
         log_info "Run: $SCRIPT_DIR/../setup_claude_code_mcp.sh"
         exit 1
     fi
-    
+
     # Wait for container to be healthy
     log_info "Waiting for container to be healthy..."
     local max_wait=30
     local elapsed=0
-    
+
     while [ $elapsed -lt $max_wait ]; do
         if docker exec "$CONTAINER_NAME" test -w /app/data 2>/dev/null; then
             log_info "Container is ready"
@@ -56,7 +56,7 @@ check_container_running() {
         sleep 2
         elapsed=$((elapsed + 2))
     done
-    
+
     echo ""
     log_error "Container failed to become ready within $max_wait seconds"
     log_error "Check container logs: docker logs $CONTAINER_NAME"
@@ -80,7 +80,7 @@ load_git_history() {
     fi
 
     log_info "Loading git history from: $PROJECT_PATH"
-    
+
     # First do a dry run to preview
     log_info "Running git analysis preview..."
     if ! docker exec -i  "$CONTAINER_NAME" memory_system shell <<EOF
@@ -108,26 +108,26 @@ EOF
 # Load markdown files into cognitive memory
 load_markdown_files() {
     local docs_dir="$PROJECT_PATH/.cognitive_docs"
-    
+
     # Check if .cognitive_docs directory exists
     if [ ! -d "$docs_dir" ]; then
         log_info "No .cognitive_docs directory found in project"
         log_info "Create $docs_dir and add markdown files to load them into memory"
         return 0
     fi
-    
+
     log_info "Searching for markdown files in: $docs_dir"
-    
+
     # Find markdown files recursively in .cognitive_docs
     local md_count=$(find "$docs_dir" -name "*.md" -type f | wc -l)
-    
+
     if [ "$md_count" -eq 0 ]; then
         log_info "No markdown files found in .cognitive_docs directory"
         return 0
     fi
-    
+
     log_info "Found $md_count markdown files. Loading into memory..."
-    
+
     if docker exec -i  "$CONTAINER_NAME" memory_system shell <<EOF
 load $docs_dir --recursive
 quit
@@ -229,7 +229,7 @@ main() {
     if [ "$dry_run" = true ]; then
         log_info "DRY RUN - Preview of what would be loaded:"
         echo ""
-        
+
         if [ "$load_git" = true ] && check_git_repository; then
             echo "📝 Git History:"
             docker exec -i  "$CONTAINER_NAME" memory_system shell <<EOF || true
@@ -237,7 +237,7 @@ git-load $PROJECT_PATH --dry-run
 quit
 EOF
         fi
-        
+
         if [ "$load_markdown" = true ]; then
             echo ""
             echo "📄 Markdown Files:"
@@ -253,7 +253,7 @@ EOF
                 echo "Create $docs_dir and add markdown files to load them"
             fi
         fi
-        
+
         exit 0
     fi
 

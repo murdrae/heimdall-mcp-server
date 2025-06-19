@@ -93,7 +93,7 @@ create_compose_file() {
 
     # Create data directory structure
     mkdir -p "$PROJECT_DATA_DIR"/{qdrant,cognitive,logs,models}
-    
+
     # Only set permissions on new/empty directories to avoid conflicts with running containers
     if [ ! -f "$PROJECT_DATA_DIR/cognitive/cognitive_memory.db" ]; then
         chmod -R 755 "$PROJECT_DATA_DIR/cognitive" 2>/dev/null || true
@@ -105,9 +105,9 @@ create_compose_file() {
     # Get host user/group IDs to ensure proper file ownership
     HOST_UID=$(id -u)
     HOST_GID=$(id -g)
-    
+
     log_info "Using host UID:GID $HOST_UID:$HOST_GID for container user mapping"
-    
+
     # Substitute variables in compose file
     sed -i.bak \
         -e "s/\${PROJECT_HASH}/$PROJECT_HASH/g" \
@@ -130,10 +130,10 @@ build_image() {
     log_info "Checking cognitive memory Docker image..."
 
     cd "$REPO_ROOT"
-    
+
     local image_name="cognitive-memory:$PROJECT_HASH"
     local build_args=""
-    
+
     # Check if rebuild was requested or image doesn't exist
     if [[ "${FORCE_REBUILD:-}" == "true" ]]; then
         log_info "Force rebuilding cognitive memory Docker image: $image_name"
@@ -283,7 +283,7 @@ case "${1:-}" in
         if [ -f "$COMPOSE_FILE" ]; then
             cd "$(dirname "$COMPOSE_FILE")"
             $COMPOSE_CMD -f "$COMPOSE_FILE" down --volumes --remove-orphans
-            
+
             # Fix any permission issues before removal
             if [ -d "$PROJECT_DATA_DIR" ]; then
                 log_info "Fixing permissions before cleanup..."
@@ -306,18 +306,18 @@ case "${1:-}" in
             COMPOSE_CMD="docker-compose"
         fi
         log_info "Forcing complete rebuild of project containers..."
-        
+
         # Stop and remove existing containers
         if [ -f "$COMPOSE_FILE" ]; then
             log_info "Stopping and removing existing containers..."
             $COMPOSE_CMD -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
         fi
-        
+
         # Remove existing image
         image_name="cognitive-memory:$PROJECT_HASH"
         docker rmi "$image_name" 2>/dev/null || true
         log_info "Removed existing image: $image_name"
-        
+
         export FORCE_REBUILD=true
         ;;
 esac
