@@ -228,7 +228,9 @@ class MemoryMetadataStore(MemoryStorage):
                         memory.importance_score,  # Use memory's importance score
                         "none",  # consolidation_status
                         tags_json,
-                        None,  # context_metadata
+                        json.dumps(memory.metadata)
+                        if memory.metadata
+                        else None,  # context_metadata
                         embedding_json,  # cognitive_embedding
                     ),
                 )
@@ -429,6 +431,16 @@ class MemoryMetadataStore(MemoryStorage):
                     f"Failed to deserialize cognitive embedding for memory {row['id']}: {e}"
                 )
 
+        # Deserialize context metadata from JSON if present
+        metadata = {}
+        if "context_metadata" in row.keys() and row["context_metadata"]:
+            try:
+                metadata = json.loads(row["context_metadata"])
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(
+                    f"Failed to deserialize context metadata for memory {row['id']}: {e}"
+                )
+
         memory = CognitiveMemory(
             id=row["id"],
             content=row["content"],
@@ -441,6 +453,7 @@ class MemoryMetadataStore(MemoryStorage):
             strength=row["strength"],
             access_count=row["access_count"],
             tags=tags,
+            metadata=metadata,  # Include metadata from database
             importance_score=row["importance_score"]
             if "importance_score" in row.keys()
             else 0.0,
@@ -698,6 +711,16 @@ class ConnectionGraphStore(ConnectionGraph):
                     f"Failed to deserialize cognitive embedding for memory {row['id']}: {e}"
                 )
 
+        # Deserialize context metadata from JSON if present
+        metadata = {}
+        if "context_metadata" in row.keys() and row["context_metadata"]:
+            try:
+                metadata = json.loads(row["context_metadata"])
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(
+                    f"Failed to deserialize context metadata for memory {row['id']}: {e}"
+                )
+
         memory = CognitiveMemory(
             id=row["id"],
             content=row["content"],
@@ -710,6 +733,7 @@ class ConnectionGraphStore(ConnectionGraph):
             strength=row["strength"],
             access_count=row["access_count"],
             tags=tags,
+            metadata=metadata,  # Include metadata from database
             importance_score=row["importance_score"]
             if "importance_score" in row.keys()
             else 0.0,

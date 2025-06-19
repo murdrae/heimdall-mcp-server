@@ -18,8 +18,11 @@ class TestGitPatternIDGenerator:
 
         result = GitPatternIDGenerator.generate_cochange_id(file_a, file_b)
 
-        assert result.startswith("git::cochange::")
-        assert len(result) == len("git::cochange::") + 64  # SHA-256 hex length
+        # Should return a valid UUID string
+        import uuid
+
+        assert uuid.UUID(result)  # Will raise if not valid UUID
+        assert len(result) == 36  # Standard UUID string length
 
     def test_generate_cochange_id_deterministic(self):
         """Test that co-change ID generation is deterministic."""
@@ -78,8 +81,11 @@ class TestGitPatternIDGenerator:
 
         result = GitPatternIDGenerator.generate_hotspot_id(file_path)
 
-        assert result.startswith("git::hotspot::")
-        assert len(result) == len("git::hotspot::") + 64  # SHA-256 hex length
+        # Should return a valid UUID string
+        import uuid
+
+        assert uuid.UUID(result)  # Will raise if not valid UUID
+        assert len(result) == 36  # Standard UUID string length
 
     def test_generate_hotspot_id_deterministic(self):
         """Test that hotspot ID generation is deterministic."""
@@ -124,8 +130,11 @@ class TestGitPatternIDGenerator:
             problem_type, solution_approach
         )
 
-        assert result.startswith("git::solution::")
-        assert len(result) == len("git::solution::") + 64  # SHA-256 hex length
+        # Should return a valid UUID string
+        import uuid
+
+        assert uuid.UUID(result)  # Will raise if not valid UUID
+        assert len(result) == 36  # Standard UUID string length
 
     def test_generate_solution_id_deterministic(self):
         """Test that solution ID generation is deterministic."""
@@ -192,32 +201,42 @@ class TestGitPatternIDGenerator:
         assert id1 != id2
 
     def test_all_id_types_different_formats(self):
-        """Test that different ID types have different prefixes."""
+        """Test that different ID types generate different UUIDs."""
         cochange_id = GitPatternIDGenerator.generate_cochange_id("file1.py", "file2.py")
         hotspot_id = GitPatternIDGenerator.generate_hotspot_id("file1.py")
         solution_id = GitPatternIDGenerator.generate_solution_id("problem", "solution")
 
-        assert cochange_id.startswith("git::cochange::")
-        assert hotspot_id.startswith("git::hotspot::")
-        assert solution_id.startswith("git::solution::")
+        # Should all be valid UUIDs
+        import uuid
+
+        assert uuid.UUID(cochange_id)
+        assert uuid.UUID(hotspot_id)
+        assert uuid.UUID(solution_id)
 
         # Ensure they're all different
         assert cochange_id != hotspot_id != solution_id
 
     def test_id_format_validation(self):
-        """Test that generated IDs have valid format."""
+        """Test that generated IDs have valid UUID format."""
         cochange_id = GitPatternIDGenerator.generate_cochange_id("file1.py", "file2.py")
         hotspot_id = GitPatternIDGenerator.generate_hotspot_id("file1.py")
         solution_id = GitPatternIDGenerator.generate_solution_id("problem", "solution")
 
-        # Check format: git::<type>::<64-char-hex>
+        # Check format: valid UUID string
         import re
+        import uuid
 
-        pattern = r"^git::(cochange|hotspot|solution)::[a-f0-9]{64}$"
+        # Standard UUID format: 8-4-4-4-12 hex digits separated by hyphens
+        uuid_pattern = r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
 
-        assert re.match(pattern, cochange_id)
-        assert re.match(pattern, hotspot_id)
-        assert re.match(pattern, solution_id)
+        assert re.match(uuid_pattern, cochange_id)
+        assert re.match(uuid_pattern, hotspot_id)
+        assert re.match(uuid_pattern, solution_id)
+
+        # Also test they can be parsed as UUIDs
+        assert uuid.UUID(cochange_id)
+        assert uuid.UUID(hotspot_id)
+        assert uuid.UUID(solution_id)
 
     def test_hash_collision_resistance(self):
         """Test that similar inputs produce different hashes."""
@@ -238,9 +257,11 @@ class TestGitPatternIDGenerator:
         )
         hotspot_id = GitPatternIDGenerator.generate_hotspot_id("src/ファイル.py")
 
-        # Should generate valid IDs without errors
-        assert cochange_id.startswith("git::cochange::")
-        assert hotspot_id.startswith("git::hotspot::")
+        # Should generate valid UUIDs without errors
+        import uuid
+
+        assert uuid.UUID(cochange_id)
+        assert uuid.UUID(hotspot_id)
 
         # Should be deterministic
         cochange_id2 = GitPatternIDGenerator.generate_cochange_id(
@@ -255,10 +276,12 @@ class TestGitPatternIDGenerator:
         hotspot_id = GitPatternIDGenerator.generate_hotspot_id("")
         solution_id = GitPatternIDGenerator.generate_solution_id("", "")
 
-        # Should generate valid IDs
-        assert cochange_id.startswith("git::cochange::")
-        assert hotspot_id.startswith("git::hotspot::")
-        assert solution_id.startswith("git::solution::")
+        # Should generate valid UUIDs
+        import uuid
+
+        assert uuid.UUID(cochange_id)
+        assert uuid.UUID(hotspot_id)
+        assert uuid.UUID(solution_id)
 
     def test_long_path_handling(self):
         """Test handling of very long file paths."""
@@ -266,9 +289,11 @@ class TestGitPatternIDGenerator:
 
         hotspot_id = GitPatternIDGenerator.generate_hotspot_id(long_path)
 
-        # Should generate valid ID regardless of path length
-        assert hotspot_id.startswith("git::hotspot::")
-        assert len(hotspot_id) == len("git::hotspot::") + 64
+        # Should generate valid UUID regardless of path length
+        import uuid
+
+        assert uuid.UUID(hotspot_id)
+        assert len(hotspot_id) == 36  # Standard UUID string length
 
     def test_special_characters_in_paths(self):
         """Test handling of special characters in file paths."""
@@ -279,9 +304,11 @@ class TestGitPatternIDGenerator:
             special_path, "normal.py"
         )
 
-        # Should handle special characters properly
-        assert hotspot_id.startswith("git::hotspot::")
-        assert cochange_id.startswith("git::cochange::")
+        # Should handle special characters properly and return valid UUIDs
+        import uuid
+
+        assert uuid.UUID(hotspot_id)
+        assert uuid.UUID(cochange_id)
 
     def test_cross_platform_consistency(self):
         """Test that IDs are consistent across platform path separators."""

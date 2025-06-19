@@ -9,6 +9,7 @@ import hashlib
 import os
 import re
 import unicodedata
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,7 @@ class GitPatternIDGenerator:
             file_b: Second file path
 
         Returns:
-            Canonical pattern ID
+            Canonical pattern ID as UUID string
         """
         # Canonicalize and sort for consistency
         canonical_a = canonicalize_path(file_a)
@@ -42,13 +43,12 @@ class GitPatternIDGenerator:
         # Ensure lexicographic ordering for deterministic results
         file_1, file_2 = sorted([canonical_a, canonical_b])
 
-        # Create pattern key
-        pattern_key = f"{file_1}|{file_2}"
+        # Create pattern key with type prefix for deterministic UUID generation
+        pattern_key = f"git_cochange_{file_1}|{file_2}"
 
-        # Generate SHA-256 hash
-        pattern_hash = hashlib.sha256(pattern_key.encode("utf-8")).hexdigest()
-
-        return f"git::cochange::{pattern_hash}"
+        # Generate deterministic UUID from SHA-256 hash
+        pattern_hash = hashlib.sha256(pattern_key.encode("utf-8")).digest()
+        return str(uuid.UUID(bytes=pattern_hash[:16]))
 
     @staticmethod
     def generate_hotspot_id(file_path: str) -> str:
@@ -59,15 +59,17 @@ class GitPatternIDGenerator:
             file_path: File path for hotspot
 
         Returns:
-            Canonical pattern ID
+            Canonical pattern ID as UUID string
         """
         # Canonicalize path
         canonical_path = canonicalize_path(file_path)
 
-        # Generate SHA-256 hash
-        pattern_hash = hashlib.sha256(canonical_path.encode("utf-8")).hexdigest()
+        # Create pattern key with type prefix for deterministic UUID generation
+        pattern_key = f"git_hotspot_{canonical_path}"
 
-        return f"git::hotspot::{pattern_hash}"
+        # Generate deterministic UUID from SHA-256 hash
+        pattern_hash = hashlib.sha256(pattern_key.encode("utf-8")).digest()
+        return str(uuid.UUID(bytes=pattern_hash[:16]))
 
     @staticmethod
     def generate_solution_id(problem_type: str, solution_approach: str) -> str:
@@ -79,19 +81,18 @@ class GitPatternIDGenerator:
             solution_approach: Solution approach used
 
         Returns:
-            Canonical pattern ID
+            Canonical pattern ID as UUID string
         """
         # Normalize and canonicalize
         canonical_problem = problem_type.lower().strip()
         canonical_solution = solution_approach.lower().strip()
 
-        # Create pattern key
-        pattern_key = f"{canonical_problem}|{canonical_solution}"
+        # Create pattern key with type prefix for deterministic UUID generation
+        pattern_key = f"git_solution_{canonical_problem}|{canonical_solution}"
 
-        # Generate SHA-256 hash
-        pattern_hash = hashlib.sha256(pattern_key.encode("utf-8")).hexdigest()
-
-        return f"git::solution::{pattern_hash}"
+        # Generate deterministic UUID from SHA-256 hash
+        pattern_hash = hashlib.sha256(pattern_key.encode("utf-8")).digest()
+        return str(uuid.UUID(bytes=pattern_hash[:16]))
 
 
 def validate_repository_path(path: str) -> bool:

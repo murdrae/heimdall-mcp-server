@@ -24,6 +24,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from cognitive_memory.core.interfaces import CognitiveSystem
+from memory_system.display_utils import format_source_info
 
 
 class CognitiveShellCompleter(Completer):
@@ -96,7 +97,7 @@ class CognitiveShellCompleter(Completer):
                     flags = self.load_flags.copy()
                     if command == "git-load":
                         flags.extend(["--time-window", "--refresh"])
-                    
+
                     for flag in flags:
                         if flag.startswith(current_word):
                             yield Completion(
@@ -127,7 +128,10 @@ class CognitiveShellCompleter(Completer):
                                     full_path = Path(path_text + completion.text)
                                     if full_path.exists():
                                         if full_path.is_dir():
-                                            if command == "git-load" and (full_path / ".git").exists():
+                                            if (
+                                                command == "git-load"
+                                                and (full_path / ".git").exists()
+                                            ):
                                                 meta = "git repository"
                                             else:
                                                 meta = "directory"
@@ -361,8 +365,12 @@ class InteractiveShell:
         elif command.startswith("git-load"):
             # Handle "git-load" command with or without arguments
             if command == "git-load":
-                self.console.print("[bold red]❌ Please provide a repository path[/bold red]")
-                self.console.print("[dim]Usage: git-load <repo_path> [--dry-run] [--time-window 3m][/dim]")
+                self.console.print(
+                    "[bold red]❌ Please provide a repository path[/bold red]"
+                )
+                self.console.print(
+                    "[dim]Usage: git-load <repo_path> [--dry-run] [--time-window 3m][/dim]"
+                )
             else:
                 # Use original command to preserve case-sensitive paths
                 args = original_command[8:].strip().split()
@@ -377,15 +385,23 @@ class InteractiveShell:
 
         elif command.startswith("git-status"):
             # Handle "git-status" command
-            args = original_command[10:].strip().split() if len(original_command) > 10 else []
-            repo_path = args[0] if args else None
-            self._show_git_status(repo_path)
+            args = (
+                original_command[10:].strip().split()
+                if len(original_command) > 10
+                else []
+            )
+            git_repo_path = args[0] if args else None
+            self._show_git_status(git_repo_path)
 
         elif command.startswith("git-patterns"):
             # Handle "git-patterns" command
             if command == "git-patterns":
-                self.console.print("[bold red]❌ Please provide a search query[/bold red]")
-                self.console.print("[dim]Usage: git-patterns <query> [--type cochange|hotspot|solution][/dim]")
+                self.console.print(
+                    "[bold red]❌ Please provide a search query[/bold red]"
+                )
+                self.console.print(
+                    "[dim]Usage: git-patterns <query> [--type cochange|hotspot|solution][/dim]"
+                )
             else:
                 # Parse arguments
                 args = original_command[12:].strip().split()
@@ -401,11 +417,13 @@ class InteractiveShell:
                         else:
                             query_parts.append(args[i])
                             i += 1
-                    
+
                     query = " ".join(query_parts)
                     self._search_git_patterns(query, pattern_type)
                 else:
-                    self.console.print("[bold red]❌ Please provide a search query[/bold red]")
+                    self.console.print(
+                        "[bold red]❌ Please provide a search query[/bold red]"
+                    )
 
         # Unknown command
         else:
@@ -734,7 +752,9 @@ class InteractiveShell:
                 self.console.print("[bold red]❌ Git pattern loading failed[/bold red]")
 
         except Exception as e:
-            self.console.print(f"[bold red]❌ Error loading git patterns: {e}[/bold red]")
+            self.console.print(
+                f"[bold red]❌ Error loading git patterns: {e}[/bold red]"
+            )
 
     def _show_git_status(self, repo_path: str | None = None) -> None:
         """Show git analysis status using CognitiveCLI."""
@@ -748,7 +768,9 @@ class InteractiveShell:
             success = cli.show_git_status(repo_path)
 
             if not success:
-                self.console.print("[bold red]❌ Failed to retrieve git status[/bold red]")
+                self.console.print(
+                    "[bold red]❌ Failed to retrieve git status[/bold red]"
+                )
 
         except Exception as e:
             self.console.print(f"[bold red]❌ Error showing git status: {e}[/bold red]")
@@ -765,10 +787,14 @@ class InteractiveShell:
             success = cli.search_git_patterns(query, pattern_type=pattern_type)
 
             if not success:
-                self.console.print("[bold red]❌ Failed to search git patterns[/bold red]")
+                self.console.print(
+                    "[bold red]❌ Failed to search git patterns[/bold red]"
+                )
 
         except Exception as e:
-            self.console.print(f"[bold red]❌ Error searching git patterns: {e}[/bold red]")
+            self.console.print(
+                f"[bold red]❌ Error searching git patterns: {e}[/bold red]"
+            )
 
     def _show_session_summary(self) -> None:
         """Show session statistics."""
@@ -813,6 +839,12 @@ class InteractiveShell:
             lines.append(
                 f"   ID: {memory.id}, Level: L{memory.hierarchy_level}, Strength: {score:.2f}"
             )
+
+            # Source information
+            source_info = format_source_info(memory)
+            if source_info:
+                lines.append(f"   Source: {source_info}")
+
             lines.append("")  # Empty line for separation
 
         return "\n".join(lines)
@@ -876,6 +908,11 @@ class InteractiveShell:
                 )
                 if bridge_item.explanation:
                     lines.append(f"   {bridge_item.explanation}")
+
+                # Add source information for bridge memories
+                source_info = format_source_info(memory)
+                if source_info:
+                    lines.append(f"   Source: {source_info}")
             else:
                 # Fallback for regular CognitiveMemory objects (backward compatibility)
                 content = (
@@ -888,5 +925,10 @@ class InteractiveShell:
                     f"   Novelty: {getattr(bridge_item, 'novelty_score', 0):.2f}, "
                     f"Connection: {getattr(bridge_item, 'connection_potential', 0):.2f}"
                 )
+
+                # Add source information for bridge memories (fallback case)
+                source_info = format_source_info(bridge_item)
+                if source_info:
+                    lines.append(f"   Source: {source_info}")
             lines.append("")  # Empty line for separation
         return "\n".join(lines)

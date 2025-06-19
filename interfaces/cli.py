@@ -20,6 +20,7 @@ from cognitive_memory.main import (
     initialize_system,
     initialize_with_config,
 )
+from memory_system.display_utils import format_source_info
 
 
 class CognitiveCLI:
@@ -127,12 +128,18 @@ class CognitiveCLI:
                             assert isinstance(bridge_mem, BridgeMemory)
                             memory = bridge_mem.memory
                             print(f"  {i}. [bridge] {memory.content[:100]}...")
+
+                            # Format source information for bridge memory
+                            source_info = format_source_info(memory)
+
                             print(
                                 f"     ID: {memory.id}, Level: L{memory.hierarchy_level}, "
                                 f"Novelty: {bridge_mem.novelty_score:.2f}, "
                                 f"Connection: {bridge_mem.connection_potential:.2f}, "
                                 f"Bridge Score: {bridge_mem.bridge_score:.2f}"
                             )
+                            if source_info:
+                                print(f"     Source: {source_info}")
                         else:
                             # Regular CognitiveMemory object
                             from cognitive_memory.core.memory import CognitiveMemory
@@ -146,10 +153,16 @@ class CognitiveCLI:
                             score = memory.metadata.get(
                                 "similarity_score", memory.strength
                             )
+
+                            # Format source information
+                            source_info = format_source_info(memory)
+
                             print(
                                 f"     ID: {memory.id}, Level: L{memory.hierarchy_level}, "
                                 f"Strength: {score:.2f}"
                             )
+                            if source_info:
+                                print(f"     Source: {source_info}")
 
             return True
 
@@ -294,7 +307,9 @@ class CognitiveCLI:
             # Handle directory vs file input
             source_path_obj = Path(source_path)
 
-            if source_path_obj.is_dir() and not (loader_type == "git" and (source_path_obj / ".git").exists()):
+            if source_path_obj.is_dir() and not (
+                loader_type == "git" and (source_path_obj / ".git").exists()
+            ):
                 # Handle directory processing for non-git loaders
                 if not recursive:
                     print(
@@ -569,7 +584,7 @@ class CognitiveCLI:
     ) -> bool:
         """
         Load git repository patterns into cognitive memory.
-        
+
         This method delegates to the existing load_memories() method with git loader type.
         The system automatically handles pattern updates via deterministic IDs and upserts.
 
@@ -584,16 +599,13 @@ class CognitiveCLI:
         """
         # Delegate to existing load_memories method with git loader type
         return self.load_memories(
-            source_path=repo_path,
-            loader_type="git", 
-            dry_run=dry_run,
-            **kwargs
+            source_path=repo_path, loader_type="git", dry_run=dry_run, **kwargs
         )
 
     def show_git_status(self, repo_path: str | None = None) -> bool:
         """
         Show git analysis status and pattern statistics.
-        
+
         This method extends the existing show_status() method with git-specific information.
 
         Args:
@@ -605,32 +617,32 @@ class CognitiveCLI:
         try:
             if repo_path:
                 from pathlib import Path
-                
+
                 repo_path_obj = Path(repo_path)
                 if not repo_path_obj.exists():
                     print(f"✗ Repository path does not exist: {repo_path}")
                     return False
-                
+
                 if not (repo_path_obj / ".git").exists():
                     print(f"✗ Not a git repository: {repo_path}")
                     return False
 
                 print(f"📊 Git Analysis Status for: {repo_path}")
                 print("=" * 50)
-                
+
                 # Use existing search functionality to find git patterns
                 return self.search_git_patterns("", limit=0)  # Just show counts
             else:
                 # Show overall status using existing method, then add git-specific info
                 print("📊 System Status with Git Analysis")
                 print("=" * 40)
-                
+
                 success = self.show_status(detailed=False)
                 if success:
                     print("\n" + "=" * 40)
                     # Add git pattern summary
                     self.search_git_patterns("", limit=0)  # Just show counts
-                
+
                 return success
 
         except Exception as e:
@@ -638,14 +650,11 @@ class CognitiveCLI:
             return False
 
     def search_git_patterns(
-        self,
-        query: str,
-        pattern_type: str | None = None,
-        limit: int = 10
+        self, query: str, pattern_type: str | None = None, limit: int = 10
     ) -> bool:
         """
         Search for specific git patterns.
-        
+
         This method extends the existing retrieve_memories() method with git pattern filtering.
 
         Args:
@@ -666,35 +675,43 @@ class CognitiveCLI:
             success = self.retrieve_memories(
                 query=search_query,
                 types=["core", "peripheral"],
-                limit=limit * 2  # Get more to filter for git patterns
+                limit=limit * 2,  # Get more to filter for git patterns
             )
 
             # If this was just a count request (limit=0), show git pattern summary
             if limit == 0 and success:
                 print("\n📊 Git Pattern Summary:")
                 results = self.cognitive_system.retrieve_memories(
-                    query="git pattern",
-                    types=["core", "peripheral"],
-                    max_results=1000
+                    query="git pattern", types=["core", "peripheral"], max_results=1000
                 )
-                
+
                 total_patterns = sum(len(memories) for memories in results.values())
                 print(f"  Total git patterns: {total_patterns}")
-                
+
                 # Count by pattern type (simplified)
                 pattern_counts = {"cochange": 0, "hotspot": 0, "solution": 0}
-                for memory_type, memories in results.items():
+                for _memory_type, memories in results.items():
                     for memory in memories:
-                        if memory.id.startswith("git::"):
-                            pattern_type_found = memory.metadata.get("pattern_type", "unknown")
+                        # Handle both CognitiveMemory and BridgeMemory types
+                        from cognitive_memory.core.memory import BridgeMemory
+
+                        if isinstance(memory, BridgeMemory):
+                            actual_memory = memory.memory
+                        else:
+                            actual_memory = memory
+
+                        if actual_memory.id.startswith("git::"):
+                            pattern_type_found = actual_memory.metadata.get(
+                                "pattern_type", "unknown"
+                            )
                             if pattern_type_found in pattern_counts:
                                 pattern_counts[pattern_type_found] += 1
-                
+
                 for ptype, count in pattern_counts.items():
                     type_name = {
                         "cochange": "Co-change patterns",
                         "hotspot": "Maintenance hotspots",
-                        "solution": "Solution patterns"
+                        "solution": "Solution patterns",
                     }[ptype]
                     print(f"  {type_name}: {count}")
 
@@ -770,7 +787,7 @@ class CognitiveCLI:
         """Show help for interactive mode commands."""
         print("\nAvailable Commands:")
         print("  store <text>           - Store new experience")
-        print("  retrieve <query>       - Retrieve memories")
+        print("  retrieve <query>       - Retrieve memories (now shows source info)")
         print("  bridges <query>        - Show bridge connections")
         print("  load <file_path>       - Load memories from file")
         print("  status                 - Show system status")
@@ -778,6 +795,11 @@ class CognitiveCLI:
         print("  consolidate            - Trigger memory consolidation")
         print("  help                   - Show this help")
         print("  quit                   - Exit interactive mode")
+        print("\nMemory sources are now displayed as:")
+        print("  📄 filename.md → Section Title  (Markdown files)")
+        print("  🔄 repo-name → file1.py ↔ file2.py  (Git co-change patterns)")
+        print("  🔥 repo-name → hotfile.py  (Git maintenance hotspots)")
+        print("  💡 repo-name → solution  (Git solution patterns)")
 
 
 def create_cli_parser() -> argparse.ArgumentParser:
