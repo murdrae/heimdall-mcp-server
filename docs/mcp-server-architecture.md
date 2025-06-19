@@ -44,7 +44,7 @@ The MCP server follows a **wrapper-based architecture** that leverages existing 
 ### Technology Stack
 
 - **MCP SDK**: Official Python MCP SDK (`modelcontextprotocol/python-sdk`)
-- **Transport Methods**: 
+- **Transport Methods**:
   - stdio (Standard Input/Output) - for local integrations
   - HTTP with Server-Sent Events (SSE) - for remote access
 - **Integration Layer**: Wraps `interfaces/cli.py::CognitiveCLI`
@@ -69,27 +69,27 @@ class CognitiveMemory:
     # Core identification
     id: str                                    # Unique memory identifier
     content: str                              # Main memory content
-    
+
     # Hierarchical organization
     hierarchy_level: int                      # 0=Concepts, 1=Contexts, 2=Episodes
     memory_type: str                         # 'episodic' or 'semantic'
-    
+
     # Temporal context (critical for LLM ranking)
     created_date: datetime                   # When memory was created
     modified_date: datetime | None           # When source was last modified
     source_date: datetime | None             # Original source date (commit, doc date)
     timestamp: datetime                      # Storage timestamp
     last_accessed: datetime                  # Last retrieval time
-    
+
     # Activation and importance
     access_count: int                        # Usage frequency
     importance_score: float                  # Memory importance (0.0-1.0)
     strength: float                          # Memory strength (0.0-1.0)
-    
+
     # Rich metadata
     metadata: dict[str, Any]                 # Extensible metadata
     tags: list[str] | None                   # Categorization tags
-    
+
     # Embeddings and dimensions
     cognitive_embedding: torch.Tensor | None # 384D vector
     dimensions: dict[str, torch.Tensor]      # Multi-dimensional encoding
@@ -120,7 +120,7 @@ The system uses rich visual formatting for memory sources, leveraging the existi
 ```
 📄 filename.md → Section Title         (Markdown files)
 🔄 repo-name → file1.py ↔ file2.py    (Git co-change patterns)
-🔥 repo-name → hotfile.py              (Git maintenance hotspots)  
+🔥 repo-name → hotfile.py              (Git maintenance hotspots)
 💡 repo-name → solution                (Git solution patterns)
 📝 Session Lesson                      (LLM-generated insights)
 ```
@@ -139,7 +139,7 @@ The system uses rich visual formatting for memory sources, leveraging the existi
   "text": "string (required) - Content to store",
   "context": {
     "hierarchy_level": "integer (optional) - 0=concept, 1=context, 2=episode",
-    "memory_type": "string (optional) - episodic|semantic", 
+    "memory_type": "string (optional) - episodic|semantic",
     "importance_score": "float (optional) - 0.0-1.0",
     "tags": "array[string] (optional) - Categorization tags",
     "source_info": "string (optional) - Source description"
@@ -335,7 +335,7 @@ The existing `format_source_info()` function from `memory_system/display_utils.p
 def format_memory_source(memory: CognitiveMemory) -> str:
     """Generate rich source information for LLM context"""
     loader_type = memory.metadata.get("loader_type")
-    
+
     if loader_type == "markdown":
         return f"📄 {file_name} → {section_title}"
     elif loader_type == "git":
@@ -430,12 +430,12 @@ class CognitiveMemoryMCPServer:
         self.cli = CognitiveCLI(cognitive_system)  # Wrap existing CLI functionality
         self.server = Server("cognitive-memory")
         self._register_tools()
-    
+
     def _register_tools(self):
         # Register all 4 MCP tools
         self.server.list_tools = self._list_tools
         self.server.call_tool = self._call_tool
-    
+
     async def _call_tool(self, name: str, arguments: dict) -> list[TextContent]:
         if name == "store_memory":
             return await self._store_memory(arguments)
@@ -474,7 +474,7 @@ MCP_SERVER_PORT=8080                    # HTTP mode port (optional)
 MCP_SERVER_MODE=stdio                   # stdio|http
 MCP_MAX_MEMORIES_PER_QUERY=50          # Default limit for recall_memories
 
-# Cognitive System Configuration  
+# Cognitive System Configuration
 QDRANT_URL=http://localhost:6333
 SENTENCE_BERT_MODEL=all-MiniLM-L6-v2
 COGNITIVE_MEMORY_DB_PATH=./data/cognitive_memory.db
@@ -499,7 +499,7 @@ memory_system qdrant start
 # Start MCP server (stdio mode for Claude Desktop)
 memory_system serve mcp
 
-# Start MCP server (HTTP mode for remote access)  
+# Start MCP server (HTTP mode for remote access)
 memory_system serve mcp --port 8080
 ```
 
@@ -570,7 +570,7 @@ async def check_service_health(self) -> dict:
 **MCP Client Request**:
 ```json
 {
-  "method": "tools/call", 
+  "method": "tools/call",
   "params": {
     "name": "recall_memories",
     "arguments": {
@@ -587,7 +587,7 @@ async def check_service_health(self) -> dict:
 {
   "content": [
     {
-      "type": "text", 
+      "type": "text",
       "text": "📋 Retrieved 8 memories for: 'React performance optimization'\n\nCORE MEMORIES (3):\n\n1. [episodic] Found that React components re-render unnecessarily when using object destructuring...\n   ID: f47ac10b-58cc-4372-a567-0e02b2c3d479, Level: L1, Strength: 0.89\n   Source: 💭 Manual Entry\n   Created: 2024-01-15T16:30:00Z, Accessed: 1 times\n\n2. [semantic] React.memo and useMemo are key optimization tools for preventing unnecessary re-renders...\n   ID: a8b2c3d4-e5f6-7890-1234-567890abcdef, Level: L0, Strength: 0.82  \n   Source: 📄 react-guide.md → Performance Optimization\n   Created: 2024-01-10T09:15:00Z, Accessed: 5 times\n\n3. [episodic] Profiled app with React DevTools - identified UserProfile component as bottleneck...\n   ID: 9876543a-bcde-f012-3456-789abcdef012, Level: L2, Strength: 0.77\n   Source: 📝 Session Lesson (solution)\n   Created: 2024-01-12T14:20:00Z, Accessed: 2 times\n\nBRIDGE MEMORIES (1):\n\n1. [bridge] Database query optimization patterns show similar principles to React rendering optimization...\n   ID: bridge-123abc-def456, Level: L1, Bridge Score: 0.84\n   Novelty: 0.91, Connection: 0.78\n   Bridge connects React optimization with database performance patterns\n   Source: 💡 backend-repo → solution\n\nPERIPHERAL MEMORIES (4): [showing 2]\n\n5. [semantic] JavaScript memory management and garbage collection affects React app performance...\n   Source: 📄 js-performance.md → Memory Management\n\n6. [episodic] Bundle size optimization reduced initial load time by 40%...\n   Source: 📝 Session Lesson (discovery)"
     }
   ]
@@ -601,7 +601,7 @@ async def check_service_health(self) -> dict:
 {
   "method": "tools/call",
   "params": {
-    "name": "session_lessons", 
+    "name": "session_lessons",
     "arguments": {
       "lesson_content": "When debugging API integration issues, always check network tab first, then API logs, then client-side error handling. This sequence reveals 90% of integration problems quickly. Also discovered that the staging API has rate limiting enabled (50 req/min) which wasn't documented.",
       "lesson_type": "pattern",
@@ -653,16 +653,16 @@ async def check_service_health(self) -> dict:
 
 ## Setup & Configuration
 
-### Claude Desktop Integration
+### Claude Code Integration
 
-To integrate with Claude Desktop, create a setup script:
+To integrate with Claude Code (terminal-based tool), create a setup script:
 
-**`setup_mcp_for_claude.sh`**:
+**`setup_mcp_for_claude_code.sh`**:
 ```bash
 #!/bin/bash
-# Setup MCP server for Claude Desktop integration
+# Setup MCP server for Claude Code integration
 
-echo "🧠 Setting up Cognitive Memory MCP Server for Claude Desktop..."
+echo "🧠 Setting up Cognitive Memory MCP Server for Claude Code..."
 
 # 1. Ensure cognitive memory system is installed
 if ! command -v memory_system &> /dev/null; then
@@ -679,15 +679,15 @@ memory_system qdrant start
 echo "🩺 Checking system health..."
 memory_system doctor
 
-# 4. Create Claude Desktop configuration
-CLAUDE_CONFIG_DIR="$HOME/.config/claude-desktop"
-CLAUDE_CONFIG_FILE="$CLAUDE_CONFIG_DIR/claude_desktop_config.json"
+# 4. Create Claude Code configuration
+CLAUDE_CONFIG_DIR="$HOME/.config/claude"
+CLAUDE_CONFIG_FILE="$CLAUDE_CONFIG_DIR/claude_config.json"
 
 mkdir -p "$CLAUDE_CONFIG_DIR"
 
-# 5. Add MCP server configuration to Claude Desktop
+# 5. Add MCP server configuration to Claude Code
 if [ -f "$CLAUDE_CONFIG_FILE" ]; then
-    echo "⚠️  Backing up existing Claude Desktop config..."
+    echo "⚠️  Backing up existing Claude Code config..."
     cp "$CLAUDE_CONFIG_FILE" "$CLAUDE_CONFIG_FILE.backup.$(date +%s)"
 fi
 
@@ -705,14 +705,14 @@ cat > "$CLAUDE_CONFIG_FILE" << EOF
 }
 EOF
 
-echo "✅ Claude Desktop configuration updated:"
+echo "✅ Claude Code configuration updated:"
 echo "   Config file: $CLAUDE_CONFIG_FILE"
 echo ""
-echo "🎉 Setup complete! Restart Claude Desktop to activate the MCP server."
+echo "🎉 Setup complete! Restart Claude Code to activate the MCP server."
 echo ""
-echo "Available MCP Tools in Claude:"
+echo "Available MCP Tools in Claude Code:"
 echo "  • store_memory - Store experiences and knowledge"
-echo "  • recall_memories - Retrieve relevant memories" 
+echo "  • recall_memories - Retrieve relevant memories"
 echo "  • session_lessons - Record key learnings"
 echo "  • memory_status - Check system health"
 echo ""
@@ -836,16 +836,16 @@ interfaces/
    - Add batch operation support
    - Optimize vector search parameters
 
-### Phase 4: Claude Desktop Integration
+### Phase 4: Claude Code Integration
 
 1. **Create Setup Automation**
-   - Implement `setup_mcp_for_claude.sh` script
+   - Implement `setup_mcp_for_claude_code.sh` script
    - Add configuration validation
    - Provide troubleshooting guidance
 
-2. **Enhanced Claude Integration**
-   - Optimize tool descriptions for Claude
-   - Add Claude-specific response formatting
+2. **Enhanced Claude Code Integration**
+   - Optimize tool descriptions for Claude Code
+   - Add Claude Code-specific response formatting
    - Implement conversation context awareness
 
 3. **User Experience Polish**
@@ -860,10 +860,10 @@ interfaces/
 # tests/test_mcp_server.py
 async def test_store_memory_tool():
     """Test store_memory MCP tool wrapper"""
-    
+
 async def test_recall_memories_with_filters():
     """Test recall_memories with type filtering"""
-    
+
 async def test_session_lessons_metadata():
     """Test session lesson special metadata handling"""
 ```
@@ -873,9 +873,9 @@ async def test_session_lessons_metadata():
 # tests/integration/test_mcp_integration.py
 async def test_full_mcp_workflow():
     """Test complete store → recall → lesson workflow"""
-    
-async def test_claude_desktop_integration():
-    """Test MCP server with Claude Desktop client"""
+
+async def test_claude_code_integration():
+    """Test MCP server with Claude Code client"""
 ```
 
 **Performance Tests**:
@@ -883,7 +883,7 @@ async def test_claude_desktop_integration():
 # tests/performance/test_mcp_performance.py
 async def test_memory_recall_latency():
     """Test response times for memory retrieval"""
-    
+
 async def test_concurrent_mcp_requests():
     """Test handling multiple simultaneous MCP requests"""
 ```
@@ -893,7 +893,7 @@ async def test_concurrent_mcp_requests():
 This MCP server architecture provides LLMs with sophisticated cognitive memory capabilities while leveraging the existing robust infrastructure. The design emphasizes:
 
 - **Rich Context**: Comprehensive metadata and source information
-- **Metacognitive Learning**: Session lessons for continuous improvement  
+- **Metacognitive Learning**: Session lessons for continuous improvement
 - **Flexible Integration**: Support for multiple MCP clients
 - **Performance**: Efficient wrapping of existing functionality
 - **User Experience**: Easy setup and intuitive tool interactions
