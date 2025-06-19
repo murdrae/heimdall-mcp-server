@@ -15,6 +15,85 @@ from typing import Any
 from loguru import logger
 
 
+class GitPatternIDGenerator:
+    """
+    Generates canonical, deterministic IDs for git patterns.
+
+    Ensures consistent ID generation across platforms and repository analyses
+    using path canonicalization and SHA-256 hashing.
+    """
+
+    @staticmethod
+    def generate_cochange_id(file_a: str, file_b: str) -> str:
+        """
+        Generate deterministic ID for co-change pattern.
+
+        Args:
+            file_a: First file path
+            file_b: Second file path
+
+        Returns:
+            Canonical pattern ID
+        """
+        # Canonicalize and sort for consistency
+        canonical_a = canonicalize_path(file_a)
+        canonical_b = canonicalize_path(file_b)
+
+        # Ensure lexicographic ordering for deterministic results
+        file_1, file_2 = sorted([canonical_a, canonical_b])
+
+        # Create pattern key
+        pattern_key = f"{file_1}|{file_2}"
+
+        # Generate SHA-256 hash
+        pattern_hash = hashlib.sha256(pattern_key.encode("utf-8")).hexdigest()
+
+        return f"git::cochange::{pattern_hash}"
+
+    @staticmethod
+    def generate_hotspot_id(file_path: str) -> str:
+        """
+        Generate deterministic ID for maintenance hotspot.
+
+        Args:
+            file_path: File path for hotspot
+
+        Returns:
+            Canonical pattern ID
+        """
+        # Canonicalize path
+        canonical_path = canonicalize_path(file_path)
+
+        # Generate SHA-256 hash
+        pattern_hash = hashlib.sha256(canonical_path.encode("utf-8")).hexdigest()
+
+        return f"git::hotspot::{pattern_hash}"
+
+    @staticmethod
+    def generate_solution_id(problem_type: str, solution_approach: str) -> str:
+        """
+        Generate deterministic ID for solution pattern.
+
+        Args:
+            problem_type: Type of problem
+            solution_approach: Solution approach used
+
+        Returns:
+            Canonical pattern ID
+        """
+        # Normalize and canonicalize
+        canonical_problem = problem_type.lower().strip()
+        canonical_solution = solution_approach.lower().strip()
+
+        # Create pattern key
+        pattern_key = f"{canonical_problem}|{canonical_solution}"
+
+        # Generate SHA-256 hash
+        pattern_hash = hashlib.sha256(pattern_key.encode("utf-8")).hexdigest()
+
+        return f"git::solution::{pattern_hash}"
+
+
 def validate_repository_path(path: str) -> bool:
     """
     Validate repository path against security threats.

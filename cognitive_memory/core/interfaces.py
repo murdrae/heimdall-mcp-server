@@ -208,6 +208,27 @@ class MemoryLoader(ABC):
         """
         pass
 
+    def upsert_memories(self, memories: list[CognitiveMemory]) -> bool:
+        """
+        Update existing memories or insert new ones using deterministic IDs.
+
+        This method provides default backward-compatible behavior for existing
+        loaders. Override this method to implement true upsert capabilities.
+
+        Args:
+            memories: List of memories to upsert
+
+        Returns:
+            True if all operations succeeded, False otherwise
+        """
+        # Default implementation for backward compatibility
+        # This will be overridden in loaders that support true upsert
+        # For now, we don't have access to cognitive_system here, so we defer to subclasses
+        raise NotImplementedError(
+            "Subclasses must implement upsert_memories() method. "
+            "Default behavior should call store_memory for each memory."
+        )
+
 
 class CognitiveSystem(ABC):
     """High-level interface for the complete cognitive memory system."""
@@ -251,5 +272,18 @@ class CognitiveSystem(ABC):
 
         Returns:
             Dictionary containing load results and statistics
+        """
+        pass
+
+    @abstractmethod
+    def upsert_memories(self, memories: list[CognitiveMemory]) -> dict[str, Any]:
+        """
+        Update existing memories or insert new ones using deterministic IDs.
+
+        Args:
+            memories: List of memories to upsert
+
+        Returns:
+            Dictionary containing upsert results and statistics
         """
         pass

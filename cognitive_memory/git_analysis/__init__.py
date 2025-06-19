@@ -15,7 +15,13 @@ from .data_structures import (
 )
 from .history_miner import GitHistoryMiner
 from .pattern_detector import PatternDetector
-from .security import canonicalize_path, sanitize_git_data, validate_repository_path
+from .pattern_embedder import GitPatternEmbedder
+from .security import (
+    GitPatternIDGenerator,
+    canonicalize_path,
+    sanitize_git_data,
+    validate_repository_path,
+)
 
 __all__ = [
     "CommitEvent",
@@ -26,6 +32,8 @@ __all__ = [
     "SolutionPattern",
     "GitHistoryMiner",
     "PatternDetector",
+    "GitPatternEmbedder",
+    "GitPatternIDGenerator",
     "validate_repository_path",
     "canonicalize_path",
     "sanitize_git_data",

@@ -703,6 +703,116 @@ class CognitiveMemorySystem(CognitiveSystem):
                 "processing_time": processing_time,
             }
 
+    def upsert_memories(self, memories: list[CognitiveMemory]) -> dict[str, Any]:
+        """
+        Update existing memories or insert new ones using deterministic IDs.
+
+        Args:
+            memories: List of memories to upsert
+
+        Returns:
+            Dictionary containing upsert results and statistics
+        """
+        start_time = time.time()
+
+        try:
+            updated_count = 0
+            inserted_count = 0
+            failed_count = 0
+
+            logger.info("Starting memory upsert operation", memory_count=len(memories))
+
+            for memory in memories:
+                try:
+                    # Check if memory already exists using its ID
+                    existing_memory = self.memory_storage.retrieve_memory(memory.id)
+
+                    if existing_memory:
+                        # Update existing memory
+                        if self.memory_storage.update_memory(memory):
+                            # Update vector storage as well
+                            embedding = self.embedding_provider.encode(memory.content)
+
+                            # Delete old vector first
+                            self.vector_storage.delete_vector(memory.id)
+
+                            # Store updated vector
+                            self.vector_storage.store_vector(
+                                memory.id,
+                                embedding,
+                                {
+                                    "hierarchy_level": memory.hierarchy_level,
+                                    "memory_type": memory.memory_type,
+                                    "timestamp": memory.timestamp.isoformat(),
+                                    "strength": memory.strength,
+                                    **memory.metadata,
+                                },
+                            )
+                            updated_count += 1
+                            logger.debug(f"Updated memory: {memory.id}")
+                        else:
+                            failed_count += 1
+                            logger.warning(f"Failed to update memory: {memory.id}")
+                    else:
+                        # Insert new memory - store in both memory storage and vector storage
+                        if self.memory_storage.store_memory(memory):
+                            # Also store in vector storage
+                            embedding = self.embedding_provider.encode(memory.content)
+                            self.vector_storage.store_vector(
+                                memory.id,
+                                embedding,
+                                {
+                                    "hierarchy_level": memory.hierarchy_level,
+                                    "memory_type": memory.memory_type,
+                                    "timestamp": memory.timestamp.isoformat(),
+                                    "strength": memory.strength,
+                                    **memory.metadata,
+                                },
+                            )
+                            inserted_count += 1
+                            logger.debug(f"Inserted new memory: {memory.id}")
+                        else:
+                            failed_count += 1
+                            logger.warning(f"Failed to insert memory: {memory.id}")
+
+                except Exception as e:
+                    failed_count += 1
+                    logger.error(f"Error upserting memory {memory.id}: {e}")
+
+            processing_time = time.time() - start_time
+
+            results = {
+                "success": True,
+                "total_memories": len(memories),
+                "updated_count": updated_count,
+                "inserted_count": inserted_count,
+                "failed_count": failed_count,
+                "processing_time": processing_time,
+                "error": None,
+            }
+
+            logger.info(
+                "Memory upsert operation completed",
+                **{k: v for k, v in results.items() if k != "error"},
+            )
+
+            return results
+
+        except Exception as e:
+            processing_time = time.time() - start_time
+            error_msg = f"Memory upsert failed: {str(e)}"
+            logger.error(error_msg)
+
+            return {
+                "success": False,
+                "error": error_msg,
+                "total_memories": len(memories),
+                "updated_count": 0,
+                "inserted_count": 0,
+                "failed_count": len(memories),
+                "processing_time": processing_time,
+            }
+
     def _calculate_hierarchy_distribution(
         self, memories: list[CognitiveMemory]
     ) -> dict[str, int]:

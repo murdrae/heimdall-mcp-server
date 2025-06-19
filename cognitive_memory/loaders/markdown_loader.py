@@ -8,6 +8,7 @@ intelligent chunking, L0/L1/L2 classification, and connection extraction.
 import re
 import uuid
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -20,6 +21,29 @@ from ..core.interfaces import MemoryLoader
 from ..core.memory import CognitiveMemory
 
 
+@dataclass
+class DocumentNode:
+    """
+    Represents a node in the markdown document tree.
+    
+    Each node corresponds to a section with its hierarchical context.
+    """
+    title: str
+    level: int  # Header level (1-6)
+    content: str  # Raw content after the header
+    start_pos: int  # Position in original document
+    end_pos: int  # End position in original document
+    parent: "DocumentNode | None" = None
+    children: list["DocumentNode"] = None
+    hierarchical_path: list[str] = None  # Full path from root
+    
+    def __post_init__(self):
+        if self.children is None:
+            self.children = []
+        if self.hierarchical_path is None:
+            self.hierarchical_path = []
+
+
 class MarkdownMemoryLoader(MemoryLoader):
     """
     Memory loader for markdown documents.
@@ -28,14 +52,16 @@ class MarkdownMemoryLoader(MemoryLoader):
     for L0/L1/L2 classification, and mathematical connection extraction.
     """
 
-    def __init__(self, config: CognitiveConfig):
+    def __init__(self, config: CognitiveConfig, cognitive_system: Any = None):
         """
         Initialize the markdown loader.
 
         Args:
             config: Cognitive configuration parameters
+            cognitive_system: Optional CognitiveSystem instance for upsert operations
         """
         self.config = config
+        self.cognitive_system = cognitive_system
         self.nlp = spacy.load("en_core_web_md")
         self.sentiment_analyzer = SentimentIntensityAnalyzer()
 
@@ -159,14 +185,34 @@ class MarkdownMemoryLoader(MemoryLoader):
         self, content: str, source_path: str
     ) -> Iterator[dict[str, Any]]:
         """
-        Chunk markdown content based on headers and other structural elements.
+        Create semantically meaningful, context-aware chunks from markdown content.
+        
+        Uses hierarchical document structure to create self-contained memories
+        that include their context path and are semantically complete.
 
         Args:
             content: Raw markdown content
             source_path: Source file path for metadata
 
         Yields:
-            Dictionary containing chunk data
+            Dictionary containing contextual chunk data
+        """
+        # Build the complete document tree structure
+        document_tree = self._build_document_tree(content, source_path)
+        
+        # Convert tree nodes to contextual memories
+        yield from self._convert_tree_to_memories(document_tree, content, source_path)
+
+    def _build_document_tree(self, content: str, source_path: str) -> DocumentNode:
+        """
+        Build a hierarchical tree structure from markdown content.
+        
+        Args:
+            content: Raw markdown content
+            source_path: Source file path for metadata
+            
+        Returns:
+            Root DocumentNode with complete tree structure
         """
         # Find all headers with their positions
         headers = []
@@ -174,99 +220,296 @@ class MarkdownMemoryLoader(MemoryLoader):
             level = len(match.group(1))  # Number of # characters
             title = match.group(2).strip()
             start_pos = match.start()
-            headers.append(
-                {"level": level, "title": title, "start_pos": start_pos, "match": match}
-            )
-
-        # Process each section between headers
+            end_pos = match.end()  # End of the header line
+            headers.append({
+                "level": level,
+                "title": title,
+                "start_pos": start_pos,
+                "header_end_pos": end_pos,
+                "match": match
+            })
+        
+        # Create root node for the document
+        document_title = self._extract_document_title(content, headers)
+        if document_title == "Document":
+            # Enhance with actual filename
+            from pathlib import Path
+            document_title = Path(source_path).stem.replace("_", " ").replace("-", " ").title()
+        
+        root = DocumentNode(
+            title=document_title,
+            level=0,  # Root level
+            content="",  # Will be filled with document overview
+            start_pos=0,
+            end_pos=len(content),
+            hierarchical_path=[document_title]
+        )
+        
+        # Convert headers to nodes and build tree structure
+        nodes = []
         for i, header in enumerate(headers):
-            # Determine section end position
+            # Calculate content boundaries
+            content_start = header["header_end_pos"]
             if i + 1 < len(headers):
-                end_pos = cast(int, headers[i + 1]["start_pos"])
+                content_end = headers[i + 1]["start_pos"]
             else:
-                end_pos = len(content)
+                content_end = len(content)
+            
+            # Extract raw content (everything after header until next header)
+            raw_content = content[content_start:content_end].strip()
+            
+            node = DocumentNode(
+                title=header["title"],
+                level=header["level"],
+                content=raw_content,
+                start_pos=header["start_pos"],
+                end_pos=content_end
+            )
+            nodes.append(node)
+        
+        # Build hierarchical relationships
+        self._build_tree_relationships(root, nodes)
+        
+        # Extract document overview content for root
+        root.content = self._extract_document_overview(content, headers)
+        
+        return root
 
-            # Extract section content
-            section_content = content[cast(int, header["start_pos"]) : end_pos].strip()
+    def _extract_document_title(self, content: str, headers: list[dict[str, Any]]) -> str:
+        """Extract document title from first H1 or filename."""
+        # Look for first level-1 header
+        for header in headers:
+            if header["level"] == 1:
+                return header["title"]
+        
+        # Fallback to "Document" - will be enhanced with actual filename by caller
+        return "Document"
 
-            # Split large sections by subheaders if needed
-            if self._count_tokens(section_content) > self.config.max_tokens_per_chunk:
-                yield from self._split_large_section(
-                    section_content, header, source_path
-                )
-            else:
-                yield self._create_chunk_data(section_content, header, source_path)
+    def _extract_document_overview(self, content: str, headers: list[dict[str, Any]]) -> str:
+        """Extract overview content before first header or after title."""
+        if not headers:
+            return content.strip()
+        
+        # Content before first header (often contains document overview)
+        first_header_pos = headers[0]["start_pos"]
+        overview = content[:first_header_pos].strip()
+        
+        # If no overview before headers and only one header, don't extract section content as overview
+        if len(overview) < 50 and headers[0]["level"] == 1 and len(headers) > 1:
+            # Only for multi-header documents: try content after title (H1) until next header
+            content_start = headers[0]["header_end_pos"]
+            content_end = headers[1]["start_pos"]
+            overview = content[content_start:content_end].strip()
+        
+        return overview if overview else "Document content"
 
-            # Extract code blocks as separate chunks if they're large enough
-            yield from self._extract_code_blocks(section_content, header, source_path)
+    def _build_tree_relationships(self, root: DocumentNode, nodes: list[DocumentNode]) -> None:
+        """
+        Build parent-child relationships and hierarchical paths.
+        
+        Args:
+            root: Root document node
+            nodes: List of header nodes to organize
+        """
+        # Stack to track current path through the hierarchy
+        path_stack = [root]
+        
+        for node in nodes:
+            # Find the appropriate parent by popping until we find a level less than current
+            while len(path_stack) > 1 and path_stack[-1].level >= node.level:
+                path_stack.pop()
+            
+            # Current top of stack is the parent
+            parent = path_stack[-1]
+            
+            # Set relationships
+            node.parent = parent
+            parent.children.append(node)
+            
+            # Build hierarchical path
+            parent_path = parent.hierarchical_path if parent.hierarchical_path else []
+            node.hierarchical_path = parent_path + [node.title]
+            
+            # Add to stack for potential children
+            path_stack.append(node)
 
-    def _split_large_section(
-        self, content: str, header: dict[str, Any], source_path: str
+    def _convert_tree_to_memories(
+        self, root: DocumentNode, full_content: str, source_path: str
     ) -> Iterator[dict[str, Any]]:
-        """Split large sections by subheaders."""
-        # Find subheaders within this section
-        subheaders = []
-        for match in self.header_pattern.finditer(content):
-            level = len(match.group(1))
-            if level > header["level"]:  # Only subheaders
-                subheaders.append(
-                    {
-                        "level": level,
-                        "title": match.group(2).strip(),
-                        "start_pos": match.start(),
-                        "match": match,
-                    }
-                )
-
-        if not subheaders:
-            # No subheaders found, yield as-is
-            yield self._create_chunk_data(content, header, source_path)
+        """
+        Convert document tree nodes to contextual memory chunks.
+        
+        Args:
+            root: Root document node with complete tree
+            full_content: Original markdown content
+            source_path: Source file path
+            
+        Yields:
+            Dictionary containing contextual chunk data
+        """
+        # Handle different document structures for backward compatibility
+        has_headers = len(root.children) > 0
+        
+        if not has_headers:
+            # No headers found - maintain backward compatibility by creating no memories
             return
+        
+        # For single header documents, don't create a separate root memory
+        if len(root.children) == 1 and not self._has_meaningful_content(root.content):
+            # Skip root memory for single header docs without overview content
+            pass
+        elif self._has_meaningful_content(root.content):
+            # Create root memory for multi-section documents with overview content
+            yield self._create_contextual_chunk(root, source_path, "document_root")
+        
+        # Process all nodes in the tree
+        yield from self._process_tree_nodes(root, source_path)
 
-        # Process subsections
-        for i, subheader in enumerate(subheaders):
-            if i + 1 < len(subheaders):
-                subsection_end = cast(int, subheaders[i + 1]["start_pos"])
-            else:
-                subsection_end = len(content)
+    def _process_tree_nodes(self, node: DocumentNode, source_path: str) -> Iterator[dict[str, Any]]:
+        """Recursively process tree nodes to create contextual memories."""
+        for child in node.children:
+            # Create memory for this node if it has meaningful content
+            contextual_memory = self._create_contextual_memory(child, source_path)
+            if contextual_memory:
+                yield contextual_memory
+            
+            # Process children recursively
+            yield from self._process_tree_nodes(child, source_path)
 
-            subsection_content = content[
-                cast(int, subheader["start_pos"]) : subsection_end
-            ].strip()
-            yield self._create_chunk_data(subsection_content, subheader, source_path)
+    def _create_contextual_memory(self, node: DocumentNode, source_path: str) -> dict[str, Any] | None:
+        """
+        Create a contextual memory from a document node.
+        
+        Args:
+            node: Document node to process
+            source_path: Source file path
+            
+        Returns:
+            Contextual chunk data or None if should be skipped
+        """
+        # Check if this section has meaningful content
+        if not self._has_meaningful_content(node.content):
+            # Try to merge with children or skip
+            merged_content = self._try_merge_with_children(node)
+            if not merged_content:
+                logger.debug(f"Skipping empty section: {' → '.join(node.hierarchical_path)}")
+                return None
+            node.content = merged_content
+        
+        # Create contextual content with hierarchical path
+        contextual_content = self._assemble_contextual_content(node)
+        
+        # Determine memory type and classification
+        memory_type = self._determine_memory_type(node, contextual_content)
+        
+        return self._create_contextual_chunk(node, source_path, memory_type, contextual_content)
 
-    def _extract_code_blocks(
-        self, content: str, header: dict[str, Any], source_path: str
-    ) -> Iterator[dict[str, Any]]:
-        """Extract large code blocks as separate chunks."""
-        for match in self.code_block_pattern.finditer(content):
-            code_content = match.group(0)
-            line_count = code_content.count("\n")
+    def _has_meaningful_content(self, content: str) -> bool:
+        """Check if content is substantial enough to create a standalone memory."""
+        if not content or not content.strip():
+            return False
+        
+        # Count meaningful words (exclude very short words and whitespace)
+        words = [word.strip() for word in content.split() if len(word.strip()) > 2]
+        return len(words) >= 5 and len(content.strip()) >= 30
 
-            if line_count >= self.config.code_block_lines:
-                # Create code block chunk
-                chunk_data = {
-                    "content": code_content,
-                    "title": f"Code block from {header['title']}",
-                    "header_level": header["level"] + 1,  # Deeper than parent
-                    "source_path": source_path,
-                    "chunk_type": "code_block",
-                    "parent_header": header["title"],
-                }
-                yield chunk_data
+    def _try_merge_with_children(self, node: DocumentNode) -> str | None:
+        """Try to merge node content with immediate children content."""
+        if not node.children:
+            return None
+        
+        # Collect content from immediate children
+        child_contents = []
+        for child in node.children[:3]:  # Only first few children to avoid huge merges
+            if child.content and len(child.content.strip()) > 10:
+                child_contents.append(f"{child.title}: {child.content.strip()}")
+        
+        if child_contents:
+            return " | ".join(child_contents)
+        return None
 
-    def _create_chunk_data(
-        self, content: str, header: dict[str, Any], source_path: str
+    def _assemble_contextual_content(self, node: DocumentNode) -> str:
+        """
+        Assemble contextual content that includes hierarchical path and content.
+        
+        Args:
+            node: Document node with content and hierarchical path
+            
+        Returns:
+            Self-contained contextual content string
+        """
+        # Create hierarchical context path
+        path_str = " → ".join(node.hierarchical_path)
+        
+        # Assemble contextual content
+        if node.content and len(node.content.strip()) > 10:
+            return f"{path_str}\n\n{node.content.strip()}"
+        else:
+            # For minimal content, use colon format
+            return f"{path_str}: {node.content.strip() if node.content else 'section marker'}"
+
+    def _determine_memory_type(self, node: DocumentNode, content: str) -> str:
+        """Determine the type of memory based on node characteristics."""
+        # Check for procedural content (commands, steps, code)
+        if self._is_procedural_content(content):
+            return "procedural"
+        
+        # Check for conceptual content (definitions, overviews)
+        if node.level <= 2 or self._is_conceptual_content(content):
+            return "conceptual"
+        
+        # Default to contextual
+        return "contextual"
+
+    def _is_procedural_content(self, content: str) -> bool:
+        """Check if content represents procedures or actionable steps."""
+        procedural_indicators = [
+            r'\b(step|install|run|execute|create|configure|setup|deploy)\b',
+            r'^\s*[\d\-\*]\.',  # Numbered or bulleted lists
+            r'```',  # Code blocks
+            r'\$\s+',  # Shell commands
+        ]
+        
+        for pattern in procedural_indicators:
+            if re.search(pattern, content, re.IGNORECASE | re.MULTILINE):
+                return True
+        return False
+
+    def _is_conceptual_content(self, content: str) -> bool:
+        """Check if content represents concepts or definitions."""
+        conceptual_indicators = [
+            r'\b(overview|introduction|concept|definition|architecture|design)\b',
+            r'\b(what is|definition of|refers to)\b',
+        ]
+        
+        for pattern in conceptual_indicators:
+            if re.search(pattern, content, re.IGNORECASE):
+                return True
+        return False
+
+    def _create_contextual_chunk(
+        self, 
+        node: DocumentNode, 
+        source_path: str, 
+        memory_type: str,
+        contextual_content: str | None = None
     ) -> dict[str, Any]:
-        """Create standardized chunk data structure."""
+        """Create standardized contextual chunk data structure."""
+        content = contextual_content or node.content
+        
         return {
             "content": content,
-            "title": header["title"],
-            "header_level": header["level"],
+            "title": node.title,
+            "header_level": node.level,
             "source_path": source_path,
-            "chunk_type": "section",
-            "parent_header": None,
+            "chunk_type": memory_type,
+            "hierarchical_path": node.hierarchical_path.copy(),
+            "parent_header": node.parent.title if node.parent else None,
+            "has_children": len(node.children) > 0,
+            "node_position": {"start": node.start_pos, "end": node.end_pos}
         }
+
+# Old methods removed - replaced by hierarchical tree-based processing
 
     def _create_memory_from_chunk(
         self, chunk_data: dict[str, Any], source_path: str
@@ -308,10 +551,14 @@ class MarkdownMemoryLoader(MemoryLoader):
                 "header_level": chunk_data.get("header_level", 0),
                 "chunk_type": chunk_data.get("chunk_type", "section"),
                 "parent_header": chunk_data.get("parent_header"),
+                "hierarchical_path": chunk_data.get("hierarchical_path", [title]),
+                "has_children": chunk_data.get("has_children", False),
+                "node_position": chunk_data.get("node_position", {}),
                 "token_count": self._count_tokens(content),
                 "linguistic_features": linguistic_features,
                 "sentiment": sentiment,
                 "loader_type": "markdown",
+                "memory_version": "hierarchical_v1",  # Track the new memory format
             },
         )
 
@@ -425,7 +672,7 @@ class MarkdownMemoryLoader(MemoryLoader):
         self, content: str, chunk_data: dict[str, Any], features: dict[str, float]
     ) -> int:
         """
-        Classify content into L0/L1/L2 hierarchy using linguistic features.
+        Classify content into L0/L1/L2 hierarchy using contextual memory types.
 
         Args:
             content: Text content
@@ -435,30 +682,54 @@ class MarkdownMemoryLoader(MemoryLoader):
         Returns:
             Hierarchy level (0, 1, or 2)
         """
-        token_count = self._count_tokens(content)
+        # Use the new memory type classification
+        memory_type = chunk_data.get("chunk_type", "contextual")
         header_level = chunk_data.get("header_level", 3)
-
-        # Rule-based classification as per architecture
-        if token_count < 5 and header_level <= 2:
-            return 0  # L0: Concepts (short headers, key terms)
-
+        
+        # New classification based on contextual memory types
+        if memory_type == "document_root":
+            return 0  # L0: Document overviews and concepts
+        
+        if memory_type == "conceptual":
+            return 0  # L0: Conceptual memories (definitions, overviews)
+        
+        if memory_type == "procedural":
+            return 2  # L2: Procedural memories (steps, commands, code)
+        
+        # For contextual memories, use content analysis
+        token_count = self._count_tokens(content)
+        
+        # Code-heavy content is procedural (override short content rule)
         if features["code_fraction"] >= 0.60:
-            return 2  # L2: Episodes (code blocks)
-
+            return 2
+        
+        # Command-heavy content is procedural (override short content rule) 
         if features["imperative_score"] > 0.5:
-            return 2  # L2: Episodes (commands, procedures)
-
-        # Scoring model for ambiguous cases
+            return 2
+        
+        # Very short content is likely conceptual
+        if token_count < 20:
+            return 0
+        
+        # High-level sections (H1, H2) with substantial content are contextual
+        if header_level <= 2 and token_count >= 50:
+            return 1
+        
+        # Default contextual classification using enhanced scoring
         score_L0 = (
-            1.2 * features["noun_ratio"]
-            - 0.8 * features["verb_ratio"]
-            - 0.8 * (header_level / 6.0)  # Normalize header level
+            1.5 * features["noun_ratio"]  # Increased weight for concepts
+            - 0.6 * features["verb_ratio"]
+            - 0.5 * (header_level / 6.0)
         )
 
-        score_L2 = 1.0 * features["verb_ratio"] + 0.7 * features["imperative_score"]
+        score_L2 = (
+            1.2 * features["verb_ratio"] 
+            + 0.8 * features["imperative_score"]
+            + 0.3 * features["code_fraction"]
+        )
 
-        # L1 is middle ground
-        score_L1 = 1.0 - abs(score_L0 - score_L2) / 2.0
+        # L1 gets preference for balanced, substantial content
+        score_L1 = 1.0 + (0.1 * min(token_count / 100, 1.0))  # Bonus for substantial content
 
         scores = {"L0": score_L0, "L1": score_L1, "L2": score_L2}
         predicted_level = max(scores, key=lambda k: scores[k])
@@ -470,6 +741,8 @@ class MarkdownMemoryLoader(MemoryLoader):
         """Count tokens in text using spaCy tokenizer."""
         doc = self.nlp(text)
         return len([token for token in doc if not token.is_space])
+
+# Old _create_meaningful_content method removed - replaced by hierarchical context assembly
 
     def _extract_hierarchical_connections(
         self, memories: list[CognitiveMemory]
@@ -715,3 +988,56 @@ class MarkdownMemoryLoader(MemoryLoader):
                 break
 
         return max(title1_in_content2, title2_in_content1, link_references)
+
+    def upsert_memories(self, memories: list[CognitiveMemory]) -> bool:
+        """
+        Update existing memories or insert new ones.
+
+        Default implementation for backward compatibility - calls store_memory
+        for each memory since MarkdownMemoryLoader doesn't have inherent
+        update capabilities.
+
+        Args:
+            memories: List of memories to upsert
+
+        Returns:
+            True if all operations succeeded, False otherwise
+        """
+        if not self.cognitive_system:
+            logger.error(
+                "No cognitive_system provided to MarkdownMemoryLoader for upsert operations"
+            )
+            return False
+
+        try:
+            # Try native upsert first if available
+            if hasattr(self.cognitive_system, "upsert_memories"):
+                result = self.cognitive_system.upsert_memories(memories)
+                # Check if result indicates success
+                if isinstance(result, dict) and result.get("success", False):
+                    logger.info(
+                        f"Successfully upserted {len(memories)} memories via native upsert"
+                    )
+                    return True
+                elif result is True:  # Simple boolean success
+                    logger.info(
+                        f"Successfully upserted {len(memories)} memories via native upsert"
+                    )
+                    return True
+                # If upsert failed or returned False, fall back to store_memory
+
+            # Fallback: use store_memory for each memory
+            for memory in memories:
+                success = self.cognitive_system.store_memory(memory)
+                if not success:
+                    logger.error(f"Failed to store memory: {memory.id}")
+                    return False
+
+            logger.info(
+                f"Successfully upserted {len(memories)} memories via store_memory"
+            )
+            return True
+
+        except Exception as e:
+            logger.error(f"Upsert operation failed: {e}")
+            return False

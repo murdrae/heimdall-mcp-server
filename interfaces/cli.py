@@ -265,9 +265,9 @@ class CognitiveCLI:
         Returns:
             bool: True if loading completed successfully
         """
-        if loader_type != "markdown":
+        if loader_type not in ["markdown", "git"]:
             print(f"✗ Unsupported loader type: {loader_type}")
-            print("   Currently supported: markdown")
+            print("   Currently supported: markdown, git")
             return False
 
         try:
@@ -279,7 +279,17 @@ class CognitiveCLI:
             config = get_config()
 
             # Create the appropriate loader
-            loader = MarkdownMemoryLoader(config.cognitive)
+            loader: Any
+            if loader_type == "markdown":
+                loader = MarkdownMemoryLoader(config.cognitive)
+            elif loader_type == "git":
+                from cognitive_memory.loaders import GitHistoryLoader
+
+                loader = GitHistoryLoader(config.cognitive)
+            else:
+                # This shouldn't happen due to earlier check, but be safe
+                print(f"✗ Unsupported loader type: {loader_type}")
+                return False
 
             # Handle directory vs file input
             source_path_obj = Path(source_path)
@@ -687,7 +697,7 @@ Examples:
     load_parser.add_argument("source_path", help="Path to source file")
     load_parser.add_argument(
         "--loader-type",
-        choices=["markdown"],
+        choices=["markdown", "git"],
         default="markdown",
         help="Type of loader to use",
     )
@@ -712,6 +722,37 @@ Examples:
         help="Type of memories to clear",
     )
     clear_parser.add_argument("--confirm", action="store_true", help="Confirm deletion")
+
+    # Git commands
+    git_parser = subparsers.add_parser("git-load", help="Load git repository patterns")
+    git_parser.add_argument("repo_path", help="Path to git repository")
+    git_parser.add_argument(
+        "--time-window", default="3m", help="Analysis time window (e.g., 3m, 6m, 1y)"
+    )
+    git_parser.add_argument(
+        "--dry-run", action="store_true", help="Show patterns without storing"
+    )
+    git_parser.add_argument(
+        "--refresh", action="store_true", help="Update existing patterns"
+    )
+
+    git_status_parser = subparsers.add_parser(
+        "git-status", help="Show git analysis status"
+    )
+    git_status_parser.add_argument(
+        "repo_path", nargs="?", help="Repository path (optional)"
+    )
+
+    git_patterns_parser = subparsers.add_parser(
+        "git-patterns", help="Search git patterns"
+    )
+    git_patterns_parser.add_argument("query", help="Search query for patterns")
+    git_patterns_parser.add_argument(
+        "--type", choices=["cochange", "hotspot", "solution"], help="Pattern type"
+    )
+    git_patterns_parser.add_argument(
+        "--limit", type=int, default=10, help="Maximum results to show"
+    )
 
     # Interactive command
     interactive_parser = subparsers.add_parser(
@@ -805,6 +846,33 @@ def main() -> int:
                 success = cli.clear_memories(
                     memory_type=getattr(args, "type", "all"),
                     confirm=getattr(args, "confirm", False),
+                )
+                exit_code = 0 if success else 1
+
+            elif args.command == "git-load":
+                kwargs = {}
+                if hasattr(args, "time_window") and args.time_window:
+                    kwargs["time_window"] = args.time_window
+
+                success = cli.load_git_patterns(
+                    repo_path=args.repo_path,
+                    dry_run=getattr(args, "dry_run", False),
+                    refresh=getattr(args, "refresh", False),
+                    **kwargs,
+                )
+                exit_code = 0 if success else 1
+
+            elif args.command == "git-status":
+                success = cli.show_git_status(
+                    repo_path=getattr(args, "repo_path", None)
+                )
+                exit_code = 0 if success else 1
+
+            elif args.command == "git-patterns":
+                success = cli.search_git_patterns(
+                    query=args.query,
+                    pattern_type=getattr(args, "type", None),
+                    limit=getattr(args, "limit", 10),
                 )
                 exit_code = 0 if success else 1
 
