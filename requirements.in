@@ -16,6 +16,8 @@ psutil>=5.9.0          # System monitoring and process management
 requests>=2.31.0       # HTTP requests for health checks
 prompt_toolkit>=3.0.0
 
+# mcp
+mcp>=1.4.0
 
 # Text and sentiment analysis
 spacy
