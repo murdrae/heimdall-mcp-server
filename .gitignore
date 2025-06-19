@@ -82,3 +82,4 @@ Thumbs.db
 *.bak
 *.backup
 .mcp.json
+.cognitive-memory/
