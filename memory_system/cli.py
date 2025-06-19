@@ -260,11 +260,14 @@ def serve_http(
 
 @serve_app.command("mcp")  # type: ignore[misc]
 def serve_mcp(
-    port: int | None = typer.Option(None, help="TCP port (default: stdin/stdout)"),
+    port: int | None = typer.Option(None, help="HTTP port (default: stdin/stdout)"),
+    host: str = typer.Option(
+        "127.0.0.1", help="HTTP host to bind to (only used with --port)"
+    ),
     config: str | None = typer.Option(None, help="Path to configuration file"),
 ) -> None:
     """Start MCP protocol server."""
-    mode = "TCP" if port else "stdin/stdout"
+    mode = f"HTTP ({host}:{port})" if port else "stdin/stdout"
     console.print(f"🔗 Starting MCP server ({mode})...", style="bold blue")
 
     try:
@@ -278,7 +281,7 @@ def serve_mcp(
             cognitive_system = initialize_system("default")
 
         # Start MCP server
-        run_server(cognitive_system=cognitive_system, port=port)
+        run_server(cognitive_system=cognitive_system, port=port, host=host)
 
     except ImportError as e:
         console.print("❌ MCP interface not implemented yet", style="bold red")

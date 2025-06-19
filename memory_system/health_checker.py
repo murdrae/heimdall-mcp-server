@@ -347,7 +347,7 @@ class HealthChecker:
             import docker
 
             try:
-                client = docker.from_env()
+                client = docker.from_env()  # type: ignore
                 client.ping()
 
                 details = None

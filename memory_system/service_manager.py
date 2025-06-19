@@ -20,10 +20,12 @@ from cognitive_memory.core.config import QdrantConfig
 
 try:
     import docker
+    import docker.errors
 
     DOCKER_AVAILABLE = True
 except ImportError:
     DOCKER_AVAILABLE = False
+    docker = None  # type: ignore
 
 
 class ServiceStatus(Enum):
@@ -64,9 +66,9 @@ class QdrantManager:
         self.default_data_dir = Path("./data/qdrant")
         self.docker_client = None
 
-        if DOCKER_AVAILABLE:
+        if DOCKER_AVAILABLE and docker is not None:
             try:
-                self.docker_client = docker.from_env()
+                self.docker_client = docker.from_env()  # type: ignore
                 # Test Docker connection
                 self.docker_client.ping()
             except Exception:
@@ -146,9 +148,7 @@ class QdrantManager:
                 container.stop(timeout=10)
                 container.remove()
                 stopped_any = True
-            except docker.errors.NotFound:
-                pass
-            except Exception:
+            except Exception:  # docker.errors.NotFound or any other exception
                 pass
 
         # Try stopping local process
@@ -200,10 +200,11 @@ class QdrantManager:
                         uptime_seconds=uptime,
                         health_status="healthy" if health else "unhealthy",
                     )
-            except docker.errors.NotFound:
-                pass
-            except Exception as e:
-                return QdrantStatus(status=ServiceStatus.ERROR, error=str(e))
+            except Exception as e:  # docker.errors.NotFound or any other exception
+                if "NotFound" in str(type(e)):
+                    pass
+                else:
+                    return QdrantStatus(status=ServiceStatus.ERROR, error=str(e))
 
         # Check local process
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
@@ -257,7 +258,7 @@ class QdrantManager:
 
                 return
 
-            except docker.errors.NotFound:
+            except Exception:  # docker.errors.NotFound or any other exception
                 pass
 
         # For local binary, logs would be in a file or systemd
@@ -280,7 +281,7 @@ class QdrantManager:
                 old_container = self.docker_client.containers.get(self.container_name)
                 old_container.stop(timeout=5)
                 old_container.remove()
-            except docker.errors.NotFound:
+            except Exception:  # docker.errors.NotFound or any other exception
                 pass
 
             # Start new container

@@ -12,13 +12,19 @@ import asyncio
 import logging
 import sys
 from datetime import datetime
+from typing import Any
 
+import uvicorn
 from mcp.server import Server
+from mcp.server.sse import SseServerTransport
 from mcp.server.stdio import stdio_server
 from mcp.types import (
     TextContent,
     Tool,
 )
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from cognitive_memory.core.interfaces import CognitiveSystem
 from cognitive_memory.main import initialize_system, initialize_with_config
@@ -444,6 +450,69 @@ class CognitiveMemoryMCPServer:
                 read_stream, write_stream, self.server.create_initialization_options()
             )
 
+    async def run_http(self, host: str = "127.0.0.1", port: int = 8080) -> None:
+        """Run MCP server with HTTP transport."""
+        logger.info(
+            f"Starting Cognitive Memory MCP Server (HTTP mode on {host}:{port})"
+        )
+
+        # Health check endpoint
+        async def health_check(request: Any) -> Any:
+            """Health check endpoint for container monitoring."""
+            try:
+                # Basic health check - verify cognitive system is responsive
+                status_result = self.cli.show_status()
+                if status_result:
+                    return JSONResponse(
+                        {
+                            "status": "healthy",
+                            "service": "cognitive-memory-mcp",
+                            "timestamp": datetime.now().isoformat(),
+                            "version": "1.0.0",
+                        }
+                    )
+                else:
+                    return JSONResponse(
+                        {
+                            "status": "unhealthy",
+                            "service": "cognitive-memory-mcp",
+                            "error": "Cognitive system not responding",
+                            "timestamp": datetime.now().isoformat(),
+                        },
+                        status_code=503,
+                    )
+            except Exception as e:
+                return JSONResponse(
+                    {
+                        "status": "unhealthy",
+                        "service": "cognitive-memory-mcp",
+                        "error": str(e),
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    status_code=503,
+                )
+
+        # Create Starlette app with health endpoint
+        app = Starlette(
+            routes=[
+                Route("/health", health_check, methods=["GET"]),
+                Route("/status", health_check, methods=["GET"]),  # Alias for health
+            ]
+        )
+
+        # Create SSE transport for MCP
+        transport = SseServerTransport("/mcp")
+
+        # Mount MCP server on the transport
+        app.mount("/mcp", transport.create_app(self.server))
+
+        # Run the server
+        config = uvicorn.Config(
+            app=app, host=host, port=port, log_level="info", access_log=True
+        )
+        server = uvicorn.Server(config)
+        await server.serve()
+
 
 async def main() -> None:
     """Main entry point for MCP server."""
@@ -460,6 +529,12 @@ async def main() -> None:
     parser.add_argument(
         "--port", type=int, default=8080, help="HTTP port (only used in http mode)"
     )
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="HTTP host (only used in http mode)",
+    )
 
     args = parser.parse_args()
 
@@ -475,8 +550,10 @@ async def main() -> None:
 
         if args.mode == "stdio":
             await mcp_server.run_stdio()
+        elif args.mode == "http":
+            await mcp_server.run_http(host=args.host, port=args.port)
         else:
-            logger.error("HTTP mode not yet implemented")
+            logger.error(f"Unknown transport mode: {args.mode}")
             sys.exit(1)
 
     except Exception as e:
@@ -484,20 +561,23 @@ async def main() -> None:
         sys.exit(1)
 
 
-def run_server(cognitive_system: CognitiveSystem, port: int | None = None) -> None:
+def run_server(
+    cognitive_system: CognitiveSystem, port: int | None = None, host: str = "127.0.0.1"
+) -> None:
     """
     Run the MCP server with the given cognitive system.
 
     Args:
         cognitive_system: The cognitive system to use
         port: Optional port for HTTP mode (None for stdio)
+        host: Host to bind to for HTTP mode
     """
     # Create MCP server instance
     mcp_server = CognitiveMemoryMCPServer(cognitive_system)
 
     if port:
-        logger.error("HTTP mode not yet implemented")
-        sys.exit(1)
+        # Run in HTTP mode
+        asyncio.run(mcp_server.run_http(host=host, port=port))
     else:
         # Run in stdio mode
         asyncio.run(mcp_server.run_stdio())
