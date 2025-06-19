@@ -1,179 +1,141 @@
-# Cognitive Memory System
+# Cognitive Memory
+**MCP server that gives Claude persistent memory of your project**
 
-A cognitive memory system for Large Language Models that implements true cognitive processing through associative thinking, serendipitous connections, and emergent insights using multi-dimensional memory representation and dynamic activation patterns.
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://www.docker.com/)
+[![MCP Protocol](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io/)
 
-## Overview
+A tool that lets your LLM remember things between conversations - your project patterns, solutions you've found, and insights from past sessions.
 
-This system implements the cognitive memory architecture described in the technical specification, featuring:
+**The problem it solves:**
+Your coding assistant forgets everything when you close the chat. Every new session starts from zero, even if you discussed the same codebase yesterday.
 
-- **Multi-dimensional Memory Encoding**: Emotional, temporal, contextual, and social dimensions
-- **Hierarchical Storage**: 3-tier memory hierarchy (L0: Concepts, L1: Contexts, L2: Episodes)
-- **Activation Spreading**: Context-driven memory activation with BFS traversal
-- **Bridge Discovery**: Novel connection identification through distance inversion
-- **Dual Memory System**: Episodic and semantic memory with consolidation
+**What it gives you:**
+- Your LLM remembers project-specific knowledge across sessions
+- Learns patterns from your git history (which files change together, common fix approaches)
+- Stores insights and solutions you discover during coding sessions
+- Connects related concepts it has learned about your codebase
 
-## Technology Stack
+This means instead of re-explaining your auth system every morning, your LLM already knows how it works and what problems you've solved before.
 
-- **Python 3.13**: Latest features, async support, type hints
-- **Vector Database**: Qdrant for production-ready hierarchical collections
-- **ML Framework**: PyTorch for research flexibility and transformers ecosystem
-- **Base Embeddings**: Sentence-BERT (all-MiniLM-L6-v2) for fast local inference
-- **Persistence**: SQLite + JSON for zero-setup ACID transactions
-- **Configuration**: .env files with python-dotenv
-- **Logging**: Loguru for structured logging
 
-## Project Structure
+## 30-Second Setup (Per-Project)
 
-```
-cognitive-memory/
-├── cognitive_memory/           # Core system
-│   ├── core/                  # Cognitive interfaces and models
-│   ├── encoding/              # Multi-dimensional encoding (Phase 1)
-│   ├── storage/               # Memory persistence
-│   └── retrieval/             # Activation and bridge discovery (Phase 1)
-├── interfaces/                # API implementations (Phase 1)
-├── data/                      # Local data storage
-├── tests/                     # Unit and integration tests
-└── docs/                      # Documentation and progress tracking
-```
-
-## Quick Start
-
-### Prerequisites
-
-- Python 3.13
-- Qdrant server (for vector storage)
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone <repository-url>
-cd cognitive-memory
-```
-
-2. Set up Python environment:
-```bash
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Install development dependencies (optional):
-```bash
-pip install -r requirements-dev.txt
-```
-
-5. Set up configuration:
-```bash
-cp .env.template .env
-# Edit .env with your configuration
-```
-
-### Running Tests
+**Important**: Run this setup script from within your project repository - it creates a project-specific MCP server.
 
 ```bash
-# Run all tests
-pytest
+# Navigate to your project first
+cd /path/to/your/project
 
-# Run unit tests only
-pytest -m unit
-
-# Run with coverage
-pytest --cov=cognitive_memory
+# Run setup (creates isolated memory for THIS project only)
+/path/to/cognitive-memory-mcp/setup_claude_code_mcp.sh
 ```
 
-### Code Quality
+This automatically configures:
+- Project-isolated Docker containers with Qdrant + cognitive system
+- MCP server integration for Claude Code (project-specific)
+- Post-commit git hooks for pattern extraction from your repo
+- Memory tools available immediately in Claude sessions
 
-```bash
-# Lint and format code
-ruff check --fix
-ruff format
+**Result**: Your LLM now has persistent memory of THIS specific project, separate from your other projects.
 
-# Type checking
-mypy cognitive_memory/
+## MCP Tools Available
 
-# Run pre-commit hooks
-pre-commit run --all-files
+Your LLM gets access to these 4 memory tools via MCP protocol:
+
+**`store_memory`** - Store experiences and insights
+```
+# LLM calls this MCP tool:
+store_memory("Found that React components re-render unnecessarily when using object destructuring in useEffect dependencies", {
+  hierarchy_level: 1,
+  importance_score: 0.8,
+  tags: ["react", "performance"]
+})
 ```
 
-## Development Status
-
-**Current Phase**: Bootstrap Complete ✅
-- [x] Project structure and environment setup
-- [x] Core interfaces and data structures
-- [x] SQLite and Qdrant storage implementations
-- [x] Configuration management
-- [x] Testing framework
-- [x] Development tools and quality gates
-
-**Next Phase**: Phase 1 Implementation
-- [ ] Multi-dimensional encoding with Sentence-BERT
-- [ ] Basic activation spreading
-- [ ] Simple similarity-based retrieval
-- [ ] Rule-based dimension extraction
-
-See `docs/progress/` for detailed progress tracking.
-
-## Configuration
-
-The system uses environment variables for configuration. Key settings:
-
-```bash
-# Vector Database
-QDRANT_URL=http://localhost:6333
-QDRANT_API_KEY=optional_key
-
-# Database
-SQLITE_PATH=./data/cognitive_memory.db
-
-# Embeddings
-SENTENCE_BERT_MODEL=all-MiniLM-L6-v2
-
-# Cognitive Parameters
-ACTIVATION_THRESHOLD=0.7
-BRIDGE_DISCOVERY_K=5
-MAX_ACTIVATIONS=50
+**`recall_memories`** - Semantic search with rich context
+```
+# LLM calls this MCP tool:
+recall_memories("authentication timeout bug", {
+  types: ["core", "peripheral"],
+  max_results: 5
+})
+# Returns: similarity scores, source info, hierarchy levels, access patterns
 ```
 
-See `.env.template` for all available configuration options.
+**`session_lessons`** - Record key learnings for future sessions
+```
+# LLM calls this MCP tool:
+session_lessons("When debugging API issues, always check network tab first, then API logs, then client error handling", {
+  lesson_type: "pattern",
+  importance: "high"
+})
+```
 
-## Architecture
+**`memory_status`** - System health and statistics
+```
+# LLM calls this MCP tool:
+memory_status({detailed: true})
+# Shows: memory counts, storage stats, recent activity
+```
 
-The system follows a modular, interface-driven architecture:
+## What the LLM learns to remember
 
-- **Core Interfaces**: Abstract base classes for all major components
-- **Storage Layer**: SQLite for metadata, Qdrant for vectors
-- **Cognitive Layer**: Multi-dimensional encoding and processing
-- **API Layer**: CLI, MCP, and HTTP interfaces
+- **Project patterns** from git history (files that change together, common fixes)
+- **Session insights** stored via MCP calls during conversations
+- **Documentation** from markdown files in your repo
+- **Debugging approaches** that worked or failed
+- **Context** about ongoing work and decisions
 
-## Testing
+**Example conversation:**
+```
+You: "Having auth timeout issues again"
 
-The project includes comprehensive testing:
+LLM: [calls recall_memories("auth timeout")]
+     "Based on stored patterns:
+     • auth/middleware.py and auth/config.py change together 92% of the time
+     • Previous session lesson: 'Redis timeouts correlate with pool exhaustion'
+     • From commit 3cdc88: increasing pool size to 20+ fixed similar timeouts
+     • Check connection pool settings in auth/config.py"
+```
 
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: End-to-end workflow testing
-- **Performance Tests**: Latency and throughput benchmarks
-- **Cognitive Tests**: Bridge discovery and activation quality
+## How It Works Under the Hood
 
-## Contributing
+**For Developers Who Want to Know**:
+- We extract memories from project docs and git history, and encourage LLM to use record lessons learned.
+- Than we encod and store data on a Vector database Qdrant
+- We have some heuristics to try to fuzzy and semantic find useful memories depending on what LLM tries to recall
 
-1. Follow the established code style (enforced by ruff and black)
-2. Write tests for new functionality
-3. Update documentation as needed
-4. Use the pre-commit hooks for quality gates
+```
+Git History → Pattern Extraction → Multi-dimensional Memory
+     ↓                                      ↓
+Session Insights → Hierarchical Storage → Context-Aware Recall
+                         ↓
+               Cross-Reference Discovery
+```
+
+**Technology Stack**:
+- **Vector Storage**: Qdrant with project-specific collections
+- **Embeddings**: Sentence-BERT + git metadata extraction
+- **Memory Systems**: Session persistence + git pattern mining
+- **Integration**: MCP protocol for seamless Claude Code integration
+
+**What Makes It Different**:
+- **Git-Aware**: Mines your actual commit history for proven solutions
+- **Project-Isolated**: Each repo gets its own memory space
+- **Context-Rich**: Remembers not just what, but when, why, and how
+- **Pattern Learning**: Discovers co-change patterns and debugging approaches that work
+
+## Requirements
+
+- Docker
+
+## Roadmap
+
+- Git post-commit hooks for automatic pattern updates
+- Auto-detect new documents in shared docs directory
 
 ## License
 
-MIT License - see LICENSE file for details.
-
-## Resources
-
-- [Technical Architecture Specification](architecture-technical-specification.md)
-- [Progress Documentation](docs/progress/README.md)
-- [Qdrant Documentation](https://qdrant.tech/documentation/)
-- [Sentence-BERT Documentation](https://www.sbert.net/)
+Apache 2.0
