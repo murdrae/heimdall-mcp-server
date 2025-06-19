@@ -9,6 +9,7 @@ import re
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -92,7 +93,10 @@ class MarkdownMemoryLoader(MemoryLoader):
         path = Path(source_path)
         content = path.read_text(encoding="utf-8")
 
-        logger.info(f"Loading markdown from {source_path} ({len(content)} chars)")
+        # Capture file modification date
+        file_modified_date = datetime.fromtimestamp(path.stat().st_mtime)
+
+        logger.info(f"Loading markdown from {source_path} ({len(content)} chars), last modified: {file_modified_date}")
 
         # Extract chunks using header-based splitting
         chunks = list(self._chunk_markdown(content, source_path))
@@ -101,7 +105,7 @@ class MarkdownMemoryLoader(MemoryLoader):
         # Create CognitiveMemory objects with L0/L1/L2 classification
         memories = []
         for chunk_data in chunks:
-            memory = self._create_memory_from_chunk(chunk_data, source_path)
+            memory = self._create_memory_from_chunk(chunk_data, source_path, file_modified_date)
             memories.append(memory)
 
         logger.info(f"Created {len(memories)} memories from {source_path}")
@@ -512,7 +516,7 @@ class MarkdownMemoryLoader(MemoryLoader):
 # Old methods removed - replaced by hierarchical tree-based processing
 
     def _create_memory_from_chunk(
-        self, chunk_data: dict[str, Any], source_path: str
+        self, chunk_data: dict[str, Any], source_path: str, file_modified_date: datetime | None = None
     ) -> CognitiveMemory:
         """
         Create a CognitiveMemory object from chunk data.
@@ -520,6 +524,7 @@ class MarkdownMemoryLoader(MemoryLoader):
         Args:
             chunk_data: Structured chunk information
             source_path: Source file path
+            file_modified_date: File modification timestamp
 
         Returns:
             CognitiveMemory object with proper L0/L1/L2 classification
@@ -545,6 +550,9 @@ class MarkdownMemoryLoader(MemoryLoader):
             content=content,
             hierarchy_level=hierarchy_level,
             strength=1.0,  # Initial full strength
+            created_date=datetime.now(),
+            modified_date=file_modified_date,
+            source_date=file_modified_date,  # For markdown files, source date is the file modification date
             metadata={
                 "title": title,
                 "source_path": source_path,
@@ -559,6 +567,7 @@ class MarkdownMemoryLoader(MemoryLoader):
                 "sentiment": sentiment,
                 "loader_type": "markdown",
                 "memory_version": "hierarchical_v1",  # Track the new memory format
+                "file_modified_date": file_modified_date.isoformat() if file_modified_date else None,
             },
         )
 

@@ -102,6 +102,11 @@ class CognitiveConfig:
     max_activations: int = 50
     consolidation_threshold: int = 100
 
+    # Date-based ranking parameters
+    similarity_closeness_threshold: float = 0.05
+    modification_date_weight: float = 0.3
+    modification_recency_decay_days: float = 30.0
+
     # Dimension weights for fusion
     emotional_weight: float = 0.2
     temporal_weight: float = 0.15
@@ -143,6 +148,15 @@ class CognitiveConfig:
             max_activations=int(os.getenv("MAX_ACTIVATIONS", str(cls.max_activations))),
             consolidation_threshold=int(
                 os.getenv("CONSOLIDATION_THRESHOLD", str(cls.consolidation_threshold))
+            ),
+            similarity_closeness_threshold=float(
+                os.getenv("SIMILARITY_CLOSENESS_THRESHOLD", str(cls.similarity_closeness_threshold))
+            ),
+            modification_date_weight=float(
+                os.getenv("MODIFICATION_DATE_WEIGHT", str(cls.modification_date_weight))
+            ),
+            modification_recency_decay_days=float(
+                os.getenv("MODIFICATION_RECENCY_DECAY_DAYS", str(cls.modification_recency_decay_days))
             ),
             emotional_weight=float(
                 os.getenv("EMOTIONAL_WEIGHT", str(cls.emotional_weight))

@@ -33,6 +33,11 @@ class CognitiveMemory:
     decay_rate: float = 0.1
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    # Date fields for LLM visibility and ranking
+    created_date: datetime = field(default_factory=datetime.now)  # When memory was created
+    modified_date: datetime | None = None  # When source content was last modified
+    source_date: datetime | None = None  # Original date of the source (e.g., commit date, document date)
+
     # Additional attributes for storage compatibility
     strength: float = 1.0  # Memory strength (0.0-1.0)
     tags: list[str] | None = None  # Optional tags for categorization
@@ -82,6 +87,9 @@ class CognitiveMemory:
             "memory_type": self.memory_type,
             "decay_rate": self.decay_rate,
             "metadata": self.metadata,
+            "created_date": self.created_date.isoformat(),
+            "modified_date": self.modified_date.isoformat() if self.modified_date else None,
+            "source_date": self.source_date.isoformat() if self.source_date else None,
         }
 
     @classmethod
@@ -99,6 +107,9 @@ class CognitiveMemory:
             memory_type=data.get("memory_type", "episodic"),
             decay_rate=data.get("decay_rate", 0.1),
             metadata=data.get("metadata", {}),
+            created_date=datetime.fromisoformat(data.get("created_date", data["timestamp"])),
+            modified_date=datetime.fromisoformat(data["modified_date"]) if data.get("modified_date") else None,
+            source_date=datetime.fromisoformat(data["source_date"]) if data.get("source_date") else None,
         )
 
         if data["cognitive_embedding"] is not None:

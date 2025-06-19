@@ -31,6 +31,7 @@ class SimilaritySearch:
         recency_weight: float = 0.2,
         similarity_weight: float = 0.8,
         recency_decay_hours: float = 168.0,  # 1 week
+        cognitive_config: Any = None,  # CognitiveConfig for date-based ranking
     ):
         """
         Initialize similarity search.
@@ -40,9 +41,11 @@ class SimilaritySearch:
             recency_weight: Weight for recency bias (0.0 to 1.0)
             similarity_weight: Weight for similarity score (0.0 to 1.0)
             recency_decay_hours: Hours for exponential recency decay
+            cognitive_config: Configuration for date-based ranking parameters
         """
         self.memory_storage = memory_storage
         self.recency_decay_hours = recency_decay_hours
+        self.cognitive_config = cognitive_config
 
         # Validate and normalize weights
         total_weight = recency_weight + similarity_weight
@@ -100,6 +103,10 @@ class SimilaritySearch:
                     query_vector, level_memories, min_similarity, include_recency_bias
                 )
                 all_results.extend(level_results)
+
+            # Apply date-based secondary ranking if enabled
+            if self.cognitive_config and hasattr(self.cognitive_config, 'similarity_closeness_threshold'):
+                all_results = self._apply_date_based_ranking(all_results)
 
             # Sort by combined score and return top-k
             all_results.sort(
@@ -409,3 +416,198 @@ class SimilaritySearch:
             )
         else:
             logger.warning("Invalid decay hours provided, keeping current value")
+
+    def _apply_date_based_ranking(self, results: list[SearchResult]) -> list[SearchResult]:
+        """
+        Apply date-based secondary ranking to closely-scored memories.
+
+        Groups results by similarity score clusters and applies modification
+        date recency as a secondary ranking factor for close scores.
+
+        Args:
+            results: List of search results to re-rank
+
+        Returns:
+            Re-ranked list of search results
+        """
+        if not results or not self.cognitive_config:
+            return results
+
+        threshold = self.cognitive_config.similarity_closeness_threshold
+        modification_weight = self.cognitive_config.modification_date_weight
+        
+        # Group results into similarity clusters
+        clusters = self._group_by_similarity_threshold(results, threshold)
+        
+        final_results = []
+        for cluster in clusters:
+            if len(cluster) > 1:
+                # Apply secondary ranking by modification date for clusters with multiple results
+                for result in cluster:
+                    mod_recency = self._calculate_modification_recency_score(result.memory)
+                    
+                    # Blend existing combined score with modification recency
+                    original_score = getattr(result, "combined_score", result.similarity_score)
+                    result.combined_score = self._blend_with_modification_score(
+                        original_score, mod_recency, modification_weight
+                    )
+                
+                # Re-sort cluster by new combined score
+                cluster.sort(key=lambda r: r.combined_score, reverse=True)
+            
+            final_results.extend(cluster)
+        
+        return final_results
+
+    def _group_by_similarity_threshold(
+        self, results: list[SearchResult], threshold: float
+    ) -> list[list[SearchResult]]:
+        """
+        Group results into clusters based on similarity score closeness.
+
+        Args:
+            results: List of search results to group
+            threshold: Similarity threshold for grouping
+
+        Returns:
+            List of result clusters
+        """
+        if not results:
+            return []
+        
+        # Sort by similarity score first
+        sorted_results = sorted(results, key=lambda r: r.similarity_score, reverse=True)
+        
+        clusters = []
+        current_cluster = [sorted_results[0]]
+        
+        for i in range(1, len(sorted_results)):
+            current_result = sorted_results[i]
+            last_in_cluster = current_cluster[-1]
+            
+            # Check if within threshold of the cluster
+            score_diff = abs(last_in_cluster.similarity_score - current_result.similarity_score)
+            
+            if score_diff <= threshold:
+                current_cluster.append(current_result)
+            else:
+                # Start new cluster
+                clusters.append(current_cluster)
+                current_cluster = [current_result]
+        
+        # Add the last cluster
+        if current_cluster:
+            clusters.append(current_cluster)
+        
+        return clusters
+
+    def _calculate_modification_recency_score(self, memory: CognitiveMemory) -> float:
+        """
+        Calculate modification recency score based on when content was last modified.
+
+        Args:
+            memory: Memory to calculate modification recency for
+
+        Returns:
+            Modification recency score (0.0 to 1.0, higher = more recent)
+        """
+        try:
+            # Get the modification date from the memory
+            modification_date = self._get_memory_modification_date(memory)
+            
+            if modification_date is None:
+                return 0.0  # No modification date available
+            
+            # Calculate days since modification
+            time_diff = datetime.now() - modification_date
+            days_elapsed = time_diff.total_seconds() / 86400
+            
+            # Exponential decay based on configured decay period
+            decay_days = self.cognitive_config.modification_recency_decay_days
+            recency_score = torch.exp(torch.tensor(-days_elapsed / decay_days))
+            
+            # Clamp to [0, 1] range
+            return float(torch.clamp(recency_score, 0.0, 1.0).item())
+        
+        except Exception as e:
+            logger.warning(
+                "Modification recency score calculation failed", 
+                memory_id=memory.id, 
+                error=str(e)
+            )
+            return 0.0  # Default neutral score
+
+    def _get_memory_modification_date(self, memory: CognitiveMemory) -> datetime | None:
+        """
+        Extract modification date from memory.
+
+        Tries multiple sources in order of preference:
+        1. memory.modified_date (explicit field)
+        2. memory.source_date (source content date)
+        3. memory.metadata['file_modified_date'] (legacy field)
+        4. memory.timestamp (fallback)
+
+        Args:
+            memory: Memory to extract modification date from
+
+        Returns:
+            Modification datetime or None if not available
+        """
+        # Try explicit modified_date field first
+        if hasattr(memory, 'modified_date') and memory.modified_date:
+            return memory.modified_date
+        
+        # Try source_date field
+        if hasattr(memory, 'source_date') and memory.source_date:
+            return memory.source_date
+        
+        # Try metadata fields for backward compatibility
+        if memory.metadata:
+            # Check for file modification date in metadata
+            file_mod_date_str = memory.metadata.get('file_modified_date')
+            if file_mod_date_str:
+                try:
+                    return datetime.fromisoformat(file_mod_date_str)
+                except (ValueError, TypeError):
+                    pass
+            
+            # Check for git commit dates
+            latest_commit_date_str = memory.metadata.get('latest_commit_date')
+            if latest_commit_date_str:
+                try:
+                    return datetime.fromisoformat(latest_commit_date_str)
+                except (ValueError, TypeError):
+                    pass
+        
+        # Fallback to memory timestamp
+        return memory.timestamp
+
+    def _blend_with_modification_score(
+        self, original_score: float, modification_score: float, modification_weight: float
+    ) -> float:
+        """
+        Blend original similarity score with modification recency score.
+
+        Args:
+            original_score: Original combined score (similarity + access recency)
+            modification_score: Modification recency score
+            modification_weight: Weight for modification score blending
+
+        Returns:
+            Blended score incorporating modification recency
+        """
+        # Use weighted average approach to prevent ceiling effects
+        # This ensures that both high and low similarity scores can benefit from modification recency
+        mod_weight = min(modification_weight, 0.5)  # Cap at 50% influence
+        
+        # Calculate weighted average instead of addition to avoid ceiling effects
+        blended_score = (1.0 - mod_weight) * original_score + mod_weight * modification_score
+        
+        # For very close similarity scores, add a small boost for modification recency
+        # This ensures recent memories get a slight edge when similarities are nearly identical
+        if modification_score > 0.5:  # Only boost if modification is reasonably recent
+            boost = mod_weight * 0.1 * modification_score  # Small boost
+            blended_score += boost
+        
+        # Ensure result stays within reasonable bounds
+        return min(1.0, blended_score)

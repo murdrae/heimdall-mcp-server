@@ -6,6 +6,7 @@ patterns and converting them into cognitive memories with deterministic IDs for
 upsert operations and seamless integration with the memory pipeline.
 """
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -306,11 +307,17 @@ class GitHistoryLoader(MemoryLoader):
         # Classify as L1 (Context) - moderate detail co-change information
         hierarchy_level = 1
 
+        # Extract most recent change timestamp if available
+        latest_commit_date = pattern.get("latest_commit_date")
+        
         return CognitiveMemory(
             id=memory_id,
             content=content,
             hierarchy_level=hierarchy_level,
             strength=min(1.0, pattern.get("confidence_score", 0.5)),
+            created_date=datetime.now(),
+            modified_date=latest_commit_date,
+            source_date=latest_commit_date,  # For git patterns, source date is the latest commit affecting the pattern
             metadata={
                 "pattern_type": "cochange",
                 "source_path": source_path,
@@ -321,6 +328,7 @@ class GitHistoryLoader(MemoryLoader):
                 "quality_rating": pattern.get("quality_rating", "unknown"),
                 "loader_type": "git",
                 "git_pattern_version": "1.0",
+                "latest_commit_date": latest_commit_date.isoformat() if latest_commit_date else None,
             },
         )
 
@@ -337,11 +345,17 @@ class GitHistoryLoader(MemoryLoader):
         # Classify as L1 (Context) - maintenance information with moderate detail
         hierarchy_level = 1
 
+        # Extract most recent problem timestamp if available
+        latest_problem_date = pattern.get("latest_problem_date")
+
         return CognitiveMemory(
             id=memory_id,
             content=content,
             hierarchy_level=hierarchy_level,
             strength=min(1.0, pattern.get("hotspot_score", 0.5)),
+            created_date=datetime.now(),
+            modified_date=latest_problem_date,
+            source_date=latest_problem_date,  # For hotspots, source date is the latest problem occurrence
             metadata={
                 "pattern_type": "hotspot",
                 "source_path": source_path,
@@ -352,6 +366,7 @@ class GitHistoryLoader(MemoryLoader):
                 "recent_problems": pattern.get("recent_problems", []),
                 "loader_type": "git",
                 "git_pattern_version": "1.0",
+                "latest_problem_date": latest_problem_date.isoformat() if latest_problem_date else None,
             },
         )
 
@@ -370,11 +385,17 @@ class GitHistoryLoader(MemoryLoader):
         # Classify as L2 (Episode) - specific fix examples with full context
         hierarchy_level = 2
 
+        # Extract most recent solution timestamp if available
+        latest_solution_date = pattern.get("latest_solution_date")
+
         return CognitiveMemory(
             id=memory_id,
             content=content,
             hierarchy_level=hierarchy_level,
             strength=min(1.0, pattern.get("applicability_confidence", 0.5)),
+            created_date=datetime.now(),
+            modified_date=latest_solution_date,
+            source_date=latest_solution_date,  # For solutions, source date is the latest solution application
             metadata={
                 "pattern_type": "solution",
                 "source_path": source_path,
@@ -387,6 +408,7 @@ class GitHistoryLoader(MemoryLoader):
                 "example_fixes": pattern.get("example_fixes", []),
                 "loader_type": "git",
                 "git_pattern_version": "1.0",
+                "latest_solution_date": latest_solution_date.isoformat() if latest_solution_date else None,
             },
         )
 
