@@ -4,7 +4,7 @@
 # ============================================================================
 # Builder Stage: Install dependencies and download models
 # ============================================================================
-FROM python:3.13-slim as builder
+FROM python:3.13-slim AS builder
 
 # Install system dependencies for building
 RUN apt-get update && apt-get install -y \
@@ -22,10 +22,11 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 WORKDIR /app
 
 # Copy requirements first for better caching
-COPY requirements.txt requirements-dev.txt ./
+COPY requirements.in ./
 
-# Install Python dependencies
-RUN pip install --upgrade pip setuptools wheel && \
+# Install pip-tools and generate requirements.txt
+RUN pip install --upgrade pip setuptools wheel pip-tools && \
+    pip-compile requirements.in && \
     pip install -r requirements.txt
 
 # Copy source code
@@ -35,24 +36,26 @@ COPY . .
 RUN pip install -e .
 
 # Pre-download sentence-transformers models to avoid runtime downloads
-RUN python -c "
-import sentence_transformers
-model = sentence_transformers.SentenceTransformer('all-MiniLM-L6-v2')
-print('✅ Model downloaded successfully')
-"
+RUN mkdir -p /app/models && \
+    python -c "\
+import sentence_transformers; \
+import os; \
+os.environ['SENTENCE_TRANSFORMERS_HOME'] = '/app/models'; \
+model = sentence_transformers.SentenceTransformer('all-MiniLM-L6-v2'); \
+print('✅ Model downloaded successfully')"
 
 # ============================================================================
 # Runtime Stage: Minimal production image
 # ============================================================================
-FROM python:3.13-slim as runtime
+FROM python:3.13-slim AS runtime
 
 # Install runtime system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for security
-RUN groupadd -r cognitive && useradd -r -g cognitive cognitive
+# No need to create users - we'll run as host user via docker-compose
 
 # Set up Python environment
 ENV PYTHONUNBUFFERED=1
@@ -60,8 +63,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PATH="/home/cognitive/.local/bin:$PATH"
 
 # Create application directories
-RUN mkdir -p /app/data /app/logs /app/models && \
-    chown -R cognitive:cognitive /app
+RUN mkdir -p /app/data /app/logs /app/models
 
 # Switch to application directory
 WORKDIR /app
@@ -74,10 +76,10 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
 
 # Copy pre-downloaded models
-COPY --from=builder /root/.cache/torch/sentence_transformers /home/cognitive/.cache/torch/sentence_transformers
+COPY --from=builder /app/models /app/models
 
-# Fix ownership for copied files
-RUN chown -R cognitive:cognitive /app /home/cognitive
+# Just copy the files - permissions will be handled by user mapping
+# No need for complex ownership changes
 
 # Copy entrypoint script
 COPY docker/entrypoint.sh /entrypoint.sh
@@ -87,26 +89,29 @@ RUN chmod +x /entrypoint.sh
 COPY docker/healthcheck.sh /healthcheck.sh
 RUN chmod +x /healthcheck.sh
 
-# Set up environment variables
+# Set up environment variables (consistent with .env.template)
 ENV QDRANT_URL=http://qdrant:6333
-ENV MCP_SERVER_HOST=0.0.0.0
-ENV MCP_SERVER_PORT=8080
+ENV SQLITE_PATH=/app/data/cognitive_memory.db
 ENV SENTENCE_BERT_MODEL=all-MiniLM-L6-v2
-ENV COGNITIVE_MEMORY_DB_PATH=/app/data/cognitive_memory.db
+ENV MODEL_CACHE_DIR=/app/models
+ENV SENTENCE_TRANSFORMERS_HOME=/app/models
+ENV LOG_LEVEL=INFO
+ENV ACTIVATION_THRESHOLD=0.7
+ENV BRIDGE_DISCOVERY_K=5
+ENV MAX_ACTIVATIONS=50
 ENV PYTHONPATH=/app
+# HOME will be set by user mapping in docker-compose
 
-# Expose MCP server port
-EXPOSE 8080
+# No exposed ports - MCP server runs on-demand via stdio
 
 # Set up health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD /healthcheck.sh
 
-# Switch to non-root user
-USER cognitive
+# User will be set by docker-compose user mapping
 
 # Set entrypoint
 ENTRYPOINT ["/entrypoint.sh"]
 
-# Default command
-CMD ["memory_system", "serve", "mcp", "--port", "8080", "--host", "0.0.0.0"]
+# Default command - keep container running for on-demand MCP server access
+CMD ["tail", "-f", "/dev/null"]

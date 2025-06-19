@@ -192,7 +192,13 @@ class InteractiveShell:
         }
 
         # Set up prompt_toolkit session with history, styling, and completion
-        history_file = Path.home() / ".cognitive_memory_history"
+        # Use /app/data for history file to avoid permissions issues in container
+        data_dir = Path("/app/data")
+        if data_dir.exists() and data_dir.is_dir():
+            history_file = data_dir / ".cognitive_memory_history"
+        else:
+            # Fallback to current directory if /app/data doesn't exist
+            history_file = Path(".cognitive_memory_history")
         self.prompt_style = Style.from_dict(
             {
                 "prompt": "#00aa00 bold",  # Bright green, similar to original

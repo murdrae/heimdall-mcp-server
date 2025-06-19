@@ -49,8 +49,8 @@ generate_project_config() {
     CONTAINER_PREFIX="cognitive-memory-$PROJECT_HASH"
     QDRANT_CONTAINER="qdrant-$PROJECT_HASH"
 
-    # Data directories
-    PROJECT_DATA_DIR="$HOME/.cognitive-memory/projects/$PROJECT_HASH"
+    # Data directories - store in project directory
+    PROJECT_DATA_DIR="$PROJECT_PATH/.cognitive-memory"
 
     # Compose file
     COMPOSE_FILE="$PROJECT_DATA_DIR/docker-compose.yml"
@@ -93,10 +93,21 @@ create_compose_file() {
 
     # Create data directory structure
     mkdir -p "$PROJECT_DATA_DIR"/{qdrant,cognitive,logs,models}
+    
+    # Only set permissions on new/empty directories to avoid conflicts with running containers
+    if [ ! -f "$PROJECT_DATA_DIR/cognitive/cognitive_memory.db" ]; then
+        chmod -R 755 "$PROJECT_DATA_DIR/cognitive" 2>/dev/null || true
+    fi
 
     # Generate compose file from template
     cp "$REPO_ROOT/docker/docker-compose.template.yml" "$COMPOSE_FILE"
 
+    # Get host user/group IDs to ensure proper file ownership
+    HOST_UID=$(id -u)
+    HOST_GID=$(id -g)
+    
+    log_info "Using host UID:GID $HOST_UID:$HOST_GID for container user mapping"
+    
     # Substitute variables in compose file
     sed -i.bak \
         -e "s/\${PROJECT_HASH}/$PROJECT_HASH/g" \
@@ -104,6 +115,8 @@ create_compose_file() {
         -e "s/\${QDRANT_PORT}/$QDRANT_PORT/g" \
         -e "s/\${MCP_SERVER_PORT}/$MCP_SERVER_PORT/g" \
         -e "s|\${PROJECT_DATA_DIR}|$PROJECT_DATA_DIR|g" \
+        -e "s/\${HOST_UID}/$HOST_UID/g" \
+        -e "s/\${HOST_GID}/$HOST_GID/g" \
         "$COMPOSE_FILE"
 
     # Remove backup file
@@ -117,14 +130,21 @@ build_image() {
     log_info "Checking cognitive memory Docker image..."
 
     cd "$REPO_ROOT"
-
-    # Check if image exists
-    if ! docker image inspect cognitive-memory:latest &> /dev/null; then
-        log_info "Building cognitive memory Docker image..."
-        docker build -f docker/Dockerfile -t cognitive-memory:latest .
-        log_success "Docker image built successfully"
+    
+    local image_name="cognitive-memory:$PROJECT_HASH"
+    local build_args=""
+    
+    # Check if rebuild was requested or image doesn't exist
+    if [[ "${FORCE_REBUILD:-}" == "true" ]]; then
+        log_info "Force rebuilding cognitive memory Docker image: $image_name"
+        docker build -f docker/Dockerfile -t "$image_name" .
+        log_success "Docker image rebuilt successfully: $image_name"
+    elif ! docker image inspect "$image_name" &> /dev/null; then
+        log_info "Building project-specific cognitive memory Docker image: $image_name"
+        docker build -f docker/Dockerfile -t "$image_name" .
+        log_success "Docker image built successfully: $image_name"
     else
-        log_info "Docker image already exists"
+        log_info "Project-specific Docker image already exists: $image_name"
     fi
 }
 
@@ -132,12 +152,13 @@ build_image() {
 start_containers() {
     log_info "Starting project containers..."
 
-    cd "$(dirname "$COMPOSE_FILE")"
+    # Change to repo root for build context
+    cd "$REPO_ROOT"
 
     # Set build context to repo root
     export DOCKER_BUILDKIT=1
 
-    # Start services
+    # Start services with correct compose file path
     $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build
 
     log_success "Containers started successfully"
@@ -147,14 +168,15 @@ start_containers() {
 wait_for_health() {
     log_info "Waiting for services to become healthy..."
 
-    local max_wait=120
+    local max_wait=60
     local elapsed=0
 
     while [ $elapsed -lt $max_wait ]; do
         # Check Qdrant health
-        if curl -s -f "http://localhost:$QDRANT_PORT/health" > /dev/null 2>&1; then
-            # Check cognitive memory health
-            if curl -s -f "http://localhost:$MCP_SERVER_PORT/health" > /dev/null 2>&1; then
+        if curl -s -f "http://localhost:$QDRANT_PORT/" > /dev/null 2>&1; then
+            log_success "QDRANT is healthy"
+            # For stdio mode, just check if container is running and responsive
+            if docker exec "$CONTAINER_PREFIX" memory_system doctor --json > /dev/null 2>&1; then
                 log_success "All services are healthy"
                 return 0
             fi
@@ -170,28 +192,6 @@ wait_for_health() {
     return 1
 }
 
-# Configure Claude Code MCP
-configure_claude_mcp() {
-    log_info "Configuring Claude Code MCP integration..."
-
-    # Check if claude command is available
-    if ! command -v claude &> /dev/null; then
-        log_warning "Claude CLI not found. Skipping MCP configuration."
-        log_info "Please install Claude CLI and run: claude mcp add --scope project cognitive-memory http://localhost:$MCP_SERVER_PORT/mcp"
-        return 0
-    fi
-
-    # Add MCP server to Claude configuration
-    if claude mcp add --scope project \
-        --name "cognitive-memory-$PROJECT_HASH" \
-        --transport http \
-        "http://localhost:$MCP_SERVER_PORT/mcp"; then
-        log_success "Claude Code MCP configured successfully"
-    else
-        log_warning "Failed to configure Claude Code MCP. You can configure manually:"
-        log_info "claude mcp add --scope project cognitive-memory-$PROJECT_HASH http://localhost:$MCP_SERVER_PORT/mcp"
-    fi
-}
 
 # Display setup summary
 show_summary() {
@@ -203,23 +203,8 @@ show_summary() {
     echo "  Path: $PROJECT_PATH"
     echo "  Hash: $PROJECT_HASH"
     echo ""
-    echo "Service URLs:"
-    echo "  Qdrant:     http://localhost:$QDRANT_PORT"
-    echo "  MCP Server: http://localhost:$MCP_SERVER_PORT/mcp"
-    echo "  Health:     http://localhost:$MCP_SERVER_PORT/health"
-    echo ""
-    echo "Container Names:"
-    echo "  Qdrant:    $QDRANT_CONTAINER"
-    echo "  Memory:    $CONTAINER_PREFIX"
-    echo ""
-    echo "Data Directory: $PROJECT_DATA_DIR"
-    echo "Compose File:   $COMPOSE_FILE"
-    echo ""
-    echo "Management Commands:"
-    echo "  Start:   $SCRIPT_DIR/start_memory.sh"
-    echo "  Stop:    $SCRIPT_DIR/stop_memory.sh"
-    echo "  Logs:    $COMPOSE_CMD -f '$COMPOSE_FILE' logs -f"
-    echo "  Status:  $COMPOSE_CMD -f '$COMPOSE_FILE' ps"
+    echo "Qdrant:     http://localhost:$QDRANT_PORT"
+    echo "Data:       $PROJECT_DATA_DIR"
     echo ""
 }
 
@@ -248,8 +233,8 @@ main() {
     log_info "Setting up cognitive memory for project: $PROJECT_PATH"
     log_info "Project hash: $PROJECT_HASH"
 
-    # Check if already configured
-    if [ -f "$COMPOSE_FILE" ] && docker ps --format "table {{.Names}}" | grep -q "$CONTAINER_PREFIX"; then
+    # Check if already configured (skip if rebuilding)
+    if [[ "${FORCE_REBUILD:-}" != "true" ]] && [ -f "$COMPOSE_FILE" ] && docker ps --format "table {{.Names}}" | grep -q "$CONTAINER_PREFIX"; then
         log_warning "Cognitive memory is already configured for this project"
         show_summary
         exit 0
@@ -261,11 +246,11 @@ main() {
     build_image
     start_containers
 
-    # Wait for health and configure
+    # Wait for health and show summary
     if wait_for_health; then
-        configure_claude_mcp
         show_summary
         log_success "Setup completed successfully!"
+        log_info "Use setup_claude_code_mcp.sh for MCP configuration"
     else
         log_error "Setup failed - services are not healthy"
         exit 1
@@ -288,11 +273,24 @@ case "${1:-}" in
         ;;
     --cleanup)
         generate_project_config
+        # Initialize compose command
+        if docker compose version &> /dev/null; then
+            COMPOSE_CMD="docker compose"
+        else
+            COMPOSE_CMD="docker-compose"
+        fi
         log_info "Cleaning up project containers..."
         if [ -f "$COMPOSE_FILE" ]; then
             cd "$(dirname "$COMPOSE_FILE")"
             $COMPOSE_CMD -f "$COMPOSE_FILE" down --volumes --remove-orphans
-            rm -rf "$PROJECT_DATA_DIR"
+            
+            # Fix any permission issues before removal
+            if [ -d "$PROJECT_DATA_DIR" ]; then
+                log_info "Fixing permissions before cleanup..."
+                # Try to fix ownership if needed (will fail gracefully if not needed)
+                docker run --rm -v "$PROJECT_DATA_DIR:/cleanup" --user root alpine chown -R $(id -u):$(id -g) /cleanup 2>/dev/null || true
+                rm -rf "$PROJECT_DATA_DIR"
+            fi
             log_success "Cleanup completed"
         else
             log_info "No containers found to clean up"
@@ -300,8 +298,27 @@ case "${1:-}" in
         exit 0
         ;;
     --rebuild)
-        cd "$REPO_ROOT"
-        docker rmi cognitive-memory:latest 2>/dev/null || true
+        generate_project_config
+        # Initialize compose command
+        if docker compose version &> /dev/null; then
+            COMPOSE_CMD="docker compose"
+        else
+            COMPOSE_CMD="docker-compose"
+        fi
+        log_info "Forcing complete rebuild of project containers..."
+        
+        # Stop and remove existing containers
+        if [ -f "$COMPOSE_FILE" ]; then
+            log_info "Stopping and removing existing containers..."
+            $COMPOSE_CMD -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+        fi
+        
+        # Remove existing image
+        image_name="cognitive-memory:$PROJECT_HASH"
+        docker rmi "$image_name" 2>/dev/null || true
+        log_info "Removed existing image: $image_name"
+        
+        export FORCE_REBUILD=true
         ;;
 esac
 
