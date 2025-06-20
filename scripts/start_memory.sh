@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Start script for project-scoped cognitive memory containers
+# Start script for project-scoped Heimdall MCP containers
 # This script starts existing containers for the current project
 
 # Colors for output
@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 # Configuration
 PROJECT_PATH="$(pwd)"
 PROJECT_HASH=$(echo "$PROJECT_PATH" | sha256sum | cut -c1-8)
-PROJECT_DATA_DIR="$HOME/.cognitive-memory/projects/$PROJECT_HASH"
+PROJECT_DATA_DIR="$HOME/.heimdall-mcp/projects/$PROJECT_HASH"
 COMPOSE_FILE="$PROJECT_DATA_DIR/docker-compose.yml"
 
 # Utility functions
@@ -43,7 +43,7 @@ fi
 
 # Main execution
 main() {
-    echo "🚀 Starting Cognitive Memory Containers"
+    echo "🚀 Starting Heimdall MCP Containers"
     echo "======================================="
     echo ""
 
@@ -52,7 +52,7 @@ main() {
 
     # Check if compose file exists
     if [ ! -f "$COMPOSE_FILE" ]; then
-        log_error "No cognitive memory setup found for this project"
+        log_error "No Heimdall MCP setup found for this project"
         log_info "Run: scripts/setup_project_memory.sh"
         exit 1
     fi

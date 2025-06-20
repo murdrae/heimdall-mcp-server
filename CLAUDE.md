@@ -1,6 +1,6 @@
 ## Project Overview
 
-**Cognitive Memory System** - An MCP server that provides Large Language Models with persistent memory across conversations. The system learns patterns from git history, stores insights from sessions, and enables intelligent knowledge consolidation for project-specific contexts.
+**Heimdall MCP Server** - An MCP server that provides Large Language Models with persistent memory across conversations. The system learns patterns from git history, stores insights from sessions, and enables intelligent knowledge consolidation for project-specific contexts.
 
 **Core Capabilities:**
 - Multi-dimensional memory encoding (semantic, emotional, temporal, contextual)
@@ -187,9 +187,9 @@ GIT_HOTSPOT_THRESHOLD=5
 3. **Update Progress**: Document significant changes in appropriate progress file
 4. **ALWAYS** commit at milestones. Never git add all files, manually list the files you worked on.
 
-## Cognitive Memory MCP Tools Usage
+## Heimdall MCP Tools Usage
 
-- Cognitive Memory MCP Tool usage is **HIGHLY ENCOURAGED**
+- Heimdall MCP Tool usage is **HIGHLY ENCOURAGED**
 - This tool allows you to recall_memories: remember what past versions of you had significant effort to learn
 - It also allows you to give session_lessons: important lessons that the future you can use
 

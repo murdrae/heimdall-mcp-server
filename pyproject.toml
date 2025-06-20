@@ -3,22 +3,19 @@ requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cognitive-memory"
+name = "heimdall-mcp-server"
 version = "0.1.0"
-description = "Cognitive Memory System for Large Language Models"
+description = "Cognitive Memory For LLM Across Coding Sessions"
 readme = "README.md"
 requires-python = ">=3.13"
-license = {text = "MIT"}
+license = {text = "Apache 2.0"}
 authors = [
-    {name = "Cognitive Memory Team"},
+    {name = "Lucas Castro"},
 ]
 keywords = ["ai", "memory", "cognitive", "llm", "embeddings"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+    "Operating System :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",

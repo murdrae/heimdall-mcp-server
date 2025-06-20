@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Setup script for project-scoped cognitive memory containers
+# Setup script for project-scoped Heimdall MCP containers
 # This script detects the current project and sets up isolated Docker containers
 
 # Colors for output
@@ -46,11 +46,11 @@ generate_project_config() {
     MCP_SERVER_PORT=$((8080 + ($HASH_DECIMAL % 1000)))
 
     # Container and volume names
-    CONTAINER_PREFIX="cognitive-memory-$PROJECT_HASH"
+    CONTAINER_PREFIX="heimdall-mcp-$PROJECT_HASH"
     QDRANT_CONTAINER="qdrant-$PROJECT_HASH"
 
     # Data directories - store in project directory
-    PROJECT_DATA_DIR="$PROJECT_PATH/.cognitive-memory"
+    PROJECT_DATA_DIR="$PROJECT_PATH/.heimdall-mcp"
 
     # Compose file
     COMPOSE_FILE="$PROJECT_DATA_DIR/docker-compose.yml"
@@ -125,22 +125,22 @@ create_compose_file() {
     log_success "Docker Compose file created: $COMPOSE_FILE"
 }
 
-# Build cognitive memory image if needed
+# Build Heimdall MCP image if needed
 build_image() {
-    log_info "Checking cognitive memory Docker image..."
+    log_info "Checking Heimdall MCP Docker image..."
 
     cd "$REPO_ROOT"
 
-    local image_name="cognitive-memory:$PROJECT_HASH"
+    local image_name="heimdall-mcp:$PROJECT_HASH"
     local build_args=""
 
     # Check if rebuild was requested or image doesn't exist
     if [[ "${FORCE_REBUILD:-}" == "true" ]]; then
-        log_info "Force rebuilding cognitive memory Docker image: $image_name"
+        log_info "Force rebuilding Heimdall MCP Docker image: $image_name"
         docker build -f docker/Dockerfile -t "$image_name" .
         log_success "Docker image rebuilt successfully: $image_name"
     elif ! docker image inspect "$image_name" &> /dev/null; then
-        log_info "Building project-specific cognitive memory Docker image: $image_name"
+        log_info "Building project-specific Heimdall MCP Docker image: $image_name"
         docker build -f docker/Dockerfile -t "$image_name" .
         log_success "Docker image built successfully: $image_name"
     else
@@ -196,7 +196,7 @@ wait_for_health() {
 # Display setup summary
 show_summary() {
     echo ""
-    echo "🧠 Cognitive Memory Setup Complete"
+    echo "🧠 Heimdall MCP Setup Complete"
     echo "=================================="
     echo ""
     echo "Project Information:"
@@ -220,7 +220,7 @@ cleanup_on_error() {
 
 # Main execution
 main() {
-    echo "🧠 Cognitive Memory Project Setup"
+    echo "🧠 Heimdall MCP Project Setup"
     echo "================================"
     echo ""
 
@@ -230,12 +230,12 @@ main() {
     # Generate configuration
     generate_project_config
 
-    log_info "Setting up cognitive memory for project: $PROJECT_PATH"
+    log_info "Setting up Heimdall MCP for project: $PROJECT_PATH"
     log_info "Project hash: $PROJECT_HASH"
 
     # Check if already configured (skip if rebuilding)
     if [[ "${FORCE_REBUILD:-}" != "true" ]] && [ -f "$COMPOSE_FILE" ] && docker ps --format "table {{.Names}}" | grep -q "$CONTAINER_PREFIX"; then
-        log_warning "Cognitive memory is already configured for this project"
+        log_warning "Heimdall MCP is already configured for this project"
         show_summary
         exit 0
     fi
@@ -262,7 +262,7 @@ case "${1:-}" in
     --help|-h)
         echo "Usage: $0 [options]"
         echo ""
-        echo "Setup project-scoped cognitive memory containers"
+        echo "Setup project-scoped Heimdall MCP containers"
         echo ""
         echo "Options:"
         echo "  --help, -h     Show this help message"
@@ -314,7 +314,7 @@ case "${1:-}" in
         fi
 
         # Remove existing image
-        image_name="cognitive-memory:$PROJECT_HASH"
+        image_name="heimdall-mcp:$PROJECT_HASH"
         docker rmi "$image_name" 2>/dev/null || true
         log_info "Removed existing image: $image_name"
 

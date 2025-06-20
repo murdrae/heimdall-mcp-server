@@ -4,10 +4,10 @@ set -e
 # Simple setup for Claude Code MCP integration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_HASH=$(echo "$(pwd)" | sha256sum | cut -c1-8)
-MCP_NAME="cognitive-memory-$PROJECT_HASH"
+MCP_NAME="heimdall-mcp-$PROJECT_HASH"
 WRAPPER_SCRIPT="$SCRIPT_DIR/scripts/claude_mcp_wrapper.sh"
 
-echo "🧠 Setting up Claude Code MCP for cognitive memory..."
+echo "🧠 Setting up Claude Code MCP for Heimdall..."
 
 # Setup containers (ignore health check failure since we use stdio not HTTP)
 "$SCRIPT_DIR/scripts/setup_project_memory.sh" "${1:-}" || true

@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Load project content into cognitive memory system
-# This script loads git history and markdown files from the current project into the containerized cognitive memory
+# Load project content into Heimdall MCP system
+# This script loads git history and markdown files from the current project into the containerized Heimdall MCP system
 
 # Colors for output
 RED='\033[0;31m'
@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_PATH="$(pwd)"
 PROJECT_HASH=$(echo "$PROJECT_PATH" | sha256sum | cut -c1-8)
-CONTAINER_NAME="cognitive-memory-$PROJECT_HASH"
+CONTAINER_NAME="heimdall-mcp-$PROJECT_HASH"
 
 # Utility functions
 log_info() {
@@ -72,7 +72,7 @@ check_git_repository() {
     return 0
 }
 
-# Load git history into cognitive memory
+# Load git history into Heimdall MCP
 load_git_history() {
     if ! check_git_repository; then
         log_info "Skipping git history loading (not a git repository)"
@@ -105,24 +105,24 @@ EOF
     fi
 }
 
-# Load markdown files into cognitive memory
+# Load markdown files into Heimdall MCP
 load_markdown_files() {
-    local docs_dir="$PROJECT_PATH/.cognitive-memory"
+    local docs_dir="$PROJECT_PATH/.heimdall-mcp"
 
-    # Check if .cognitive-memory directory exists
+    # Check if .heimdall-mcp directory exists
     if [ ! -d "$docs_dir" ]; then
-        log_info "No .cognitive-memory directory found in project"
+        log_info "No .heimdall-mcp directory found in project"
         log_info "Create $docs_dir and add markdown files to load them into memory"
         return 0
     fi
 
     log_info "Searching for markdown files in: $docs_dir"
 
-    # Find markdown files recursively in .cognitive-memory (following symlinks)
+    # Find markdown files recursively in .heimdall-mcp (following symlinks)
     local md_count=$(find -L "$docs_dir" -name "*.md" -type f | wc -l)
 
     if [ "$md_count" -eq 0 ]; then
-        log_info "No markdown files found in .cognitive-memory directory"
+        log_info "No markdown files found in .heimdall-mcp directory"
         return 0
     fi
 
@@ -133,7 +133,7 @@ load $docs_dir --recursive
 quit
 EOF
     then
-        log_success "Markdown files loaded successfully from .cognitive-memory"
+        log_success "Markdown files loaded successfully from .heimdall-mcp"
     else
         log_error "Failed to load markdown files"
         return 1
@@ -142,7 +142,7 @@ EOF
 
 # Show loading status
 show_status() {
-    log_info "Checking cognitive memory status..."
+    log_info "Checking Heimdall MCP status..."
     docker exec -i  "$CONTAINER_NAME" memory_system shell <<EOF
 status
 quit
@@ -153,7 +153,7 @@ EOF
 show_help() {
     echo "Usage: $0 [options]"
     echo ""
-    echo "Load project content into cognitive memory system"
+    echo "Load project content into Heimdall MCP system"
     echo ""
     echo "Options:"
     echo "  --help, -h        Show this help message"
@@ -165,17 +165,17 @@ show_help() {
     echo "Examples:"
     echo "  $0                    # Load both git history and markdown files"
     echo "  $0 --git-only         # Load only git history"
-    echo "  $0 --markdown-only    # Load only markdown files from .cognitive-memory/"
+    echo "  $0 --markdown-only    # Load only markdown files from .heimdall-mcp/"
     echo "  $0 --status           # Show memory status"
     echo ""
-    echo "Note: Markdown files should be placed in .cognitive-memory/ directory"
-    echo "      to be loaded into the cognitive memory system."
+    echo "Note: Markdown files should be placed in .heimdall-mcp/ directory"
+    echo "      to be loaded into the Heimdall MCP system."
     echo ""
 }
 
 # Main execution
 main() {
-    echo "🧠 Loading Project Content into Cognitive Memory"
+    echo "🧠 Loading Project Content into Heimdall MCP"
     echo "=============================================="
     echo ""
     echo "Project Path: $PROJECT_PATH"
@@ -241,7 +241,7 @@ EOF
         if [ "$load_markdown" = true ]; then
             echo ""
             echo "📄 Markdown Files:"
-            local docs_dir="$PROJECT_PATH/.cognitive-memory"
+            local docs_dir="$PROJECT_PATH/.heimdall-mcp"
             if [ -d "$docs_dir" ]; then
                 find -L "$docs_dir" -name "*.md" -type f | head -10
                 local total=$(find -L "$docs_dir" -name "*.md" -type f | wc -l)
@@ -249,7 +249,7 @@ EOF
                     echo "... and $((total - 10)) more files"
                 fi
             else
-                echo "No .cognitive-memory directory found"
+                echo "No .heimdall-mcp directory found"
                 echo "Create $docs_dir and add markdown files to load them"
             fi
         fi
@@ -269,7 +269,7 @@ EOF
     if [ "$success" = true ]; then
         log_success "All content loaded successfully!"
         echo ""
-        log_info "You can now use the cognitive memory system with your project content"
+        log_info "You can now use the Heimdall MCP system with your project content"
         log_info "Try: memory_system shell"
     else
         log_error "Some content failed to load. Check the logs above."

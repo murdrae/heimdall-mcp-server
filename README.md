@@ -24,10 +24,10 @@ This is not magic, it still depends on good documents, meaningful git commits an
 
 Tips:
 
-- Place architecture documents, guidelines, decisions, etc in `.cognitive-memory` (or symlink to them)
+- Place architecture documents, guidelines, decisions, etc in `.heimdall-mcp` (or symlink to them)
 - Try to NOT INCLUDE PROGRESS, STATUS, PROJECT MANAGEMENT docs. It is easier to @ tag them in the conversation and it would only confuse LLM context.
 - Instruct LLM to use meaningful git messages
-- See CLAUDE.md for Cognitive Memory MCP related rules
+- See CLAUDE.md for Heimdall MCP related rules
 
 ## 30-Second Setup
 
@@ -38,11 +38,11 @@ Tips:
 cd /path/to/your/project
 
 # Run setup (creates isolated memory for THIS project only)
-/path/to/cognitive-memory-mcp/setup_claude_code_mcp.sh
-# Save MD documents you want to feed into the cognitive system in .cognitive-memory
+/path/to/heimdall-mcp/setup_claude_code_mcp.sh
+# Save MD documents you want to feed into the cognitive system in .heimdall-mcp
 # You can symlink to some other directory you normally use, like docs/arch-docs
 # Then load the MD files and git history into the cognitive system:
-/path/to/cognitive-memory-mcp/scripts/load_project_content.sh 
+/path/to/heimdall-mcp/scripts/load_project_content.sh
 ```
 
 This automatically configures:

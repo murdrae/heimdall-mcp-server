@@ -1,4 +1,4 @@
-# Docker Compose Template for Cognitive Memory System
+# Docker Compose Template for Heimdall MCP Server
 # This template is used by setup scripts to generate project-specific configurations
 # Variables are substituted by the setup script during deployment
 
@@ -24,11 +24,11 @@ services:
       start_period: 30s
     restart: unless-stopped
     networks:
-      - cognitive-network
+      - heimdall-network
 
-  cognitive-memory:
-    container_name: "cognitive-memory-${PROJECT_HASH}"
-    image: "cognitive-memory:${PROJECT_HASH}"
+  heimdall-mcp:
+    container_name: "heimdall-mcp-${PROJECT_HASH}"
+    image: "heimdall-mcp:${PROJECT_HASH}"
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     environment:
       # Project-specific configuration
@@ -54,7 +54,7 @@ services:
       - PYTHONPATH=/app
       - LOG_LEVEL=INFO
     volumes:
-      - "${PROJECT_DATA_DIR}/cognitive:/app/data"
+      - "${PROJECT_DATA_DIR}/heimdall:/app/data"
       - "${PROJECT_PATH}:${PROJECT_PATH}:ro"
     depends_on:
       - qdrant
@@ -66,19 +66,19 @@ services:
       start_period: 60s
     restart: unless-stopped
     networks:
-      - cognitive-network
+      - heimdall-network
 
 volumes:
   qdrant-data:
-    name: "cognitive-qdrant-${PROJECT_HASH}"
+    name: "heimdall-qdrant-${PROJECT_HASH}"
     driver: local
-  cognitive-data:
-    name: "cognitive-data-${PROJECT_HASH}"
+  heimdall-data:
+    name: "heimdall-data-${PROJECT_HASH}"
     driver: local
 
 networks:
-  cognitive-network:
-    name: "cognitive-network-${PROJECT_HASH}"
+  heimdall-network:
+    name: "heimdall-network-${PROJECT_HASH}"
     driver: bridge
 
 # Metadata for setup scripts

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# List all cognitive memory projects and their status
+# List all Heimdall MCP projects and their status
 # This script shows all configured projects and container status
 
 # Colors for output
@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-PROJECTS_DIR="$HOME/.cognitive-memory/projects"
+PROJECTS_DIR="$HOME/.heimdall-mcp/projects"
 
 # Utility functions
 log_info() {
@@ -41,7 +41,7 @@ fi
 # Get container status
 get_container_status() {
     local project_hash="$1"
-    local container_name="cognitive-memory-$project_hash"
+    local container_name="heimdall-mcp-$project_hash"
 
     if docker ps --format "table {{.Names}}" | grep -q "$container_name"; then
         echo "🟢 Running"
@@ -64,13 +64,13 @@ get_project_path() {
 
 # Main execution
 main() {
-    echo "📋 Cognitive Memory Projects"
+    echo "📋 Heimdall MCP Projects"
     echo "============================"
     echo ""
 
     # Check if projects directory exists
     if [ ! -d "$PROJECTS_DIR" ]; then
-        log_info "No cognitive memory projects found"
+        log_info "No Heimdall MCP projects found"
         log_info "Run: scripts/setup_project_memory.sh in any project directory"
         exit 0
     fi
@@ -79,7 +79,7 @@ main() {
     project_count=$(find "$PROJECTS_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l)
 
     if [ "$project_count" -eq 0 ]; then
-        log_info "No cognitive memory projects found"
+        log_info "No Heimdall MCP projects found"
         exit 0
     fi
 

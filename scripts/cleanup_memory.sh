@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Cleanup script for cognitive memory projects
+# Cleanup script for Heimdall MCP projects
 # This script removes unused containers and optionally cleans up all projects
 
 # Colors for output
@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-PROJECTS_DIR="$HOME/.cognitive-memory/projects"
+PROJECTS_DIR="$HOME/.heimdall-mcp/projects"
 
 # Utility functions
 log_info() {
@@ -40,17 +40,17 @@ fi
 
 # Clean up orphaned containers
 cleanup_orphaned() {
-    log_info "Cleaning up orphaned cognitive memory containers..."
+    log_info "Cleaning up orphaned Heimdall MCP containers..."
 
-    # Find all cognitive memory containers
-    orphaned_containers=$(docker ps -a --filter "name=cognitive-memory-" --format "{{.Names}}" || true)
+    # Find all Heimdall MCP containers
+    orphaned_containers=$(docker ps -a --filter "name=heimdall-mcp-" --format "{{.Names}}" || true)
     orphaned_qdrant=$(docker ps -a --filter "name=qdrant-" --format "{{.Names}}" || true)
 
     removed_count=0
 
     # Check each container against existing projects
     for container in $orphaned_containers $orphaned_qdrant; do
-        if [[ "$container" =~ cognitive-memory-([a-f0-9]{8}) ]] || [[ "$container" =~ qdrant-([a-f0-9]{8}) ]]; then
+        if [[ "$container" =~ heimdall-mcp-([a-f0-9]{8}) ]] || [[ "$container" =~ qdrant-([a-f0-9]{8}) ]]; then
             project_hash="${BASH_REMATCH[1]}"
             project_dir="$PROJECTS_DIR/$project_hash"
 
@@ -104,7 +104,7 @@ cleanup_orphaned() {
 
 # Clean up all projects
 cleanup_all() {
-    log_warning "This will remove ALL cognitive memory projects and data!"
+    log_warning "This will remove ALL Heimdall MCP projects and data!"
     echo ""
     read -p "Are you sure? (type 'yes' to confirm): " confirmation
 
@@ -113,22 +113,22 @@ cleanup_all() {
         exit 0
     fi
 
-    log_info "Stopping all cognitive memory containers..."
+    log_info "Stopping all Heimdall MCP containers..."
 
-    # Stop all cognitive memory containers
-    cognitive_containers=$(docker ps --filter "name=cognitive-memory-" --format "{{.Names}}" || true)
+    # Stop all Heimdall MCP containers
+    heimdall_containers=$(docker ps --filter "name=heimdall-mcp-" --format "{{.Names}}" || true)
     qdrant_containers=$(docker ps --filter "name=qdrant-" --format "{{.Names}}" || true)
 
-    for container in $cognitive_containers $qdrant_containers; do
+    for container in $heimdall_containers $qdrant_containers; do
         log_info "Stopping container: $container"
         docker stop "$container" 2>/dev/null || true
     done
 
     # Remove all containers, volumes, and networks
-    log_info "Removing all cognitive memory resources..."
+    log_info "Removing all Heimdall MCP resources..."
 
     # Remove containers
-    docker rm -f $(docker ps -a --filter "name=cognitive-memory-" --format "{{.Names}}" 2>/dev/null || true) 2>/dev/null || true
+    docker rm -f $(docker ps -a --filter "name=heimdall-mcp-" --format "{{.Names}}" 2>/dev/null || true) 2>/dev/null || true
     docker rm -f $(docker ps -a --filter "name=qdrant-" --format "{{.Names}}" 2>/dev/null || true) 2>/dev/null || true
 
     # Remove volumes
@@ -143,14 +143,14 @@ cleanup_all() {
         rm -rf "$PROJECTS_DIR"
     fi
 
-    log_success "All cognitive memory projects cleaned up"
+    log_success "All Heimdall MCP projects cleaned up"
 }
 
 # Show usage
 show_usage() {
     echo "Usage: $0 [options]"
     echo ""
-    echo "Cleanup cognitive memory projects and containers"
+    echo "Cleanup Heimdall MCP projects and containers"
     echo ""
     echo "Options:"
     echo "  --help, -h        Show this help message"
@@ -166,13 +166,13 @@ dry_run() {
     echo ""
 
     # Check for orphaned containers
-    orphaned_containers=$(docker ps -a --filter "name=cognitive-memory-" --format "{{.Names}}" || true)
+    orphaned_containers=$(docker ps -a --filter "name=heimdall-mcp-" --format "{{.Names}}" || true)
     orphaned_qdrant=$(docker ps -a --filter "name=qdrant-" --format "{{.Names}}" || true)
 
     orphan_count=0
 
     for container in $orphaned_containers $orphaned_qdrant; do
-        if [[ "$container" =~ cognitive-memory-([a-f0-9]{8}) ]] || [[ "$container" =~ qdrant-([a-f0-9]{8}) ]]; then
+        if [[ "$container" =~ heimdall-mcp-([a-f0-9]{8}) ]] || [[ "$container" =~ qdrant-([a-f0-9]{8}) ]]; then
             project_hash="${BASH_REMATCH[1]}"
             project_dir="$PROJECTS_DIR/$project_hash"
 
