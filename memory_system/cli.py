@@ -222,53 +222,12 @@ def qdrant_logs(
         raise typer.Exit(1) from e
 
 
-@serve_app.command("http")  # type: ignore[misc]
-def serve_http(
-    host: str = typer.Option("127.0.0.1", help="Host to bind to"),
-    port: int = typer.Option(8000, help="Port to listen on"),
-    reload: bool = typer.Option(False, help="Enable auto-reload for development"),
-    config: str | None = typer.Option(None, help="Path to configuration file"),
-) -> None:
-    """Start HTTP API server."""
-    console.print(f"🌐 Starting HTTP API server on {host}:{port}...", style="bold blue")
-
-    try:
-        # Import here to avoid circular dependencies
-        from interfaces.http_api import run_server
-
-        # Initialize cognitive system
-        if config:
-            cognitive_system = initialize_with_config(config)
-        else:
-            cognitive_system = initialize_system("default")
-
-        # Start HTTP server
-        run_server(
-            cognitive_system=cognitive_system,
-            host=host,
-            port=port,
-            reload=reload,
-        )
-
-    except ImportError as e:
-        console.print("❌ HTTP API interface not implemented yet", style="bold red")
-        raise typer.Exit(1) from e
-    except Exception as e:
-        console.print(f"❌ Error starting HTTP server: {e}", style="bold red")
-        raise typer.Exit(1) from e
-
-
 @serve_app.command("mcp")  # type: ignore[misc]
 def serve_mcp(
-    port: int | None = typer.Option(None, help="HTTP port (default: stdin/stdout)"),
-    host: str = typer.Option(
-        "127.0.0.1", help="HTTP host to bind to (only used with --port)"
-    ),
     config: str | None = typer.Option(None, help="Path to configuration file"),
 ) -> None:
-    """Start MCP protocol server."""
-    mode = f"HTTP ({host}:{port})" if port else "stdin/stdout"
-    console.print(f"🔗 Starting MCP server ({mode})...", style="bold blue")
+    """Start MCP protocol server in stdin/stdout mode."""
+    console.print("🔗 Starting MCP server (stdin/stdout mode)...", style="bold blue")
 
     try:
         # Import here to avoid circular dependencies
@@ -281,7 +240,7 @@ def serve_mcp(
             cognitive_system = initialize_system("default")
 
         # Start MCP server
-        run_server(cognitive_system=cognitive_system, port=port, host=host)
+        run_server(cognitive_system=cognitive_system)
 
     except ImportError as e:
         console.print("❌ MCP interface not implemented yet", style="bold red")
