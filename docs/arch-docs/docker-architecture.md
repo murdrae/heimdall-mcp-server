@@ -3,21 +3,6 @@
 ## Overview
 Project-scoped Docker containerization strategy for the cognitive memory MCP server that provides automatic project isolation while maintaining a clean MCP interface. Solves PATH dependency issues and enables proper multi-project support without requiring project parameters in MCP tools.
 
-## Problem Statement
-
-### Current Issues
-- **PATH Dependency**: MCP server fails with "spawn memory_system ENOENT" because Claude Code can't find the command
-- **Project Contamination**: Single installation shares memory across all projects
-- **Environment Complexity**: Requires Python virtual environment setup and dependency management
-- **Deployment Difficulty**: Complex setup process with multiple moving parts
-
-### Solution Requirements
-- **Perfect Project Isolation**: Each project gets its own memory universe
-- **Clean MCP Interface**: No project parameters in MCP tools
-- **Simple Setup**: Single command deployment per project
-- **Resource Efficiency**: Only active projects consume resources
-- **Deterministic Behavior**: Same project always gets same resources
-
 ## Core Architecture: Project-Scoped Container Instances
 
 ### Design Principle
@@ -104,7 +89,7 @@ Automatic project isolation without user intervention through deterministic reso
 ```
 
 ### Docker Infrastructure
-Production-ready container infrastructure with simplified script management.
+Production-ready container infrastructure with script management.
 
 #### Implemented File Structure
 ```
@@ -123,79 +108,11 @@ cognitive-memory/
 
 #### Implementation Notes
 - **Simplified Scripts**: All functionality consolidated into `setup_project_memory.sh`
-- **Built-in Features**: Setup script includes start/stop/cleanup via `--help`, `--cleanup`, `--rebuild` flags
+- **Built-in Features**: Setup script includes `--help`, `--cleanup`, `--rebuild` flags
 - **No Backup Script**: Not implemented (can be added later if needed)
+  - However, databases are persistent in `.cognitive-memory`
 
-#### Dockerfile Design
-```dockerfile
-# Multi-stage build for efficiency
-FROM python:3.13-slim as builder
-# Install dependencies and build wheels
-
-FROM python:3.13-slim as runtime
-# Copy wheels and install
-# Pre-download sentence-transformers models
-# Configure non-root user
-# Set up entrypoint
-```
-
-#### Docker Compose Template
-```yaml
-version: '3.8'
-services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: qdrant-${PROJECT_HASH}
-    volumes:
-      - qdrant-data-${PROJECT_HASH}:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__HTTP_PORT=6333
-    networks:
-      - cognitive-network-${PROJECT_HASH}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
-  cognitive-memory:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    container_name: cognitive-memory-${PROJECT_HASH}
-    volumes:
-      - cognitive-data-${PROJECT_HASH}:/app/data
-      - model-cache-${PROJECT_HASH}:/app/models
-    environment:
-      - PROJECT_ID=${PROJECT_HASH}
-      - PROJECT_PATH=${PROJECT_PATH}
-      - QDRANT_URL=http://qdrant:6333
-      - QDRANT_COLLECTION_PREFIX=${PROJECT_HASH}
-      - SENTENCE_BERT_MODEL=all-MiniLM-L6-v2
-      - COGNITIVE_MEMORY_DB_PATH=/app/data/cognitive_memory.db
-    depends_on:
-      qdrant:
-        condition: service_healthy
-    networks:
-      - cognitive-network-${PROJECT_HASH}
-    healthcheck:
-      test: ["CMD", "memory_system", "doctor", "--json"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-
-networks:
-  cognitive-network-${PROJECT_HASH}:
-    driver: bridge
-
-volumes:
-  qdrant-data-${PROJECT_HASH}:
-  cognitive-data-${PROJECT_HASH}:
-  model-cache-${PROJECT_HASH}:
-```
-
-### Smart Setup Script
+### Unifier Docker Setup Script
 One-command setup for any project with all lifecycle management built-in.
 
 #### Actual Implementation (`scripts/setup_project_memory.sh`)
@@ -223,7 +140,7 @@ One-command setup for any project with all lifecycle management built-in.
 cd /path/to/my-react-project
 ./scripts/setup_project_memory.sh
 
-# Output:
+# Simplified Output:
 # 🧠 Setting up cognitive memory for project: my-react-project
 # 📊 Project ID: a1b2c3d4
 # 🚢 Starting containers on port 6456...
@@ -296,16 +213,8 @@ Native project awareness throughout the system.
    ```
 
 #### Configuration Management
-```python
-# Project-aware configuration
-@dataclass
-class ProjectConfig:
-    project_id: str
-    project_path: str
-    qdrant_collection_prefix: str
-    database_path: str
-    model_cache_path: str
-```
+
+- All config in `../../cognitive_memory/core/config.py`
 
 ### Claude Code Integration Enhancement
 Seamless project-scoped integration with Claude Code.
@@ -314,14 +223,10 @@ Seamless project-scoped integration with Claude Code.
 ```bash
 # Each project gets its own MCP server automatically
 cd /path/to/project-a
-./scripts/setup_project_memory.sh
-./setup_claude_code_mcp.sh
-# → claude mcp add --scope project cognitive-memory-a1b2c3d4 (stdio wrapper)
+/path/to/this/repo/setup_claude_code_mcp.sh
+/path/to/this/repo/scripts/load_project_content.sh
 
-cd /path/to/project-b
-./scripts/setup_project_memory.sh
-./setup_claude_code_mcp.sh
-# → claude mcp add --scope project cognitive-memory-e5f6g7h8 (stdio wrapper)
+# Repeat for other projects you will work on
 ```
 
 #### Claude Code Workflow
@@ -330,12 +235,6 @@ cd /path/to/project-b
 3. **MCP Configuration**: Claude Code configured with project scope via stdio wrapper
 4. **Isolation**: Memories only visible within Project A Claude sessions
 5. **Project B**: Completely separate setup and memory space
-
-#### Benefits
-- **Clean MCP Interface**: No project parameters needed in tools
-- **Automatic Project Detection**: Based on Claude Code's project context
-- **Perfect Isolation**: No cross-contamination between projects
-- **Natural Workflow**: Fits existing Claude Code project management
 
 ## Technical Specifications
 
@@ -382,17 +281,6 @@ Docker Volumes:
 └── cognitive-network-{hash}     # Isolated network
 ```
 
-### Health Check Strategy
-```yaml
-# Container health checks
-healthcheck:
-  test: ["CMD", "memory_system", "doctor", "--json"]
-  interval: 30s
-  timeout: 10s
-  retries: 3
-  start_period: 60s
-```
-
 ### Security Considerations
 - **Network Isolation**: Each project gets its own Docker network
 - **Volume Isolation**: Project-specific data volumes
@@ -415,34 +303,3 @@ healthcheck:
 3. **Scalable**: Support unlimited projects
 4. **Debuggable**: Project-specific logs and monitoring
 5. **Extensible**: Easy to add new features per project
-
-### For Operations
-1. **Monitoring**: Per-project health checks and metrics
-2. **Backup**: Project-specific data backup strategies
-3. **Cleanup**: Easy identification and removal of unused resources
-4. **Security**: Isolated networks and data volumes
-5. **Updates**: Rolling updates without affecting other projects
-
-## Risk Mitigation
-
-### Port Conflicts
-- **Risk**: Hash collisions leading to port conflicts
-- **Mitigation**: Collision detection with automatic port adjustment
-- **Fallback**: Manual port specification option
-
-### Resource Management
-- **Risk**: Too many containers consuming resources
-- **Mitigation**: Container resource limits and cleanup procedures
-- **Monitoring**: Resource usage tracking and alerts
-
-### Data Persistence
-- **Risk**: Volume data loss during container updates
-- **Mitigation**: Host directory mapping for critical data
-- **Recovery**: Data stored in project directories for easy backup
-
-### Service Dependencies
-- **Risk**: Services failing to start in correct order
-- **Mitigation**: Health checks and dependency management
-- **Monitoring**: Service health dashboards
-
-This implementation provides a robust, scalable solution for project-scoped cognitive memory that solves PATH issues while enabling clean multi-project support through Docker containerization.
