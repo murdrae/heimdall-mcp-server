@@ -19,6 +19,8 @@ prompt_toolkit>=3.0.0
 # mcp
 mcp>=1.4.0
 
+GitPython
+
 # Text and sentiment analysis
 spacy
 vaderSentiment
