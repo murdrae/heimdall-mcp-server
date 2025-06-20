@@ -1,7 +1,3 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project Overview
 
 **Cognitive Memory System** - An MCP server that provides Large Language Models with persistent memory across conversations. The system learns patterns from git history, stores insights from sessions, and enables intelligent knowledge consolidation for project-specific contexts.
@@ -12,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bridge discovery for serendipitous connections between distant concepts
 - Git pattern extraction (co-change patterns, maintenance hotspots, solution patterns)
 - Session lessons framework for metacognitive learning
+
+### Architecture Documents
+
+- Architecture documents can be found on `docs/arch-docs`
 
 ## System Architecture
 
@@ -74,33 +74,10 @@ memory_system/
 
 ## Development Commands
 
-### Core Development
-```bash
-# Install dependencies
-pip install -e .
-
-# Development dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Linting and formatting
-ruff check                # Code linting
-ruff format              # Code formatting
-mypy .                   # Type checking
-
-# Run specific test categories
-pytest -m unit           # Unit tests only
-pytest -m integration    # Integration tests only
-```
-
 ### System Management
 ```bash
 # Service management
-memory_system qdrant start    # Start Qdrant vector database
-memory_system qdrant stop     # Stop Qdrant
-memory_system qdrant status   # Check status
+memory_system qdrant --hel   # See help for Qdrant related commands
 
 # Health checking
 memory_system doctor          # Full system health check
@@ -114,19 +91,8 @@ memory_system serve mcp      # Start MCP server (stdio)
 
 ### Memory Operations (CLI)
 ```bash
-# Load memories from sources
-memory_system load /path/to/docs --loader-type=markdown
-memory_system load /path/to/repo --loader-type=git
-
-# Manual memory storage
-cognitive-cli store "Important insight about the system"
-
-# Memory retrieval
-cognitive-cli recall "authentication patterns"
-cognitive-cli bridges "debugging approaches"
-
-# System status
-cognitive-cli status
+# Use help
+cognitive-cli --help
 ```
 
 ## MCP Integration
@@ -189,22 +155,8 @@ Each project directory gets isolated Docker containers:
 
 ### Test Categories
 - **Unit Tests**: Individual component testing (`tests/unit/`)
-- **Integration Tests**: End-to-end workflows (`tests/integration/`)
+- **Integration Tests**: Integration of components with minimized/no-mocks workflows (`tests/integration/`)
 - **E2E Tests**: Complete system scenarios (`tests/e2e/`)
-
-### Key Test Patterns
-```bash
-# Test specific components
-pytest tests/unit/test_cognitive_system.py
-pytest tests/integration/test_memory_loader_integration.py
-
-# Test git integration
-pytest tests/unit/test_git_pattern_detector.py
-pytest tests/integration/test_end_to_end_system.py
-
-# Test MCP server
-pytest tests/test_mcp_server.py
-```
 
 ## Configuration Management
 
@@ -227,64 +179,42 @@ GIT_HOTSPOT_THRESHOLD=5
 ### Configuration Files
 - `.env` files for environment-specific settings
 - `cognitive_memory/core/config.py` for system defaults
-- Project-specific config in `.cognitive-memory/` directories
-
-## Memory Content Strategy
-
-All pattern information is embedded in natural language content rather than separate metadata, enabling rich semantic search:
-
-**Example Git Pattern Content:**
-```
-"Development pattern (confidence: 92%, quality: high): Files auth/middleware.py and auth/jwt.py frequently change together (12 co-commits over 6 months, trend: increasing). Strong coupling indicates shared authentication logic."
-```
 
 ## Development Workflow
 
-### Adding New Memory Loaders
-1. Implement `MemoryLoader` interface in `cognitive_memory/loaders/`
-2. Add loader registration in `cognitive_memory/factory.py`
-3. Add CLI integration in `interfaces/cli.py`
-4. Write comprehensive tests in `tests/unit/` and `tests/integration/`
+1. **Read Progress Documentation**: Always check `docs/progress/` before starting.
+2. **READ and FOLLOW** `./docs/progress/README.md` on any development tasks
+3. **Update Progress**: Document significant changes in appropriate progress file
+4. **ALWAYS** commit at milestones. Never git add all files, manually list the files you worked on.
 
-### Adding New MCP Tools
-1. Implement tool in `interfaces/mcp_tools/`
-2. Register in `interfaces/mcp_server.py`
-3. Add comprehensive input validation and error handling
-4. Write integration tests in `tests/test_mcp_server.py`
+## Cognitive Memory MCP Tools Usage
 
-### Modifying Memory Schema
-1. Update `CognitiveMemory` dataclass in `cognitive_memory/core/memory.py`
-2. Create database migration in `cognitive_memory/storage/migrations/`
-3. Update serialization/deserialization in storage components
-4. Ensure backward compatibility for existing memories
+- Cognitive Memory MCP Tool usage is **HIGHLY ENCOURAGED**
+- This tool allows you to recall_memories: remember what past versions of you had significant effort to learn
+- It also allows you to give session_lessons: important lessons that the future you can use
 
-## Performance Considerations
+### Strategic MCP Tool Usage
 
-### Scalability Targets
-- **Phase 1**: 10K memories, single-user, local deployment
-- **Phase 2**: 100K memories, multi-user, containerized
-- **Phase 3**: 1M+ memories, distributed deployment
+- **`recall_memories`** - Call before any development task to get architecture, patterns, key files, data flows, context, decisions.
+- **`store_memory`** - Store architectural decisions, file relationships, and project conventions.
+- **`session_lessons`** - Record valuable insights, learnings, exploration results, large-effort tasks key findings and other valuable info from this session
+- **`memory_status`** - Check system health and statistics
 
-### Optimization Guidelines
-- Use batch operations for bulk memory loading
-- Implement connection caching in retrieval components
-- Monitor Qdrant collection sizes and optimize vectors
-- Use SQLite indices for metadata queries
-- Implement memory consolidation for episodic→semantic promotion
+### Development Workflow with MCP
+
+1. **Start with `recall_memories`** - Get relevant context before coding/debugging
+2. **Use `store_memory` for discoveries** - Document patterns and relationships
+3. **Ask about `session_lessons`** - If valuable insights emerged, suggest the user if you should store them
+4. **Build project knowledge** - Each session should add understanding via stored memories
+5. Before using `store_memory` and `session_lessons` summarize to the user what you learned and if he approves the memory
+
+### When to Use Each Tool
+
+- **`recall_memories`**: Before coding, when user mentions features/errors, exploring architecture
+- **`store_memory`**: Architecture decisions, file relationships, project conventions, design patterns
+- **`session_lessons`**: User signals value ("that was tricky", "good approach"), breakthrough moments
 
 ## Quality Standards
 
 ### Code Quality Requirements
-- **Linting**: `ruff check` must pass
-- **Type Checking**: `mypy` must pass with no errors
-- **Test Coverage**: Minimum 85% for core cognitive components
-- **Complexity**: Maximum cyclomatic complexity of 10
-
-### Git Commit Standards
-All commits must pass pre-commit hooks:
-- Code linting and formatting
-- Type checking
-- Test suite execution
-- Architecture validation
-
-This system represents a sophisticated approach to persistent AI memory that grows more valuable over time through continuous learning and pattern recognition.
+- Must pass pre-commit git hook checks. No bypass.
