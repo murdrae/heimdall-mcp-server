@@ -297,9 +297,8 @@ payload = {
 ## Success Metrics
 
 ### Technical Success
-- Git patterns successfully stored as mutable cognitive memories with stable IDs
+- Git patterns successfully stored as cognitive memories with stable IDs
 - Patterns discoverable through existing retrieval mechanisms with confidence filtering
-- Incremental updates working seamlessly via post-commit hooks
 - No performance degradation in existing memory operations
 - Pattern confidence and quality metrics embedded in retrievable content
 - Seamless integration with current CLI and MCP interfaces
@@ -308,7 +307,6 @@ payload = {
 - LLM receives relevant file relationship context with confidence indicators during debugging
 - Maintenance hotspots appropriately flagged with quality ratings during code analysis
 - Solution patterns surface during problem-solving sessions with success rate information
-- Real-time pattern updates during active development sessions
 - Development efficiency improvements measurable through usage patterns
 - High-quality pattern filtering prevents noise in retrieval results
 
