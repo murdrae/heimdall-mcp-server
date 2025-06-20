@@ -1,7 +1,7 @@
 # Heimdall MCP Server - Cognitive Memory Across Coding Sessions
 
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](hhttps://github.com/lcbcFoo/heimdall-mcp-server/blob/main/README.mdttps://opensource.org/licenses/Apache-2.0)
 [![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://www.docker.com/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io/)
 
@@ -20,16 +20,18 @@ This means instead of re-explaining your system every session or having hundreds
 
 ## **What it still requires from you**
 
-This is not magic, it still depends on good documents, meaningful git commits and a good CLAUDE.md (or similar rules) encouraging LLM to use the MCP
+This is not magic, it still depends on good documents, meaningful git commits and a good CLAUDE.md (or similar rules) encouraging LLM to use the MCP.
+
+Also, this tool is not meant to keep track of development progress or project management, it is meant to help give LLM context faster and avoid
+work and discussions replication.
 
 Tips:
 
-- Place architecture documents, guidelines, decisions, etc in `.heimdall-mcp` (or symlink to them)
-- Try to NOT INCLUDE PROGRESS, STATUS, PROJECT MANAGEMENT docs. It is easier to @ tag them in the conversation and it would only confuse LLM context.
+- Place Markdown architecture documents, guidelines, decisions, etc in `.heimdall-mcp` (or symlink to them)
 - Instruct LLM to use meaningful git messages
-- See CLAUDE.md for Heimdall MCP related rules
+- See CLAUDE.md for Heimdall MCP Server related rules
 
-## 30-Second Setup
+## Easy Setup
 
 **Important**: Run this setup script from within your project repository - it creates a project-specific MCP server.
 
@@ -38,11 +40,11 @@ Tips:
 cd /path/to/your/project
 
 # Run setup (creates isolated memory for THIS project only)
-/path/to/heimdall-mcp/setup_claude_code_mcp.sh
+/path/to/heimdall-mcp-mcp/setup_claude_code_mcp.sh
 # Save MD documents you want to feed into the cognitive system in .heimdall-mcp
 # You can symlink to some other directory you normally use, like docs/arch-docs
 # Then load the MD files and git history into the cognitive system:
-/path/to/heimdall-mcp/scripts/load_project_content.sh
+/path/to/heimdall-mcp-mcp/scripts/load_project_content.sh 
 ```
 
 This automatically configures:
@@ -50,8 +52,7 @@ This automatically configures:
  - Meaning: you have isolated memories on different projects. This is why calling the setup scripts from proper place is crucial.
 - MCP server integration for Claude Code (project-specific)
   - If you are not integrating to Claude Code, just use `scripts/setup_project_memory.sh*`
-
-**Result**: Your LLM now has persistent memory of THIS specific project, separate from your other projects.
+- Loads the git history and relevant docs you places in .heimdall-mcp and transform them into memories.
 
 ## MCP Tools Available
 
