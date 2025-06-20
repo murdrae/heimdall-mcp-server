@@ -216,7 +216,7 @@ cognitive-cli interactive [--prompt <string>]
 - **With All Subsystems**: Interfaces define contracts for encoding, storage, retrieval
 - **With Configuration**: All components receive configuration through ConfigManager
 - **With Testing**: Interface compliance enables comprehensive mocking and testing
-- **Future APIs**: CLI patterns inform HTTP API and MCP server development
+- **Future APIs**: CLI patterns inform MCP server development
 
 ## Testing Strategy
 - Interface compliance testing for all implementations
@@ -252,8 +252,7 @@ cognitive-cli interactive [--prompt <string>]
   - **Mitigation**: Use proven patterns, comprehensive validation
 
 ## Future Enhancements (Phase 2+)
-- HTTP REST API with FastAPI
-- MCP protocol server for Claude integration
+- MCP protocol server for Claude integration (completed)
 - Web-based user interface
 - Advanced CLI features (history, autocompletion, colors)
 - Configuration UI and management tools

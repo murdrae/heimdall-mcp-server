@@ -155,7 +155,7 @@ This milestone encompasses the implementation of a Model Context Protocol (MCP) 
 
 #### Tasks Planned
 - Create `setup_mcp_for_claude_code.sh` automated setup script
-- Implement stdio and HTTP transport modes
+- Implement stdio transport mode
 - Add Claude Code configuration generation
 - Create user-friendly setup wizard and validation
 - Test integration with Claude Code client

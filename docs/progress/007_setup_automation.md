@@ -175,7 +175,7 @@ After deep analysis, chose the "Minimal Container Helper" approach over Docker C
 memory_system qdrant [start|stop|status|logs]
 
 # Interface servers
-memory_system serve [http|mcp]
+memory_system serve mcp
 
 # Interactive shell
 memory_system shell

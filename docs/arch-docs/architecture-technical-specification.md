@@ -772,15 +772,11 @@ cognitive> exit
 }
 ```
 
-#### 3. Web Application Integration
+#### 3. CLI Integration
 ```bash
-# Start HTTP API server
-$ memory_system serve http --port 8000
-
-# Applications make REST calls
-POST /api/v1/memories
-GET /api/v1/recall?query="machine learning"
-GET /api/v1/bridges?context="neural networks"
+# Direct CLI access
+$ cognitive-cli store "Important system insight"
+$ cognitive-cli retrieve "machine learning patterns"
 ```
 
 ### Setup Automation Infrastructure
@@ -809,15 +805,6 @@ def qdrant_start(
     force_local: bool = False
 ):
     """Start Qdrant vector database"""
-    pass
-
-@serve_app.command("http")
-def serve_http(
-    host: str = "127.0.0.1",
-    port: int = 8000,
-    reload: bool = False
-):
-    """Start HTTP API server"""
     pass
 
 @serve_app.command("mcp")
@@ -878,8 +865,7 @@ cognitive-memory/
 │   └── config.py           # Configuration management
 ├── interfaces/             # API implementations
 │   ├── cli.py             # Command-line interface
-│   ├── mcp_server.py      # MCP protocol server
-│   └── http_api.py        # HTTP REST API
+│   └── mcp_server.py      # MCP protocol server
 ├── data/                  # Local data storage
 │   ├── cognitive_memory.db # SQLite database
 │   └── models/            # Downloaded models

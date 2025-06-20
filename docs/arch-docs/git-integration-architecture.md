@@ -5,9 +5,9 @@
 This document specifies the architecture for integrating git repository history analysis into the cognitive memory system. The integration leverages the existing MemoryLoader interface to extract development patterns from git history and store them as cognitive memories, enabling LLMs to automatically understand codebase relationships, maintenance hotspots, and solution patterns.
 
 **Key Features:**
-- **Mutable Pattern Memories**: Git patterns are statistical aggregates that update incrementally using stable-ID upserts
-- **Live Development Integration**: Post-commit hooks provide real-time pattern updates during development
-- **Pattern Confidence Scoring**: Quality metrics embedded in memory content ensure reliable pattern detection
+- **Pattern Extraction**: Analyzes git history to extract co-change patterns, maintenance hotspots, and solution patterns
+- **Statistical Analysis**: Confidence scoring and quality metrics for reliable pattern detection
+- **Memory Integration**: Patterns stored as cognitive memories using the existing MemoryLoader interface
 
 ## Core Components
 
@@ -21,7 +21,6 @@ This document specifies the architecture for integrating git repository history 
 **Key Dependencies**:
 - GitHistoryMiner (data extraction)
 - PatternExtractor (pattern analysis with confidence scoring)
-- GitHookManager (post-commit hook installation)
 - Existing CognitiveConfig
 
 **Mutable Memory Architecture**:
@@ -59,12 +58,6 @@ This document specifies the architecture for integrating git repository history 
 - Ensure patterns are discoverable through existing retrieval mechanisms
 - Embed quality scores and confidence indicators directly in natural language
 
-### 5. GitHookManager (New)
-**Responsibility**: Manage git post-commit hooks for live integration
-- Install and configure post-commit hooks in target repositories
-- Handle incremental pattern updates triggered by new commits
-- Provide hook templates and configuration management
-- Support multiple repositories with centralized pattern updates
 
 ## Data Flow Architecture
 
@@ -99,40 +92,21 @@ Existing Memory Pipeline:
 
 ### Integration-Specific Data Flow
 
-**Initial Repository Setup:**
+**Repository Loading:**
 ```
-CLI Command: memory_system load /repo --loader-type=git
+CLI Command: ./scripts/load_project_content.sh --git-only
         ↓
-CognitiveCLI.load_memories() [existing method]
-        ↓
-GitHistoryLoader instantiation [new]
+GitHistoryLoader instantiation
         ↓
 GitHistoryLoader.validate_source() [verify .git exists]
         ↓
 GitHistoryLoader.load_from_source() [extract patterns with confidence scoring]
-        ↓
-GitHookManager.install_post_commit_hook() [setup live updates]
         ↓
 CognitiveSystem.load_memories_from_source() [existing]
         ↓
 Memories stored with deterministic IDs in Qdrant + SQLite [existing]
         ↓
 Available for retrieval via existing interfaces [existing]
-```
-
-**Incremental Update Flow (Post-Commit):**
-```
-Git Commit → Post-commit hook triggers
-        ↓
-memory_system git-refresh --since HEAD~1
-        ↓
-GitHistoryLoader.load_incremental(since_commit)
-        ↓
-Pattern updates with confidence recalculation
-        ↓
-Qdrant upsert operations (same deterministic IDs)
-        ↓
-Updated patterns immediately available for retrieval
 ```
 
 ## Key Methods and Responsibilities
@@ -151,17 +125,6 @@ Updated patterns immediately available for retrieval
 - Must assign appropriate hierarchy levels (L1 for patterns, L2 for solutions)
 - Must return list compatible with existing memory pipeline
 
-**load_incremental(source_path: str, since_commit: str) -> List[CognitiveMemory]**
-- Must extract only new patterns since specified commit
-- Must update existing pattern confidence scores and support counts
-- Must use same deterministic IDs for upsert operations
-- Must handle pattern evolution (strengthen/weaken existing patterns)
-
-**install_git_hooks(source_path: str) -> bool**
-- Must install post-commit hook in repository
-- Must configure hook to call git-refresh command
-- Must handle existing hooks gracefully (append, don't overwrite)
-- Must return success status
 
 **get_supported_extensions() -> List[str]**
 - Must return empty list (git repos don't have file extensions)
@@ -236,16 +199,12 @@ cognitive_memory/
 ├── loaders/
 │   ├── __init__.py                    # Add GitHistoryLoader export
 │   ├── markdown_loader.py             # Existing
-│   └── git_loader.py                  # New: GitHistoryLoader implementation
-├── git/                               # New module
-│   ├── __init__.py
-│   ├── history_miner.py               # GitHistoryMiner
-│   ├── pattern_extractor.py           # PatternExtractor with confidence scoring
-│   ├── pattern_embedder.py            # GitPatternEmbedder with quality metrics
-│   └── hook_manager.py                # GitHookManager for post-commit integration
-└── interfaces/
-    ├── cli.py                         # Modified: add git commands and hook management
-    └── git_commands.py                # New: git-specific CLI commands
+│   └── git_loader.py                  # GitHistoryLoader implementation
+└── git_analysis/                      # Git analysis module
+    ├── __init__.py
+    ├── history_miner.py               # GitHistoryMiner
+    ├── pattern_detector.py            # PatternDetector with confidence scoring
+    └── pattern_embedder.py            # GitPatternEmbedder with quality metrics
 ```
 
 ### Memory Content Embedding Strategy
@@ -278,11 +237,9 @@ Since the system embeds all pattern information into memory content text rather 
 
 ### For Development Workflow
 - Zero-configuration pattern discovery from existing git history
-- **Live development integration** via post-commit hooks for real-time updates
-- Continuous learning from development activity with incremental pattern evolution
 - Integration with existing memory retrieval mechanisms
 - Compatibility with current CLI and MCP interfaces
-- Automated git hook installation and management
+- Batch loading via project scripts
 
 ## Mutable Memory Architecture
 
@@ -327,25 +284,15 @@ payload = {
 }
 ```
 
-## Implementation Phases
+## Implementation Status
 
-### Phase 1: Core Pattern Extraction with Confidence
-- Implement GitHistoryMiner for data extraction with quality filtering
-- Implement PatternExtractor with confidence scoring and quality metrics
-- Create GitPatternEmbedder with embedded confidence indicators
-- Implement deterministic ID generation for pattern identity
-
-### Phase 2: Mutable Memory Integration
-- Implement GitHistoryLoader with upsert support for pattern updates
-- Add GitHookManager for post-commit hook installation and management
-- Integrate incremental update commands with existing CLI
-- Test mutable pattern storage and retrieval through existing pipeline
-
-### Phase 3: Live Development Integration
-- Implement post-commit hook templates and auto-installation
-- Add git-specific CLI commands (git-refresh, install-hooks)
-- Implement update debouncing and batch processing
-- Add pattern quality monitoring and alerting
+### ✅ Implemented (Phase 1)
+- GitHistoryMiner for data extraction with quality filtering
+- PatternDetector with confidence scoring and quality metrics
+- GitPatternEmbedder with embedded confidence indicators
+- GitHistoryLoader with deterministic ID generation
+- Integration with existing CLI and memory pipeline
+- Comprehensive test suite for all components
 
 ## Success Metrics
 

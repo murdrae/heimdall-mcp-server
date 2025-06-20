@@ -70,8 +70,7 @@ cognitive-memory/
 │   └── config.py           # Configuration management
 ├── interfaces/             # API implementations
 │   ├── cli.py             # Command-line interface
-│   ├── mcp_server.py      # MCP protocol server
-│   └── http_api.py        # HTTP REST API
+│   └── mcp_server.py      # MCP protocol server
 ├── data/                  # Local data storage
 │   ├── cognitive_memory.db # SQLite database
 │   └── models/            # Downloaded models

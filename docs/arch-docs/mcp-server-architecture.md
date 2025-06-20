@@ -470,8 +470,7 @@ class CognitiveMemoryMCPServer:
 **Environment Variables**:
 ```bash
 # MCP Server Configuration
-MCP_SERVER_PORT=8080                    # HTTP mode port (optional)
-MCP_SERVER_MODE=stdio                   # stdio|http
+MCP_SERVER_MODE=stdio                   # stdio mode only
 MCP_MAX_MEMORIES_PER_QUERY=50          # Default limit for recall_memories
 
 # Cognitive System Configuration
@@ -498,9 +497,6 @@ memory_system qdrant start
 
 # Start MCP server (stdio mode for Claude Desktop)
 memory_system serve mcp
-
-# Start MCP server (HTTP mode for remote access)
-memory_system serve mcp --port 8080
 ```
 
 ### Service Dependencies
@@ -726,16 +722,10 @@ echo "  'Record lesson: Always check network tab first when debugging APIs' → 
 
 **For other MCP clients:**
 
-1. **stdio mode** (local clients):
+**stdio mode** (local clients):
 ```bash
 # Start MCP server in stdio mode
 memory_system serve mcp
-```
-
-2. **HTTP mode** (remote clients):
-```bash
-# Start MCP server with HTTP transport
-memory_system serve mcp --port 8080
 ```
 
 **Client Configuration Example**:
