@@ -42,7 +42,11 @@ import sentence_transformers; \
 import os; \
 os.environ['SENTENCE_TRANSFORMERS_HOME'] = '/app/models'; \
 model = sentence_transformers.SentenceTransformer('all-MiniLM-L6-v2'); \
-print('✅ Model downloaded successfully')"
+print('✅ SentenceTransformer model downloaded successfully')"
+
+# Pre-download spaCy model to avoid runtime downloads
+RUN python -m spacy download en_core_web_md && \
+    echo "✅ spaCy model downloaded successfully"
 
 # ============================================================================
 # Runtime Stage: Minimal production image

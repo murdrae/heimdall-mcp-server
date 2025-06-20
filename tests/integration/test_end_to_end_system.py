@@ -353,15 +353,21 @@ class TestEndToEndSystem:
 
         # Test CLI methods exist and can be called (should not crash)
         status_result = cli_interface.show_status()
-        assert isinstance(status_result, bool)  # CLI methods return bool
+        assert (
+            status_result is not None
+        )  # CLI methods now return structured data or None
+        assert isinstance(status_result, dict)  # Should return status dictionary
 
         # Test consolidation method exists
         consolidate_result = cli_interface.consolidate_memories()
-        assert isinstance(consolidate_result, bool)
+        assert isinstance(consolidate_result, bool)  # This method still returns bool
 
         # Test that CLI can handle basic operations without crashing
         retrieve_result = cli_interface.retrieve_memories("test query")
-        assert isinstance(retrieve_result, bool)
+        assert (
+            retrieve_result is not None or retrieve_result == {}
+        )  # Should return dict or None
+        assert isinstance(retrieve_result, dict)  # Should return memories dictionary
 
     def test_configuration_integration(self, system_config):
         """Test system behavior with different configurations."""

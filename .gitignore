@@ -83,3 +83,4 @@ Thumbs.db
 *.backup
 .mcp.json
 .cognitive-memory/
+.cognitive_memory_history

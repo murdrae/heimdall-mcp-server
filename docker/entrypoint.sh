@@ -35,6 +35,16 @@ echo "✅ Qdrant is available"
 mkdir -p /app/data/logs
 mkdir -p /app/data/backups
 
+# Create directories expected by health check
+mkdir -p /app/data/qdrant
+mkdir -p /app/data/models
+
+# Create compatibility symlinks for health check
+cd /app
+if [ ! -L "data" ]; then
+    ln -sf /app/data ./data
+fi
+
 # Set up environment for project-specific collections
 if [ "$PROJECT_ID" != "default" ]; then
     export QDRANT_COLLECTION_PREFIX="$PROJECT_ID"

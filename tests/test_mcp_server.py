@@ -236,8 +236,27 @@ class TestRecallMemoriesTool:
     @pytest.mark.asyncio
     async def test_recall_memories_success(self, mcp_server):
         """Test successful memory recall."""
-        # Mock CLI retrieve_memories to return success
-        mcp_server.cli.retrieve_memories = Mock(return_value=True)
+        # Mock CLI retrieve_memories to return structured data
+        mock_results = {
+            "core": [
+                Mock(
+                    content="React performance insight",
+                    id="123",
+                    hierarchy_level=1,
+                    memory_type="episodic",
+                    strength=0.9,
+                    metadata={},
+                    access_count=1,
+                    importance_score=0.8,
+                    tags=["react"],
+                    created_date=None,
+                    last_accessed=None,
+                )
+            ],
+            "peripheral": [],
+            "bridge": [],
+        }
+        mcp_server.cli.retrieve_memories = Mock(return_value=mock_results)
 
         arguments = {
             "query": "React performance",
@@ -249,12 +268,12 @@ class TestRecallMemoriesTool:
 
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
-        assert "📋 Retrieved memories for: 'React performance'" in result[0].text
-        assert "Memories retrieved successfully" in result[0].text
+        assert '"query": "React performance"' in result[0].text
+        assert '"total_results": 1' in result[0].text
 
         # Verify CLI was called correctly
         mcp_server.cli.retrieve_memories.assert_called_once_with(
-            query="React performance", types=None, limit=5
+            query="React performance", types=None, limit=5, display=False
         )
 
     @pytest.mark.asyncio
@@ -279,22 +298,41 @@ class TestRecallMemoriesTool:
 
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
+        assert (
+            "❌ Error retrieving memories for query: 'nonexistent topic'"
+            in result[0].text
+        )
+
+    @pytest.mark.asyncio
+    async def test_recall_memories_empty_results(self, mcp_server):
+        """Test recall_memories when empty results dictionary returned."""
+        empty_results = {"core": [], "peripheral": [], "bridge": []}
+        mcp_server.cli.retrieve_memories = Mock(return_value=empty_results)
+
+        arguments = {"query": "nonexistent topic"}
+
+        result = await mcp_server._recall_memories(arguments)
+
+        assert len(result) == 1
+        assert isinstance(result[0], TextContent)
         assert "No memories found for query: 'nonexistent topic'" in result[0].text
 
     @pytest.mark.asyncio
     async def test_recall_memories_default_params(self, mcp_server):
         """Test recall_memories with default parameters."""
-        mcp_server.cli.retrieve_memories = Mock(return_value="Some results")
+        mock_results = {"core": [], "peripheral": [], "bridge": []}
+        mcp_server.cli.retrieve_memories = Mock(return_value=mock_results)
 
         arguments = {"query": "test query"}
 
         await mcp_server._recall_memories(arguments)
 
-        # Verify default parameters were used
+        # Verify default parameters were used (now includes display=False)
         mcp_server.cli.retrieve_memories.assert_called_once_with(
             query="test query",
             types=None,  # Default types
             limit=10,  # Default max_results
+            display=False,  # New parameter
         )
 
 
@@ -431,9 +469,15 @@ class TestMemoryStatusTool:
     @pytest.mark.asyncio
     async def test_memory_status_success(self, mcp_server):
         """Test successful memory status retrieval."""
-        mock_status = (
-            "Total memories: 1247\nQdrant status: running\nLast activity: 2024-01-15"
-        )
+        mock_status = {
+            "memory_counts": {"total_memories": 1247},
+            "system_config": {"activation_threshold": 0.7},
+            "storage_stats": {"level_0": {"vectors_count": 100}},
+            "embedding_info": {
+                "model_name": "all-MiniLM-L6-v2",
+                "embedding_dimension": 384,
+            },
+        }
         mcp_server.cli.show_status = Mock(return_value=mock_status)
 
         arguments = {"detailed": False}
@@ -442,14 +486,21 @@ class TestMemoryStatusTool:
 
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
-        assert "📊 COGNITIVE MEMORY SYSTEM STATUS" in result[0].text
-        assert "System Status: ✅ HEALTHY" in result[0].text
-        assert mock_status in result[0].text
+        assert '"system_status": "healthy"' in result[0].text
+        assert '"total_memories": 1247' in result[0].text
+
+        # Verify CLI was called correctly
+        mcp_server.cli.show_status.assert_called_once_with(
+            detailed=False, display=False
+        )
 
     @pytest.mark.asyncio
     async def test_memory_status_detailed(self, mcp_server):
         """Test memory status with detailed configuration."""
-        mock_status = "Basic status info"
+        mock_status = {
+            "memory_counts": {"total_memories": 1247},
+            "system_config": {"activation_threshold": 0.7},
+        }
         mcp_server.cli.show_status = Mock(return_value=mock_status)
 
         arguments = {"detailed": True}
@@ -458,9 +509,12 @@ class TestMemoryStatusTool:
 
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
-        assert "🔧 DETAILED CONFIGURATION" in result[0].text
-        assert "Embedding Model: all-MiniLM-L6-v2" in result[0].text
-        assert "Activation Threshold: 0.7" in result[0].text
+        assert '"detailed_config"' in result[0].text
+        assert '"embedding_model": "all-MiniLM-L6-v2"' in result[0].text
+        assert '"activation_threshold": 0.7' in result[0].text
+
+        # Verify CLI was called correctly
+        mcp_server.cli.show_status.assert_called_once_with(detailed=True, display=False)
 
     @pytest.mark.asyncio
     async def test_memory_status_failure(self, mcp_server):
@@ -478,7 +532,8 @@ class TestMemoryStatusTool:
     @pytest.mark.asyncio
     async def test_memory_status_default_params(self, mcp_server):
         """Test memory status with default parameters."""
-        mcp_server.cli.show_status = Mock(return_value="Status info")
+        mock_status = {"memory_counts": {"total_memories": 100}}
+        mcp_server.cli.show_status = Mock(return_value=mock_status)
 
         arguments = {}
 
@@ -487,7 +542,7 @@ class TestMemoryStatusTool:
         # Should not include detailed configuration by default
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
-        assert "🔧 DETAILED CONFIGURATION" not in result[0].text
+        assert '"detailed_config"' not in result[0].text
 
 
 class TestMCPIntegration:
@@ -498,10 +553,29 @@ class TestMCPIntegration:
         """Test complete store -> recall -> lesson workflow."""
         # Mock CLI methods
         mcp_server.cli.store_experience = Mock(return_value=True)
-        mcp_server.cli.retrieve_memories = Mock(
-            return_value="Found React performance insights"
+        mock_memories = {
+            "core": [
+                Mock(
+                    content="React performance insights",
+                    id="123",
+                    hierarchy_level=1,
+                    memory_type="episodic",
+                    strength=0.9,
+                    metadata={},
+                    access_count=1,
+                    importance_score=0.8,
+                    tags=["react"],
+                    created_date=None,
+                    last_accessed=None,
+                )
+            ],
+            "peripheral": [],
+            "bridge": [],
+        }
+        mcp_server.cli.retrieve_memories = Mock(return_value=mock_memories)
+        mcp_server.cli.show_status = Mock(
+            return_value={"memory_counts": {"total_memories": 100}}
         )
-        mcp_server.cli.show_status = Mock(return_value="System healthy, 100 memories")
 
         from mcp.types import CallToolRequest, CallToolRequestParams
 
@@ -534,11 +608,8 @@ class TestMCPIntegration:
         recall_result = await call_tool_handler(recall_request)
 
         assert len(recall_result.root.content) == 1
-        assert (
-            "📋 Retrieved memories for: 'React performance'"
-            in recall_result.root.content[0].text
-        )
-        assert "Found React performance insights" in recall_result.root.content[0].text
+        assert '"query": "React performance"' in recall_result.root.content[0].text
+        assert "React performance insights" in recall_result.root.content[0].text
 
         # Step 3: Record a session lesson
         lesson_params = CallToolRequestParams(
@@ -568,13 +639,13 @@ class TestMCPIntegration:
         status_result = await call_tool_handler(status_request)
 
         assert len(status_result.root.content) == 1
-        assert "📊 COGNITIVE MEMORY SYSTEM STATUS" in status_result.root.content[0].text
-        assert "System healthy, 100 memories" in status_result.root.content[0].text
+        assert '"system_status": "healthy"' in status_result.root.content[0].text
+        assert '"detailed_config"' in status_result.root.content[0].text
 
         # Verify all CLI methods were called correctly
         mcp_server.cli.store_experience.assert_called()
         mcp_server.cli.retrieve_memories.assert_called_with(
-            query="React performance", types=None, limit=5
+            query="React performance", types=None, limit=5, display=False
         )
         # Should be called twice - once for lesson storage, once for status
         assert mcp_server.cli.store_experience.call_count == 2

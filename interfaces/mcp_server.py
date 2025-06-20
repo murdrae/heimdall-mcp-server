@@ -9,6 +9,7 @@ and intelligent knowledge consolidation.
 """
 
 import asyncio
+import json
 import logging
 import sys
 from datetime import datetime
@@ -29,6 +30,7 @@ from starlette.routing import Route
 from cognitive_memory.core.interfaces import CognitiveSystem
 from cognitive_memory.main import initialize_system, initialize_with_config
 from interfaces.cli import CognitiveCLI
+from memory_system.display_utils import format_source_info
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -57,6 +59,94 @@ class CognitiveMemoryMCPServer:
         self._register_handlers()
 
         logger.info("Cognitive Memory MCP Server initialized")
+
+    def _format_memory_results(self, query: str, results: dict[str, list]) -> str:
+        """
+        Format memory retrieval results optimized for LLM consumption using JSON structure.
+
+        Args:
+            query: The search query used
+            results: Dictionary with memory types as keys and lists of memories as values
+
+        Returns:
+            str: JSON-structured formatted string optimized for LLM processing
+        """
+
+        total_results = sum(len(memories) for memories in results.values())
+        if total_results == 0:
+            return f"No memories found for query: '{query}'"
+
+        formatted_results: dict[str, Any] = {
+            "query": query,
+            "total_results": total_results,
+            "memories": {},
+        }
+
+        for memory_type, memories in results.items():
+            if memories:
+                formatted_results["memories"][memory_type] = []
+
+                for memory_item in memories:
+                    if memory_type == "bridge" and hasattr(memory_item, "memory"):
+                        # Handle BridgeMemory objects
+                        bridge_mem = memory_item
+                        memory = bridge_mem.memory
+
+                        memory_data = {
+                            "type": "bridge",
+                            "content": memory.content,
+                            "metadata": {
+                                "id": memory.id,
+                                "hierarchy_level": memory.hierarchy_level,
+                                "memory_type": memory.memory_type,
+                                "novelty_score": round(bridge_mem.novelty_score, 3),
+                                "bridge_score": round(bridge_mem.bridge_score, 3),
+                                "connection_potential": round(
+                                    bridge_mem.connection_potential, 3
+                                ),
+                                "source": format_source_info(memory),
+                                "created_date": memory.created_date.isoformat()
+                                if memory.created_date
+                                else None,
+                                "last_accessed": memory.last_accessed.isoformat()
+                                if memory.last_accessed
+                                else None,
+                                "access_count": memory.access_count,
+                                "importance_score": memory.importance_score,
+                                "tags": memory.tags,
+                            },
+                        }
+
+                    else:
+                        # Handle regular CognitiveMemory objects
+                        memory = memory_item
+
+                        # Use similarity score from metadata if available, otherwise fallback to memory strength
+                        score = memory.metadata.get("similarity_score", memory.strength)
+
+                        memory_data = {
+                            "type": memory.memory_type,
+                            "content": memory.content,
+                            "metadata": {
+                                "id": memory.id,
+                                "hierarchy_level": memory.hierarchy_level,
+                                "strength": round(score, 3),
+                                "source": format_source_info(memory),
+                                "created_date": memory.created_date.isoformat()
+                                if memory.created_date
+                                else None,
+                                "last_accessed": memory.last_accessed.isoformat()
+                                if memory.last_accessed
+                                else None,
+                                "access_count": memory.access_count,
+                                "importance_score": memory.importance_score,
+                                "tags": memory.tags,
+                            },
+                        }
+
+                    formatted_results["memories"][memory_type].append(memory_data)
+
+        return json.dumps(formatted_results, indent=2, ensure_ascii=False)
 
     def _register_handlers(self) -> None:
         """Register MCP protocol handlers."""
@@ -262,8 +352,7 @@ class CognitiveMemoryMCPServer:
     async def _recall_memories(self, arguments: dict) -> list[TextContent]:
         """Handle recall_memories tool calls."""
         query = arguments.get("query", "")
-        # Note: types_filter parameter from MCP schema not yet implemented in CLI
-        # types_filter = arguments.get("types", ["core", "peripheral", "bridge"])
+        types_filter = arguments.get("types", None)  # Use None for all types by default
         max_results = arguments.get("max_results", 10)
         # include_bridges = arguments.get("include_bridges", True)  # TODO: Implement bridge discovery
 
@@ -271,29 +360,22 @@ class CognitiveMemoryMCPServer:
             return [TextContent(type="text", text="❌ Error: Query cannot be empty")]
 
         try:
-            # Retrieve memories using CLI wrapper
-            # Note: CLI method returns bool, but we need formatted results
-            # This is a limitation that should be addressed in future refactoring
-            success = self.cli.retrieve_memories(
-                query=query, types=None, limit=max_results
+            # Retrieve memories using CLI wrapper with display=False to get structured data
+            results = self.cli.retrieve_memories(
+                query=query, types=types_filter, limit=max_results, display=False
             )
 
-            if not success:
+            if results is None:
                 return [
                     TextContent(
-                        type="text", text=f"No memories found for query: '{query}'"
+                        type="text",
+                        text=f"❌ Error retrieving memories for query: '{query}'",
                     )
                 ]
 
-            # Format the response with rich metadata
-            response = f"📋 Retrieved memories for: '{query}'\n\n"
-            # Note: CLI method prints results directly and returns bool
-            # In a future refactoring, this should return structured data
-            response += (
-                "Memories retrieved successfully. See console output for details."
-            )
-
-            return [TextContent(type="text", text=response)]
+            # Format the response as JSON for optimal LLM processing
+            formatted_response = self._format_memory_results(query, results)
+            return [TextContent(type="text", text=formatted_response)]
 
         except Exception as e:
             logger.error(f"Error recalling memories: {e}")
@@ -406,33 +488,36 @@ class CognitiveMemoryMCPServer:
         detailed = arguments.get("detailed", False)
 
         try:
-            # Get status using CLI wrapper
-            status_result = self.cli.show_status()
+            # Get status using CLI wrapper with display=False to get structured data
+            status_data = self.cli.show_status(detailed=detailed, display=False)
 
-            if status_result:
-                response = "📊 COGNITIVE MEMORY SYSTEM STATUS\n"
-                response += "=" * 40 + "\n\n"
-                response += "System Status: ✅ HEALTHY\n\n"
-                response += str(status_result)
-
-                if detailed:
-                    response += "\n\n🔧 DETAILED CONFIGURATION\n"
-                    response += "-" * 30 + "\n"
-                    response += "Embedding Model: all-MiniLM-L6-v2 (384 dimensions)\n"
-                    response += "Activation Threshold: 0.7\n"
-                    response += "Bridge Discovery K: 5\n"
-                    response += "Max Activations: 50\n"
-
-                response += "\n\n🧠 The cognitive memory system is operating optimally."
-
-                return [TextContent(type="text", text=response)]
-            else:
+            if status_data is None:
                 return [
                     TextContent(
                         type="text",
                         text="❌ Unable to retrieve system status. Please check if services are running.",
                     )
                 ]
+
+            # Format status as JSON for optimal LLM processing
+            formatted_status = {
+                "system_status": "healthy",
+                "timestamp": datetime.now().isoformat(),
+                **status_data,
+            }
+
+            if detailed:
+                # Add detailed configuration
+                formatted_status["detailed_config"] = {
+                    "embedding_model": "all-MiniLM-L6-v2",
+                    "embedding_dimensions": 384,
+                    "activation_threshold": 0.7,
+                    "bridge_discovery_k": 5,
+                    "max_activations": 50,
+                }
+
+            response = json.dumps(formatted_status, indent=2, ensure_ascii=False)
+            return [TextContent(type="text", text=response)]
 
         except Exception as e:
             logger.error(f"Error getting memory status: {e}")
@@ -461,8 +546,8 @@ class CognitiveMemoryMCPServer:
             """Health check endpoint for container monitoring."""
             try:
                 # Basic health check - verify cognitive system is responsive
-                status_result = self.cli.show_status()
-                if status_result:
+                status_result = self.cli.show_status(display=False)
+                if status_result is not None:
                     return JSONResponse(
                         {
                             "status": "healthy",

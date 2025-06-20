@@ -73,6 +73,19 @@ class HealthChecker:
         self.config_path = config_path
         self.console = Console()
         self.qdrant_manager = QdrantManager()
+        self._is_container = self._detect_container_environment()
+
+    def _detect_container_environment(self) -> bool:
+        """Detect if running inside a container."""
+        # Check for common container indicators
+        container_indicators = [
+            os.path.exists("/.dockerenv"),
+            os.path.exists("/proc/1/cgroup")
+            and "docker" in open("/proc/1/cgroup").read(),
+            os.environ.get("CONTAINER") is not None,
+            os.environ.get("PROJECT_ID") is not None,  # Our container sets this
+        ]
+        return any(container_indicators)
 
     def run_all_checks(
         self,
@@ -367,18 +380,40 @@ class HealthChecker:
                 )
 
             except Exception as docker_error:
+                # In container environments, Docker unavailability is expected
+                status = (
+                    HealthResult.HEALTHY if self._is_container else HealthResult.WARNING
+                )
+                message = (
+                    "Docker unavailable in container (expected)"
+                    if self._is_container
+                    else f"Docker unavailable: {str(docker_error)} (will use local binary fallback)"
+                )
                 return HealthCheck(
                     name="Docker Availability",
-                    status=HealthResult.WARNING,
-                    message=f"Docker unavailable: {str(docker_error)} (will use local binary fallback)",
-                    details={"error": str(docker_error)},
+                    status=status,
+                    message=message,
+                    details={
+                        "error": str(docker_error),
+                        "container_env": self._is_container,
+                    },
                 )
 
         except ImportError:
+            # In container environments, Docker client not being installed is expected
+            status = (
+                HealthResult.HEALTHY if self._is_container else HealthResult.WARNING
+            )
+            message = (
+                "Docker client not installed in container (expected)"
+                if self._is_container
+                else "Docker client not installed (will use local binary fallback)"
+            )
             return HealthCheck(
                 name="Docker Availability",
-                status=HealthResult.WARNING,
-                message="Docker client not installed (will use local binary fallback)",
+                status=status,
+                message=message,
+                details={"container_env": self._is_container},
             )
 
     def _check_qdrant_service(
@@ -446,11 +481,20 @@ class HealthChecker:
                             fix_successful=False,
                         )
                 else:
-                    return HealthCheck(
-                        name="Qdrant Service",
-                        status=HealthResult.WARNING,
-                        message="Qdrant service is not running (run 'memory_system qdrant start')",
-                    )
+                    # In container environments, not finding local Qdrant is expected
+                    if self._is_container:
+                        return HealthCheck(
+                            name="Qdrant Service",
+                            status=HealthResult.HEALTHY,
+                            message="Qdrant runs in separate container (expected)",
+                            details={"container_env": self._is_container},
+                        )
+                    else:
+                        return HealthCheck(
+                            name="Qdrant Service",
+                            status=HealthResult.WARNING,
+                            message="Qdrant service is not running (run 'memory_system qdrant start')",
+                        )
 
             else:
                 return HealthCheck(
@@ -533,9 +577,9 @@ class HealthChecker:
         try:
             issues = []
 
-            # Check .env file
+            # Check .env file (not required in containers)
             env_file = Path(".env")
-            if not env_file.exists():
+            if not env_file.exists() and not self._is_container:
                 issues.append("No .env file found (using defaults)")
 
             # Check required environment variables

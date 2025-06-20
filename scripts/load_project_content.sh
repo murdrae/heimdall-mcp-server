@@ -107,22 +107,22 @@ EOF
 
 # Load markdown files into cognitive memory
 load_markdown_files() {
-    local docs_dir="$PROJECT_PATH/.cognitive_docs"
+    local docs_dir="$PROJECT_PATH/.cognitive-memory"
 
-    # Check if .cognitive_docs directory exists
+    # Check if .cognitive-memory directory exists
     if [ ! -d "$docs_dir" ]; then
-        log_info "No .cognitive_docs directory found in project"
+        log_info "No .cognitive-memory directory found in project"
         log_info "Create $docs_dir and add markdown files to load them into memory"
         return 0
     fi
 
     log_info "Searching for markdown files in: $docs_dir"
 
-    # Find markdown files recursively in .cognitive_docs
-    local md_count=$(find "$docs_dir" -name "*.md" -type f | wc -l)
+    # Find markdown files recursively in .cognitive-memory (following symlinks)
+    local md_count=$(find -L "$docs_dir" -name "*.md" -type f | wc -l)
 
     if [ "$md_count" -eq 0 ]; then
-        log_info "No markdown files found in .cognitive_docs directory"
+        log_info "No markdown files found in .cognitive-memory directory"
         return 0
     fi
 
@@ -133,7 +133,7 @@ load $docs_dir --recursive
 quit
 EOF
     then
-        log_success "Markdown files loaded successfully from .cognitive_docs"
+        log_success "Markdown files loaded successfully from .cognitive-memory"
     else
         log_error "Failed to load markdown files"
         return 1
@@ -165,10 +165,10 @@ show_help() {
     echo "Examples:"
     echo "  $0                    # Load both git history and markdown files"
     echo "  $0 --git-only         # Load only git history"
-    echo "  $0 --markdown-only    # Load only markdown files from .cognitive_docs/"
+    echo "  $0 --markdown-only    # Load only markdown files from .cognitive-memory/"
     echo "  $0 --status           # Show memory status"
     echo ""
-    echo "Note: Markdown files should be placed in .cognitive_docs/ directory"
+    echo "Note: Markdown files should be placed in .cognitive-memory/ directory"
     echo "      to be loaded into the cognitive memory system."
     echo ""
 }
@@ -241,15 +241,15 @@ EOF
         if [ "$load_markdown" = true ]; then
             echo ""
             echo "📄 Markdown Files:"
-            local docs_dir="$PROJECT_PATH/.cognitive_docs"
+            local docs_dir="$PROJECT_PATH/.cognitive-memory"
             if [ -d "$docs_dir" ]; then
-                find "$docs_dir" -name "*.md" -type f | head -10
-                local total=$(find "$docs_dir" -name "*.md" -type f | wc -l)
+                find -L "$docs_dir" -name "*.md" -type f | head -10
+                local total=$(find -L "$docs_dir" -name "*.md" -type f | wc -l)
                 if [ "$total" -gt 10 ]; then
                     echo "... and $((total - 10)) more files"
                 fi
             else
-                echo "No .cognitive_docs directory found"
+                echo "No .cognitive-memory directory found"
                 echo "Create $docs_dir and add markdown files to load them"
             fi
         fi

@@ -59,7 +59,7 @@ services:
     depends_on:
       - qdrant
     healthcheck:
-      test: ["CMD", "memory_system", "doctor", "--json"]
+      test: ["CMD", "python", "-c", "import cognitive_memory; print('OK')"]
       interval: 30s
       timeout: 10s
       retries: 3

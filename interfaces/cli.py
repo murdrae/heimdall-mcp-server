@@ -83,8 +83,12 @@ class CognitiveCLI:
             return False
 
     def retrieve_memories(
-        self, query: str, types: list[str] | None = None, limit: int = 10
-    ) -> bool:
+        self,
+        query: str,
+        types: list[str] | None = None,
+        limit: int = 10,
+        display: bool = True,
+    ) -> dict[str, list] | None:
         """
         Retrieve memories for a query.
 
@@ -92,13 +96,16 @@ class CognitiveCLI:
             query: Query text
             types: Memory types to retrieve
             limit: Maximum results per type
+            display: Whether to print results to console
 
         Returns:
-            bool: True if retrieval completed successfully
+            dict[str, list] | None: Dictionary with memory types as keys and lists of memories as values,
+                                   or None if retrieval failed
         """
         if not query.strip():
-            print("Error: Empty query provided")
-            return False
+            if display:
+                print("Error: Empty query provided")
+            return None
 
         if types is None:
             types = ["core", "peripheral", "bridge"]
@@ -108,124 +115,138 @@ class CognitiveCLI:
                 query=query, types=types, max_results=limit
             )
 
-            total_results = sum(len(memories) for memories in results.values())
-            if total_results == 0:
-                print("No memories found for query")
-                return True
+            if display:
+                total_results = sum(len(memories) for memories in results.values())
+                if total_results == 0:
+                    print("No memories found for query")
+                    return results  # Return empty results instead of True
 
-            print(f"\n📋 Retrieved {total_results} memories for: '{query}'")
+                print(f"\n📋 Retrieved {total_results} memories for: '{query}'")
 
-            for memory_type, memories in results.items():
-                if memories:
-                    print(f"\n{memory_type.upper()} MEMORIES ({len(memories)}):")
-                    for i, memory_item in enumerate(memories, 1):
-                        # Handle bridge memories (BridgeMemory objects) vs regular memories (CognitiveMemory)
-                        if memory_type == "bridge" and hasattr(memory_item, "memory"):
-                            # Type narrowing for BridgeMemory
-                            from cognitive_memory.core.memory import BridgeMemory
+                for memory_type, memories in results.items():
+                    if memories:
+                        print(f"\n{memory_type.upper()} MEMORIES ({len(memories)}):")
+                        for i, memory_item in enumerate(memories, 1):
+                            # Handle bridge memories (BridgeMemory objects) vs regular memories (CognitiveMemory)
+                            if memory_type == "bridge" and hasattr(
+                                memory_item, "memory"
+                            ):
+                                # Type narrowing for BridgeMemory
+                                from cognitive_memory.core.memory import BridgeMemory
 
-                            bridge_mem = memory_item
-                            assert isinstance(bridge_mem, BridgeMemory)
-                            memory = bridge_mem.memory
-                            print(f"  {i}. [bridge] {memory.content[:100]}...")
+                                bridge_mem = memory_item
+                                assert isinstance(bridge_mem, BridgeMemory)
+                                memory = bridge_mem.memory
+                                print(f"  {i}. [bridge] {memory.content[:100]}...")
 
-                            # Format source information for bridge memory
-                            source_info = format_source_info(memory)
+                                # Format source information for bridge memory
+                                source_info = format_source_info(memory)
 
-                            print(
-                                f"     ID: {memory.id}, Level: L{memory.hierarchy_level}, "
-                                f"Novelty: {bridge_mem.novelty_score:.2f}, "
-                                f"Connection: {bridge_mem.connection_potential:.2f}, "
-                                f"Bridge Score: {bridge_mem.bridge_score:.2f}"
-                            )
-                            if source_info:
-                                print(f"     Source: {source_info}")
-                        else:
-                            # Regular CognitiveMemory object
-                            from cognitive_memory.core.memory import CognitiveMemory
+                                print(
+                                    f"     ID: {memory.id}, Level: L{memory.hierarchy_level}, "
+                                    f"Novelty: {bridge_mem.novelty_score:.2f}, "
+                                    f"Connection: {bridge_mem.connection_potential:.2f}, "
+                                    f"Bridge Score: {bridge_mem.bridge_score:.2f}"
+                                )
+                                if source_info:
+                                    print(f"     Source: {source_info}")
+                            else:
+                                # Regular CognitiveMemory object
+                                from cognitive_memory.core.memory import CognitiveMemory
 
-                            assert isinstance(memory_item, CognitiveMemory)
-                            memory = memory_item
-                            print(
-                                f"  {i}. [{memory.memory_type}] {memory.content[:100]}..."
-                            )
-                            # Use similarity score from metadata if available, otherwise fallback to memory strength
-                            score = memory.metadata.get(
-                                "similarity_score", memory.strength
-                            )
+                                assert isinstance(memory_item, CognitiveMemory)
+                                memory = memory_item
+                                print(
+                                    f"  {i}. [{memory.memory_type}] {memory.content[:100]}..."
+                                )
+                                # Use similarity score from metadata if available, otherwise fallback to memory strength
+                                score = memory.metadata.get(
+                                    "similarity_score", memory.strength
+                                )
 
-                            # Format source information
-                            source_info = format_source_info(memory)
+                                # Format source information
+                                source_info = format_source_info(memory)
 
-                            print(
-                                f"     ID: {memory.id}, Level: L{memory.hierarchy_level}, "
-                                f"Strength: {score:.2f}"
-                            )
-                            if source_info:
-                                print(f"     Source: {source_info}")
+                                print(
+                                    f"     ID: {memory.id}, Level: L{memory.hierarchy_level}, "
+                                    f"Strength: {score:.2f}"
+                                )
+                                if source_info:
+                                    print(f"     Source: {source_info}")
 
-            return True
+            return results
 
         except Exception as e:
-            print(f"✗ Error retrieving memories: {e}")
-            return False
+            if display:
+                print(f"✗ Error retrieving memories: {e}")
+            return None
 
-    def show_status(self, detailed: bool = False) -> bool:
+    def show_status(self, detailed: bool = False, display: bool = True) -> dict | None:
         """
         Show system status and statistics.
 
         Args:
-            detailed: Whether to show detailed statistics
+            detailed: Whether to include detailed statistics
+            display: Whether to print status to console
 
         Returns:
-            bool: True if status retrieved successfully
+            dict | None: Status dictionary with system information, or None if retrieval failed
         """
         try:
             stats = self.cognitive_system.get_memory_stats()
 
-            print("\n📊 COGNITIVE MEMORY SYSTEM STATUS")
-            print("=" * 40)
+            if display:
+                print("\n📊 COGNITIVE MEMORY SYSTEM STATUS")
+                print("=" * 40)
 
-            # Basic counts
-            if "memory_counts" in stats:
-                print("\nMemory Counts:")
-                for key, count in stats["memory_counts"].items():
-                    if isinstance(count, int):
-                        level_name = key.replace("level_", "").replace("_", " ").title()
-                        print(f"  {level_name}: {count}")
+                # Basic counts
+                if "memory_counts" in stats:
+                    print("\nMemory Counts:")
+                    for key, count in stats["memory_counts"].items():
+                        if isinstance(count, int):
+                            level_name = (
+                                key.replace("level_", "").replace("_", " ").title()
+                            )
+                            print(f"  {level_name}: {count}")
 
-            # Configuration
-            if detailed and "system_config" in stats:
-                print("\nConfiguration:")
-                config = stats["system_config"]
-                print(
-                    f"  Activation Threshold: {config.get('activation_threshold', 'N/A')}"
-                )
-                print(
-                    f"  Bridge Discovery K: {config.get('bridge_discovery_k', 'N/A')}"
-                )
-                print(f"  Max Activations: {config.get('max_activations', 'N/A')}")
+                # Configuration
+                if detailed and "system_config" in stats:
+                    print("\nConfiguration:")
+                    config = stats["system_config"]
+                    print(
+                        f"  Activation Threshold: {config.get('activation_threshold', 'N/A')}"
+                    )
+                    print(
+                        f"  Bridge Discovery K: {config.get('bridge_discovery_k', 'N/A')}"
+                    )
+                    print(f"  Max Activations: {config.get('max_activations', 'N/A')}")
 
-            # Storage statistics
-            if detailed and "storage_stats" in stats and stats["storage_stats"]:
-                print("\nStorage Statistics:")
-                storage_stats = stats["storage_stats"]
-                for level_key, level_stats in storage_stats.items():
-                    if isinstance(level_stats, dict) and "vectors_count" in level_stats:
-                        print(f"  {level_key}: {level_stats['vectors_count']} vectors")
+                # Storage statistics
+                if detailed and "storage_stats" in stats and stats["storage_stats"]:
+                    print("\nStorage Statistics:")
+                    storage_stats = stats["storage_stats"]
+                    for level_key, level_stats in storage_stats.items():
+                        if (
+                            isinstance(level_stats, dict)
+                            and "vectors_count" in level_stats
+                        ):
+                            print(
+                                f"  {level_key}: {level_stats['vectors_count']} vectors"
+                            )
 
-            # Embedding info
-            if detailed and "embedding_info" in stats:
-                print("\nEmbedding Model:")
-                info = stats["embedding_info"]
-                print(f"  Model: {info.get('model_name', 'N/A')}")
-                print(f"  Dimensions: {info.get('embedding_dimension', 'N/A')}")
+                # Embedding info
+                if detailed and "embedding_info" in stats:
+                    print("\nEmbedding Model:")
+                    info = stats["embedding_info"]
+                    print(f"  Model: {info.get('model_name', 'N/A')}")
+                    print(f"  Dimensions: {info.get('embedding_dimension', 'N/A')}")
 
-            return True
+            return stats
 
         except Exception as e:
-            print(f"✗ Error retrieving status: {e}")
-            return False
+            if display:
+                print(f"✗ Error retrieving status: {e}")
+            return None
 
     def consolidate_memories(self, dry_run: bool = False) -> bool:
         """
@@ -317,12 +338,16 @@ class CognitiveCLI:
                     )
                     return False
 
-                # Find all files in directory
+                # Find all files in directory (following symlinks)
                 markdown_files: list[Path] = []
                 extensions = loader.get_supported_extensions()
 
-                for ext in extensions:
-                    markdown_files.extend(source_path_obj.rglob(f"*{ext}"))
+                import os
+
+                for root, _dirs, files in os.walk(source_path_obj, followlinks=True):
+                    for file in files:
+                        if any(file.endswith(ext) for ext in extensions):
+                            markdown_files.append(Path(root) / file)
 
                 if not markdown_files:
                     print(f"✗ No markdown files found in directory: {source_path}")
@@ -643,7 +668,7 @@ class CognitiveCLI:
                     # Add git pattern summary
                     self.search_git_patterns("", limit=0)  # Just show counts
 
-                return success
+                return bool(success)
 
         except Exception as e:
             print(f"✗ Error retrieving git status: {e}")
@@ -715,7 +740,7 @@ class CognitiveCLI:
                     }[ptype]
                     print(f"  {type_name}: {count}")
 
-            return success
+            return bool(success)
 
         except Exception as e:
             print(f"✗ Error searching git patterns: {e}")
@@ -978,15 +1003,17 @@ def main() -> int:
                 exit_code = 0 if success else 1
 
             elif args.command == "retrieve":
-                success = cli.retrieve_memories(
+                result = cli.retrieve_memories(
                     query=args.query,
                     types=getattr(args, "types", None),
                     limit=getattr(args, "limit", 10),
                 )
+                success = bool(result)
                 exit_code = 0 if success else 1
 
             elif args.command == "status":
-                success = cli.show_status(detailed=getattr(args, "detailed", False))
+                result = cli.show_status(detailed=getattr(args, "detailed", False))
+                success = bool(result)
                 exit_code = 0 if success else 1
 
             elif args.command == "consolidate":
