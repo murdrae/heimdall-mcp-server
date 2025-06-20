@@ -120,14 +120,19 @@ class CognitiveConfig:
     social_dimensions: int = 3
 
     # Memory loading parameters
-    max_tokens_per_chunk: int = 250
+    max_tokens_per_chunk: int = 1000
     code_block_lines: int = 8
-    strength_floor: float = 0.15
+    strength_floor: float = 0.3
+    min_memory_tokens: int = 100
+    min_meaningful_words: int = 20
+    max_merge_children: int = 5
+    max_hierarchical_depth: int = 4
+    max_connections_per_memory: int = 10
 
     # Base connection weights
     hierarchical_weight: float = 0.80
     sequential_weight: float = 0.70
-    associative_weight: float = 0.50
+    associative_weight: float = 0.35
 
     # Relevance scoring weights (must sum to 1.0)
     semantic_alpha: float = 0.45
@@ -150,13 +155,19 @@ class CognitiveConfig:
                 os.getenv("CONSOLIDATION_THRESHOLD", str(cls.consolidation_threshold))
             ),
             similarity_closeness_threshold=float(
-                os.getenv("SIMILARITY_CLOSENESS_THRESHOLD", str(cls.similarity_closeness_threshold))
+                os.getenv(
+                    "SIMILARITY_CLOSENESS_THRESHOLD",
+                    str(cls.similarity_closeness_threshold),
+                )
             ),
             modification_date_weight=float(
                 os.getenv("MODIFICATION_DATE_WEIGHT", str(cls.modification_date_weight))
             ),
             modification_recency_decay_days=float(
-                os.getenv("MODIFICATION_RECENCY_DECAY_DAYS", str(cls.modification_recency_decay_days))
+                os.getenv(
+                    "MODIFICATION_RECENCY_DECAY_DAYS",
+                    str(cls.modification_recency_decay_days),
+                )
             ),
             emotional_weight=float(
                 os.getenv("EMOTIONAL_WEIGHT", str(cls.emotional_weight))
