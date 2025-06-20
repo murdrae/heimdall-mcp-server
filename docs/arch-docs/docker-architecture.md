@@ -1,0 +1,448 @@
+# Docker Container Implementation for Cognitive Memory MCP Server
+
+## Overview
+Project-scoped Docker containerization strategy for the cognitive memory MCP server that provides automatic project isolation while maintaining a clean MCP interface. Solves PATH dependency issues and enables proper multi-project support without requiring project parameters in MCP tools.
+
+## Problem Statement
+
+### Current Issues
+- **PATH Dependency**: MCP server fails with "spawn memory_system ENOENT" because Claude Code can't find the command
+- **Project Contamination**: Single installation shares memory across all projects
+- **Environment Complexity**: Requires Python virtual environment setup and dependency management
+- **Deployment Difficulty**: Complex setup process with multiple moving parts
+
+### Solution Requirements
+- **Perfect Project Isolation**: Each project gets its own memory universe
+- **Clean MCP Interface**: No project parameters in MCP tools
+- **Simple Setup**: Single command deployment per project
+- **Resource Efficiency**: Only active projects consume resources
+- **Deterministic Behavior**: Same project always gets same resources
+
+## Core Architecture: Project-Scoped Container Instances
+
+### Design Principle
+Each project directory automatically gets its own isolated MCP server instance using deterministic resource allocation based on project path hashing.
+
+### Project Isolation Strategy
+```
+Project A (/path/to/project-a/)
+├── Container: cognitive-memory-a1b2c3d4 (port 6333+hash)
+├── Data Volume: cognitive-data-a1b2c3d4
+├── Qdrant Collections: a1b2c3d4-concepts, a1b2c3d4-contexts, a1b2c3d4-episodes
+└── Claude Config: --scope project (project-specific MCP)
+
+Project B (/path/to/project-b/)
+├── Container: cognitive-memory-e5f6g7h8 (port 6333+hash)
+├── Data Volume: cognitive-data-e5f6g7h8
+├── Qdrant Collections: e5f6g7h8-concepts, e5f6g7h8-contexts, e5f6g7h8-episodes
+└── Claude Config: --scope project (project-specific MCP)
+```
+
+### Resource Allocation Algorithm
+```bash
+# Deterministic project identification
+PROJECT_PATH=$(pwd)
+PROJECT_HASH=$(echo $PROJECT_PATH | sha256sum | cut -c1-8)
+
+# Deterministic resource allocation
+QDRANT_PORT=$((6333 + 0x$PROJECT_HASH % 1000))
+CONTAINER_NAME="cognitive-memory-$PROJECT_HASH"
+VOLUME_NAME="cognitive-data-$PROJECT_HASH"
+NETWORK_NAME="cognitive-network-$PROJECT_HASH"
+```
+
+## Architecture Implementation
+
+### Transport Strategy: STDIO with Container Integration
+The implementation uses stdio transport with a wrapper script instead of HTTP for simplicity and reliability.
+
+#### Key Components
+- **MCP Server**: Stdio transport (`interfaces/mcp_server.py`)
+- **Container Integration**: Via `claude_mcp_wrapper.sh` script  
+- **Claude Code Integration**: `--transport stdio` with wrapper script
+- **Health Monitoring**: Built into Docker containers via `memory_system doctor`
+
+### Project-Aware Container Architecture
+Automatic project isolation without user intervention through deterministic resource allocation.
+
+#### Core Components
+
+1. **Project Detection System**
+   - Hash-based project identification from directory path
+   - Collision detection and resolution
+   - Project metadata storage
+
+2. **Deterministic Resource Allocation**
+   - Consistent ports based on project hash
+   - Predictable container and volume names
+   - Isolated Docker networks per project
+
+3. **Cognitive System Enhancements**
+   - Project-aware Qdrant collection naming
+   - Isolated SQLite databases per project
+   - Project-scoped bridge discovery
+
+#### Architecture Diagram
+```
+┌─────────────────────────────────────────────────────────────┐
+│                Project A Container Network                  │
+│                                                             │
+│  ┌─────────────────┐    ┌────────────────────────────────┐  │
+│  │   Qdrant        │    │  Cognitive Memory MCP Server   │  │
+│  │   Collections:  │    │                                │  │
+│  │   a1b2c3d4-*    │◄───┤  STDIO MCP via wrapper         │  │
+│  │   :6333         │    │  Project: a1b2c3d4             │  │
+│  └─────────────────┘    └────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                                    │
+                            STDIO MCP Protocol
+                                    │
+                         ┌─────────────────────┐
+                         │   Claude Code       │
+                         │   Project A Scope   │
+                         └─────────────────────┘
+```
+
+### Docker Infrastructure
+Production-ready container infrastructure with simplified script management.
+
+#### Implemented File Structure
+```
+cognitive-memory/
+├── docker/
+│   ├── Dockerfile                     # Multi-stage application container
+│   ├── docker-compose.template.yml    # Template for project-specific setup  
+│   ├── entrypoint.sh                  # Container startup script
+│   └── healthcheck.sh                 # Health monitoring script
+├── scripts/
+│   ├── setup_project_memory.sh        # Main setup script (includes all functionality)
+│   └── claude_mcp_wrapper.sh          # MCP integration wrapper
+├── .dockerignore                      # Build exclusions
+└── setup_claude_code_mcp.sh           # Simple MCP setup wrapper
+```
+
+#### Implementation Notes
+- **Simplified Scripts**: All functionality consolidated into `setup_project_memory.sh`
+- **Built-in Features**: Setup script includes start/stop/cleanup via `--help`, `--cleanup`, `--rebuild` flags
+- **No Backup Script**: Not implemented (can be added later if needed)
+
+#### Dockerfile Design
+```dockerfile
+# Multi-stage build for efficiency
+FROM python:3.13-slim as builder
+# Install dependencies and build wheels
+
+FROM python:3.13-slim as runtime
+# Copy wheels and install
+# Pre-download sentence-transformers models
+# Configure non-root user
+# Set up entrypoint
+```
+
+#### Docker Compose Template
+```yaml
+version: '3.8'
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant-${PROJECT_HASH}
+    volumes:
+      - qdrant-data-${PROJECT_HASH}:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+    networks:
+      - cognitive-network-${PROJECT_HASH}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  cognitive-memory:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: cognitive-memory-${PROJECT_HASH}
+    volumes:
+      - cognitive-data-${PROJECT_HASH}:/app/data
+      - model-cache-${PROJECT_HASH}:/app/models
+    environment:
+      - PROJECT_ID=${PROJECT_HASH}
+      - PROJECT_PATH=${PROJECT_PATH}
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_COLLECTION_PREFIX=${PROJECT_HASH}
+      - SENTENCE_BERT_MODEL=all-MiniLM-L6-v2
+      - COGNITIVE_MEMORY_DB_PATH=/app/data/cognitive_memory.db
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    networks:
+      - cognitive-network-${PROJECT_HASH}
+    healthcheck:
+      test: ["CMD", "memory_system", "doctor", "--json"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+networks:
+  cognitive-network-${PROJECT_HASH}:
+    driver: bridge
+
+volumes:
+  qdrant-data-${PROJECT_HASH}:
+  cognitive-data-${PROJECT_HASH}:
+  model-cache-${PROJECT_HASH}:
+```
+
+### Smart Setup Script
+One-command setup for any project with all lifecycle management built-in.
+
+#### Actual Implementation (`scripts/setup_project_memory.sh`)
+```bash
+# Key implementation details:
+# 1. Data stored in project directory: $PROJECT_PATH/.cognitive-memory
+# 2. STDIO transport instead of HTTP
+# 3. All functionality (start/stop/cleanup) in one script
+
+# Core functionality:
+./scripts/setup_project_memory.sh           # Setup containers
+./scripts/setup_project_memory.sh --cleanup # Remove project containers
+./scripts/setup_project_memory.sh --rebuild # Force rebuild
+./setup_claude_code_mcp.sh                  # Configure Claude Code MCP
+```
+
+#### Implementation Details
+- **Project-specific data**: Stored in `$PROJECT_PATH/.cognitive-memory/`
+- **Compose file**: `$PROJECT_PATH/.cognitive-memory/docker-compose.yml`
+- **Built-in health waiting**: No separate script needed
+- **STDIO MCP**: Uses `claude_mcp_wrapper.sh` instead of HTTP endpoints
+
+#### Setup Flow Example
+```bash
+cd /path/to/my-react-project
+./scripts/setup_project_memory.sh
+
+# Output:
+# 🧠 Setting up cognitive memory for project: my-react-project
+# 📊 Project ID: a1b2c3d4
+# 🚢 Starting containers on port 6456...
+# ⏳ Waiting for services to be healthy...
+# ✅ Qdrant ready
+# ✅ Cognitive Memory MCP server ready
+# 🎉 Setup complete! Project memory ready.
+```
+
+### Container Lifecycle Management  
+Easy management of project-specific containers with simplified commands.
+
+#### Simplified Management
+All lifecycle management is built into the main setup script:
+
+```bash
+# Setup new project
+./scripts/setup_project_memory.sh
+
+# Clean up project containers and data
+./scripts/setup_project_memory.sh --cleanup
+
+# Force rebuild and restart
+./scripts/setup_project_memory.sh --rebuild
+
+# View help and options
+./scripts/setup_project_memory.sh --help
+```
+
+#### Manual Container Management
+For advanced users who need direct control:
+
+```bash
+# Start project containers manually
+cd $PROJECT_PATH/.cognitive-memory
+docker compose up -d
+
+# Stop project containers
+docker compose down
+
+# List all cognitive memory containers
+docker ps --filter "name=cognitive-memory-"
+```
+
+### Enhanced Cognitive System Integration
+Native project awareness throughout the system.
+
+#### Project Namespace Support
+
+1. **Qdrant Collection Naming**
+   ```python
+   # Before: "cognitive_concepts"
+   # After:  "a1b2c3d4-cognitive_concepts"
+
+   collection_name = f"{project_id}-{base_collection_name}"
+   ```
+
+2. **SQLite Database Isolation**
+   ```python
+   # Each project gets its own database file
+   db_path = f"/app/data/cognitive_memory.db"
+   ```
+
+3. **Bridge Discovery Scoping**
+   ```python
+   # Bridge discovery only within project scope
+   def discover_bridges(query, project_id):
+       # Only search within project-specific collections
+       pass
+   ```
+
+#### Configuration Management
+```python
+# Project-aware configuration
+@dataclass
+class ProjectConfig:
+    project_id: str
+    project_path: str
+    qdrant_collection_prefix: str
+    database_path: str
+    model_cache_path: str
+```
+
+### Claude Code Integration Enhancement
+Seamless project-scoped integration with Claude Code.
+
+#### Integration Strategy
+```bash
+# Each project gets its own MCP server automatically
+cd /path/to/project-a
+./scripts/setup_project_memory.sh
+./setup_claude_code_mcp.sh
+# → claude mcp add --scope project cognitive-memory-a1b2c3d4 (stdio wrapper)
+
+cd /path/to/project-b
+./scripts/setup_project_memory.sh
+./setup_claude_code_mcp.sh
+# → claude mcp add --scope project cognitive-memory-e5f6g7h8 (stdio wrapper)
+```
+
+#### Claude Code Workflow
+1. **Project A**: User runs setup in project directory
+2. **Container Creation**: Project-specific container starts with unique hash
+3. **MCP Configuration**: Claude Code configured with project scope via stdio wrapper
+4. **Isolation**: Memories only visible within Project A Claude sessions
+5. **Project B**: Completely separate setup and memory space
+
+#### Benefits
+- **Clean MCP Interface**: No project parameters needed in tools
+- **Automatic Project Detection**: Based on Claude Code's project context
+- **Perfect Isolation**: No cross-contamination between projects
+- **Natural Workflow**: Fits existing Claude Code project management
+
+## Technical Specifications
+
+### Port Allocation Strategy
+```bash
+# Hash-based port allocation
+PROJECT_HASH=$(echo $PROJECT_PATH | sha256sum | cut -c1-8)
+QDRANT_PORT=$((6333 + 0x$PROJECT_HASH % 1000))
+
+# Examples:
+# /home/user/project-a    → a1b2c3d4 → port 6456
+# /home/user/project-b    → e5f6g7h8 → port 6789
+# /work/client-project    → f9a8b7c6 → port 7012
+```
+
+### Container Naming Convention
+```bash
+# Predictable, collision-resistant naming
+CONTAINER_NAME="cognitive-memory-${PROJECT_HASH}"
+VOLUME_NAME="cognitive-data-${PROJECT_HASH}"
+NETWORK_NAME="cognitive-network-${PROJECT_HASH}"
+
+# Examples:
+# cognitive-memory-a1b2c3d4
+# cognitive-data-a1b2c3d4
+# cognitive-network-a1b2c3d4
+```
+
+### Data Persistence Strategy (Actual Implementation)
+```
+Project Data Layout:
+$PROJECT_PATH/.cognitive-memory/
+├── docker-compose.yml           # Generated compose file
+├── qdrant/                      # Qdrant vector data (host volume)
+├── cognitive/                   # Application data (host volume)
+│   ├── cognitive_memory.db      # SQLite database
+│   └── logs/                    # Application logs
+├── logs/                        # Container logs
+└── models/                      # Cached ML models
+
+Docker Volumes:
+├── cognitive-qdrant-{hash}      # Qdrant data volume
+├── cognitive-data-{hash}        # App data volume  
+└── cognitive-network-{hash}     # Isolated network
+```
+
+### Health Check Strategy
+```yaml
+# Container health checks
+healthcheck:
+  test: ["CMD", "memory_system", "doctor", "--json"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 60s
+```
+
+### Security Considerations
+- **Network Isolation**: Each project gets its own Docker network
+- **Volume Isolation**: Project-specific data volumes
+- **Port Binding**: Only bind to localhost (127.0.0.1)
+- **User Permissions**: Host user mapping via docker-compose
+- **Resource Limits**: Memory and CPU constraints can be added
+
+## Benefits Summary
+
+### For Users
+1. **Zero Configuration**: Run one script, everything works
+2. **Perfect Isolation**: Projects can't interfere with each other
+3. **Clean Interface**: No project management in MCP tools
+4. **Portable**: Works on any system with Docker
+5. **Resource Efficient**: Only active projects consume resources
+
+### For Developers
+1. **Maintainable**: Clear separation of concerns
+2. **Testable**: Each project is an isolated test environment
+3. **Scalable**: Support unlimited projects
+4. **Debuggable**: Project-specific logs and monitoring
+5. **Extensible**: Easy to add new features per project
+
+### For Operations
+1. **Monitoring**: Per-project health checks and metrics
+2. **Backup**: Project-specific data backup strategies
+3. **Cleanup**: Easy identification and removal of unused resources
+4. **Security**: Isolated networks and data volumes
+5. **Updates**: Rolling updates without affecting other projects
+
+## Risk Mitigation
+
+### Port Conflicts
+- **Risk**: Hash collisions leading to port conflicts
+- **Mitigation**: Collision detection with automatic port adjustment
+- **Fallback**: Manual port specification option
+
+### Resource Management
+- **Risk**: Too many containers consuming resources
+- **Mitigation**: Container resource limits and cleanup procedures
+- **Monitoring**: Resource usage tracking and alerts
+
+### Data Persistence
+- **Risk**: Volume data loss during container updates
+- **Mitigation**: Host directory mapping for critical data
+- **Recovery**: Data stored in project directories for easy backup
+
+### Service Dependencies
+- **Risk**: Services failing to start in correct order
+- **Mitigation**: Health checks and dependency management
+- **Monitoring**: Service health dashboards
+
+This implementation provides a robust, scalable solution for project-scoped cognitive memory that solves PATH issues while enabling clean multi-project support through Docker containerization.
