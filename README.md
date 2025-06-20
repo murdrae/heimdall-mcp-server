@@ -47,27 +47,32 @@ Your LLM gets access to these 4 memory tools via MCP protocol:
 **`store_memory`** - Store experiences and insights
 ```
 # LLM calls this MCP tool:
-store_memory("Found that React components re-render unnecessarily when using object destructuring in useEffect dependencies", {
-  hierarchy_level: 1,
-  importance_score: 0.8,
-  tags: ["react", "performance"]
+store_memory({
+  text: "Found that React components re-render unnecessarily when using object destructuring in useEffect dependencies",
+  context: {
+    hierarchy_level: 1,
+    importance_score: 0.8,
+    tags: ["react", "performance"]
+  }
 })
 ```
 
 **`recall_memories`** - Semantic search with rich context
 ```
 # LLM calls this MCP tool:
-recall_memories("authentication timeout bug", {
+recall_memories({
+  query: "authentication timeout bug",
   types: ["core", "peripheral"],
   max_results: 5
 })
-# Returns: similarity scores, source info, hierarchy levels, access patterns
+# Returns: JSON with memories categorized by type, similarity scores, metadata
 ```
 
 **`session_lessons`** - Record key learnings for future sessions
 ```
 # LLM calls this MCP tool:
-session_lessons("When debugging API issues, always check network tab first, then API logs, then client error handling", {
+session_lessons({
+  lesson_content: "When debugging API issues, always check network tab first, then API logs, then client error handling",
   lesson_type: "pattern",
   importance: "high"
 })
@@ -77,7 +82,7 @@ session_lessons("When debugging API issues, always check network tab first, then
 ```
 # LLM calls this MCP tool:
 memory_status({detailed: true})
-# Shows: memory counts, storage stats, recent activity
+# Returns: JSON with memory counts, storage stats, system health
 ```
 
 ## What the LLM learns to remember
@@ -103,9 +108,7 @@ LLM: [calls recall_memories("auth timeout")]
 ## How It Works Under the Hood
 
 **For Developers Who Want to Know**:
-- We extract memories from project docs and git history, and encourage LLM to use record lessons learned.
-- Than we encod and store data on a Vector database Qdrant
-- We have some heuristics to try to fuzzy and semantic find useful memories depending on what LLM tries to recall
+We extract memories from project docs and git history, encode them as vectors, and store them in Qdrant with smart retrieval algorithms.
 
 ```
 Git History → Pattern Extraction → Multi-dimensional Memory
