@@ -1,4 +1,4 @@
-# Heimdall MCP Server - Cognitive Memory Across Claude Sessions
+# Heimdall MCP Server - Cognitive Memory Across Coding Sessions
 **MCP server that gives Claude persistent memory of your project**
 
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
