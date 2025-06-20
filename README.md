@@ -8,19 +8,29 @@
 
 A tool that lets your LLM remember things between conversations - your project patterns, solutions you've found, and insights from past sessions.
 
-**The problem it solves:**
+## **The problem it solves**
 Your coding assistant forgets everything when you close the chat. Every new session starts from zero, even if you discussed the same codebase yesterday.
 
-**What it gives you:**
+## **What it gives you**
 - Your LLM remembers project-specific knowledge across sessions
 - Learns patterns from your git history (which files change together, common fix approaches)
 - Stores insights and solutions you discover during coding sessions
 - Connects related concepts it has learned about your codebase
 
-This means instead of re-explaining your auth system every morning, your LLM already knows how it works and what problems you've solved before.
+This means instead of re-explaining your system every session or having hundreds of tool calls for context, your LLM remembers how it works and what problems you've solved before.
 
+## **What it still requires from you**
 
-## 30-Second Setup (Per-Project)
+This is not magic, it still depends on good documents, meaningful git commits and a good CLAUDE.md (or similar rules) encouraging LLM to use the MCP
+
+Tips:
+
+- Place architecture documents, guidelines, decisions, etc in `.cognitive-memory` (or symlink to them)
+- Try to NOT INCLUDE PROGRESS, STATUS, PROJECT MANAGEMENT docs. It is easier to @ tag them in the conversation and it would only confuse LLM context.
+- Instruct LLM to use meaningful git messages
+- See CLAUDE.md for Cognitive Memory MCP related rules
+
+## 30-Second Setup
 
 **Important**: Run this setup script from within your project repository - it creates a project-specific MCP server.
 
@@ -30,13 +40,17 @@ cd /path/to/your/project
 
 # Run setup (creates isolated memory for THIS project only)
 /path/to/cognitive-memory-mcp/setup_claude_code_mcp.sh
+# Save MD documents you want to feed into the cognitive system in .cognitive-memory
+# You can symlink to some other directory you normally use, like docs/arch-docs
+# Then load the MD files and git history into the cognitive system:
+/path/to/cognitive-memory-mcp/scripts/load_project_content.sh 
 ```
 
 This automatically configures:
 - Project-isolated Docker containers with Qdrant + cognitive system
+ - Meaning: you have isolated memories on different projects. This is why calling the setup scripts from proper place is crucial.
 - MCP server integration for Claude Code (project-specific)
-- Post-commit git hooks for pattern extraction from your repo
-- Memory tools available immediately in Claude sessions
+  - If you are not integrating to Claude Code, just use `scripts/setup_project_memory.sh*`
 
 **Result**: Your LLM now has persistent memory of THIS specific project, separate from your other projects.
 
