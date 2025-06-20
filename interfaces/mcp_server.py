@@ -146,7 +146,7 @@ class CognitiveMemoryMCPServer:
 
                     formatted_results["memories"][memory_type].append(memory_data)
 
-        return json.dumps(formatted_results, indent=2, ensure_ascii=False)
+        return json.dumps(formatted_results, ensure_ascii=False, separators=(",", ":"))
 
     def _register_handlers(self) -> None:
         """Register MCP protocol handlers."""
@@ -330,11 +330,7 @@ class CognitiveMemoryMCPServer:
                 level_names = {0: "L0 (Concept)", 1: "L1 (Context)", 2: "L2 (Episode)"}
                 level_name = level_names.get(hierarchy_level, f"L{hierarchy_level}")
 
-                response = "✓ Experience stored successfully\n\n"
-                response += f"Hierarchy Level: {level_name}\n"
-                response += f"Memory Type: {memory_type}\n"
-                response += f"Stored At: {datetime.now().isoformat()}Z\n\n"
-                response += "This knowledge is now available for future recall and will contribute to pattern recognition."
+                response = f"✓ Stored: {level_name}, {memory_type}"
 
                 return [TextContent(type="text", text=response)]
             else:
@@ -399,17 +395,10 @@ class CognitiveMemoryMCPServer:
 
         # Provide metacognitive prompting guidance
         if len(lesson_content) < 20:  # Very short lesson
-            guidance = "\n\n💡 Consider expanding your lesson: What specific insights, patterns, or context would help a future session understand this situation after complete amnesia?\n\n"
-            guidance += "Think about:\n"
-            guidance += "• What key insights or discoveries emerged?\n"
-            guidance += "• What patterns or approaches proved effective?\n"
-            guidance += "• What context about the current work is essential?\n"
-            guidance += "• What warnings or gotchas should be remembered?\n"
-
             return [
                 TextContent(
                     type="text",
-                    text=f"Session lesson noted, but could be more detailed.{guidance}",
+                    text="❌ Lesson too brief. Expand with specific insights, patterns, or context for future sessions.",
                 )
             ]
 
@@ -444,27 +433,7 @@ class CognitiveMemoryMCPServer:
             success = self.cli.store_experience(text=lesson_content, context=context)
 
             if success:
-                response = "✓ Session lesson recorded for future reference\n\n"
-                response += f"Lesson Type: {lesson_type}\n"
-                response += f"Importance Level: {importance}\n"
-                response += f"Stored At: {datetime.now().isoformat()}Z\n\n"
-
-                if session_context:
-                    response += f"Session Context: {session_context}\n\n"
-
-                response += "This lesson will be prioritized in future recalls and contribute to continuous learning across sessions."
-
-                # Add contextual suggestions
-                if lesson_type == "discovery":
-                    response += "\n\n💡 Suggestion: Consider recording related patterns or solutions that emerged from this discovery."
-                elif lesson_type == "pattern":
-                    response += "\n\n💡 Suggestion: Consider documenting specific examples where this pattern applies."
-                elif lesson_type == "solution":
-                    response += "\n\n💡 Suggestion: Consider adding context about when this solution is most effective."
-                elif lesson_type == "warning":
-                    response += "\n\n💡 Suggestion: Consider documenting the consequences of ignoring this warning."
-                elif lesson_type == "context":
-                    response += "\n\n💡 Suggestion: Consider adding related discoveries or solutions from this context."
+                response = f"✓ Lesson recorded: {lesson_type}, {importance}"
 
                 return [TextContent(type="text", text=response)]
             else:
@@ -516,7 +485,9 @@ class CognitiveMemoryMCPServer:
                     "max_activations": 50,
                 }
 
-            response = json.dumps(formatted_status, indent=2, ensure_ascii=False)
+            response = json.dumps(
+                formatted_status, ensure_ascii=False, separators=(",", ":")
+            )
             return [TextContent(type="text", text=response)]
 
         except Exception as e:
