@@ -24,13 +24,20 @@ https://github.com/user-attachments/assets/5a556433-97c2-4d57-92cc-3813ac23ff5b
 
 Heimdall is designed to be set up on a per-project basis. Run these commands from the root directory of your code repository.
 
-### 1. Navigate to Your Project
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/lcbcFoo/heimdall-mcp-server.git
+# Cloned to /path/to/heimdall-mcp-server
+```
+
+### 2. Navigate to Your Project
 
 ```bash
 cd /path/to/your/project
 ```
 
-### 2. Run the Setup Script
+### 3. Run the Setup Script
 
 This command deploys project-isolated Docker containers for the Heimdall server and its Qdrant vector database.
 
@@ -43,7 +50,7 @@ This command deploys project-isolated Docker containers for the Heimdall server 
 # This will put the MCP server docker up, you will then need to configure the Coding Assistant you are using.
 ```
 
-### 3. Load Project Knowledge
+### 4. Load Project Knowledge
 
 Populate the `.heimdall-mcp/` directory (created by the above scripts) with your project's documentation (e.g., Markdown files). You can also create symbolic links to an existing docs folder. Then, run the loading script.
 
