@@ -15,7 +15,7 @@ import re
 from abc import ABC, abstractmethod
 
 import torch
-from transformers import pipeline
+from nrclex import NRCLex
 
 from ..core.config import CognitiveConfig
 from ..core.interfaces import DimensionExtractor
@@ -36,16 +36,10 @@ class BaseDimensionExtractor(ABC):
 
 
 class EmotionalExtractor(BaseDimensionExtractor):
-    """Extract emotional dimensions: frustration, satisfaction, curiosity, stress."""
+    """Extract emotional dimensions using NRC Emotion Lexicon: frustration, satisfaction, curiosity, stress."""
 
     def __init__(self, config: CognitiveConfig) -> None:
         self.config = config
-        # Initialize sentiment analysis pipeline for emotional context
-        self.sentiment_analyzer = pipeline(
-            "sentiment-analysis",
-            model="cardiffnlp/twitter-roberta-base-sentiment-latest",
-            return_all_scores=True,
-        )
 
         # Define emotional pattern dictionaries
         self.frustration_patterns = [
@@ -73,34 +67,42 @@ class EmotionalExtractor(BaseDimensionExtractor):
         ]
 
     def extract(self, text: str) -> torch.Tensor:
-        """Extract emotional dimensions from text."""
+        """Extract emotional dimensions from text using NRCLex."""
         if not text or not text.strip():
             return torch.zeros(self.config.emotional_dimensions, dtype=torch.float32)
 
         text_lower = text.lower()
 
         # Calculate pattern-based scores
-        frustration = self._calculate_pattern_score(
+        frustration_pattern = self._calculate_pattern_score(
             text_lower, self.frustration_patterns
         )
-        satisfaction = self._calculate_pattern_score(
+        satisfaction_pattern = self._calculate_pattern_score(
             text_lower, self.satisfaction_patterns
         )
-        curiosity = self._calculate_pattern_score(text_lower, self.curiosity_patterns)
-        stress = self._calculate_pattern_score(text_lower, self.stress_patterns)
+        curiosity_pattern = self._calculate_pattern_score(
+            text_lower, self.curiosity_patterns
+        )
+        stress_pattern = self._calculate_pattern_score(text_lower, self.stress_patterns)
 
-        # Enhance with sentiment analysis
-        sentiment_scores = self.sentiment_analyzer(text)[0]
-        sentiment_dict = {s["label"].lower(): s["score"] for s in sentiment_scores}
+        # Enhance with NRCLex emotion analysis
+        nrc_emotion = NRCLex(text)
+        nrc_scores = nrc_emotion.affect_frequencies
 
-        # Adjust scores based on sentiment
-        if "negative" in sentiment_dict:
-            frustration += sentiment_dict["negative"] * 0.3
-            stress += sentiment_dict["negative"] * 0.2
+        # Map NRC emotions to cognitive dimensions
+        # NRC provides: anger, fear, anticipation, trust, surprise, sadness, joy, disgust
+        frustration_nrc = nrc_scores.get("anger", 0) + nrc_scores.get("disgust", 0)
+        satisfaction_nrc = nrc_scores.get("joy", 0) + nrc_scores.get("trust", 0)
+        curiosity_nrc = nrc_scores.get("anticipation", 0) + nrc_scores.get(
+            "surprise", 0
+        )
+        stress_nrc = nrc_scores.get("fear", 0) + nrc_scores.get("sadness", 0)
 
-        if "positive" in sentiment_dict:
-            satisfaction += sentiment_dict["positive"] * 0.4
-            curiosity += sentiment_dict["positive"] * 0.1
+        # Combine pattern-based and NRC-based scores
+        frustration = frustration_pattern + (frustration_nrc * 0.3)
+        satisfaction = satisfaction_pattern + (satisfaction_nrc * 0.4)
+        curiosity = curiosity_pattern + (curiosity_nrc * 0.2)
+        stress = stress_pattern + (stress_nrc * 0.2)
 
         # Normalize to [0, 1] range
         dimensions = torch.tensor(

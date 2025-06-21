@@ -1,8 +1,8 @@
 # Core dependencies for cognitive memory system
-torch>=2.0.0
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
 sentence-transformers>=2.2.0
 qdrant-client>=1.7.0
-transformers>=4.30.0
 numpy>=1.24.0
 loguru>=0.7.0
 python-dotenv>=1.0.0
@@ -24,3 +24,4 @@ GitPython
 # Text and sentiment analysis
 spacy
 vaderSentiment
+nrclex>=3.0.0

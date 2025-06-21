@@ -32,34 +32,40 @@ class TestEmotionalExtractor:
 
     def test_basic_extraction(self) -> None:
         """Test basic emotional dimension extraction."""
-        text = "I'm really frustrated with this bug that won't get fixed"
+        text = "I'm really frustrated and angry with this terrible bug that won't get fixed"
         dims = self.extractor.extract(text)
 
         assert dims.shape == (self.config.emotional_dimensions,)
         assert torch.all(dims >= 0.0)
         assert torch.all(dims <= 1.0)
-        assert dims[0] > 0.2  # frustration should be detected
+        assert (
+            dims[0] > 0.3
+        )  # frustration should be detected with explicit emotion words
 
     def test_satisfaction_detection(self) -> None:
         """Test satisfaction detection."""
-        text = "Great! I solved the problem and everything is working perfectly"
+        text = "Great! I'm so happy and satisfied that I solved this problem perfectly"
         dims = self.extractor.extract(text)
 
-        assert dims[1] > 0.3  # satisfaction should be high
+        assert (
+            dims[1] > 0.4
+        )  # satisfaction should be high with joy and satisfaction words
 
     def test_curiosity_detection(self) -> None:
         """Test curiosity detection."""
-        text = "I'm wondering how this algorithm works and want to explore it"
+        text = "I'm curious and wondering how this fascinating algorithm works, I want to explore and discover more"
         dims = self.extractor.extract(text)
 
-        assert dims[2] > 0.2  # curiosity should be detected
+        assert (
+            dims[2] > 0.3
+        )  # curiosity should be detected with anticipation and curiosity words
 
     def test_stress_detection(self) -> None:
         """Test stress detection."""
-        text = "This deadline is tomorrow and I'm overwhelmed with work"
+        text = "I'm anxious and worried about this overwhelming deadline pressure, feeling stressed and panicked"
         dims = self.extractor.extract(text)
 
-        assert dims[3] > 0.3  # stress should be high
+        assert dims[3] > 0.4  # stress should be high with explicit stress words
 
     def test_empty_text(self) -> None:
         """Test handling of empty text."""

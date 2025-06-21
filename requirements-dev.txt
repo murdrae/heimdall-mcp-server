@@ -4,10 +4,16 @@
 #
 #    pip-compile requirements-dev.in
 #
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 annotated-types==0.7.0
     # via pydantic
 anyio==4.9.0
-    # via httpx
+    # via
+    #   httpx
+    #   mcp
+    #   sse-starlette
+    #   starlette
 attrs==25.3.0
     # via pytest-docker
 black==25.1.0
@@ -33,8 +39,10 @@ charset-normalizer==3.4.2
 click==8.2.1
     # via
     #   black
+    #   nltk
     #   pip-tools
     #   typer
+    #   uvicorn
 cloudpathlib==0.21.1
     # via weasel
 confection==0.1.5
@@ -62,10 +70,16 @@ fsspec==2025.5.1
     # via
     #   huggingface-hub
     #   torch
+gitdb==4.0.12
+    # via gitpython
+gitpython==3.1.44
+    # via -r /home/foo/workspace/cognitive-memory/requirements.in
 grpcio==1.73.0
     # via qdrant-client
 h11==0.16.0
-    # via httpcore
+    # via
+    #   httpcore
+    #   uvicorn
 h2==4.2.0
     # via httpx
 hf-xet==1.1.4
@@ -75,7 +89,11 @@ hpack==4.1.0
 httpcore==1.0.9
     # via httpx
 httpx[http2]==0.28.1
-    # via qdrant-client
+    # via
+    #   mcp
+    #   qdrant-client
+httpx-sse==0.4.0
+    # via mcp
 huggingface-hub==0.33.0
     # via
     #   sentence-transformers
@@ -97,7 +115,9 @@ jinja2==3.1.6
     #   spacy
     #   torch
 joblib==1.5.1
-    # via scikit-learn
+    # via
+    #   nltk
+    #   scikit-learn
 langcodes==3.5.0
     # via spacy
 language-data==1.3.0
@@ -110,6 +130,8 @@ markdown-it-py==3.0.0
     # via rich
 markupsafe==3.0.2
     # via jinja2
+mcp==1.9.4
+    # via -r /home/foo/workspace/cognitive-memory/requirements.in
 mdurl==0.1.2
     # via markdown-it-py
 mpmath==1.3.0
@@ -127,8 +149,12 @@ mypy-extensions==1.1.0
     #   mypy
 networkx==3.5
     # via torch
+nltk==3.9.1
+    # via textblob
 nodeenv==1.9.1
     # via pre-commit
+nrclex==3.0.0
+    # via -r /home/foo/workspace/cognitive-memory/requirements.in
 numpy==2.3.0
     # via
     #   -r /home/foo/workspace/cognitive-memory/requirements.in
@@ -139,43 +165,6 @@ numpy==2.3.0
     #   spacy
     #   thinc
     #   transformers
-nvidia-cublas-cu12==12.6.4.1
-    # via
-    #   nvidia-cudnn-cu12
-    #   nvidia-cusolver-cu12
-    #   torch
-nvidia-cuda-cupti-cu12==12.6.80
-    # via torch
-nvidia-cuda-nvrtc-cu12==12.6.77
-    # via torch
-nvidia-cuda-runtime-cu12==12.6.77
-    # via torch
-nvidia-cudnn-cu12==9.5.1.17
-    # via torch
-nvidia-cufft-cu12==11.3.0.4
-    # via torch
-nvidia-cufile-cu12==1.11.1.6
-    # via torch
-nvidia-curand-cu12==10.3.7.77
-    # via torch
-nvidia-cusolver-cu12==11.7.1.2
-    # via torch
-nvidia-cusparse-cu12==12.5.4.2
-    # via
-    #   nvidia-cusolver-cu12
-    #   torch
-nvidia-cusparselt-cu12==0.6.3
-    # via torch
-nvidia-nccl-cu12==2.26.2
-    # via torch
-nvidia-nvjitlink-cu12==12.6.85
-    # via
-    #   nvidia-cufft-cu12
-    #   nvidia-cusolver-cu12
-    #   nvidia-cusparse-cu12
-    #   torch
-nvidia-nvtx-cu12==12.6.77
-    # via torch
 packaging==25.0
     # via
     #   black
@@ -220,12 +209,16 @@ pydantic==2.11.7
     # via
     #   -r /home/foo/workspace/cognitive-memory/requirements.in
     #   confection
+    #   mcp
+    #   pydantic-settings
     #   qdrant-client
     #   spacy
     #   thinc
     #   weasel
 pydantic-core==2.33.2
     # via pydantic
+pydantic-settings==2.9.1
+    # via mcp
 pygments==2.19.1
     # via
     #   pytest
@@ -253,7 +246,11 @@ pytest-env==1.1.5
 pytest-mock==3.14.1
     # via -r requirements-dev.in
 python-dotenv==1.1.0
-    # via -r /home/foo/workspace/cognitive-memory/requirements.in
+    # via
+    #   -r /home/foo/workspace/cognitive-memory/requirements.in
+    #   pydantic-settings
+python-multipart==0.0.20
+    # via mcp
 pyyaml==6.0.2
     # via
     #   huggingface-hub
@@ -262,7 +259,9 @@ pyyaml==6.0.2
 qdrant-client==1.14.3
     # via -r /home/foo/workspace/cognitive-memory/requirements.in
 regex==2024.11.6
-    # via transformers
+    # via
+    #   nltk
+    #   transformers
 requests==2.32.4
     # via
     #   -r /home/foo/workspace/cognitive-memory/requirements.in
@@ -292,6 +291,8 @@ shellingham==1.5.4
     # via typer
 smart-open==7.1.0
     # via weasel
+smmap==5.0.2
+    # via gitdb
 sniffio==1.3.1
     # via anyio
 spacy==3.8.7
@@ -306,30 +307,33 @@ srsly==2.5.1
     #   spacy
     #   thinc
     #   weasel
+sse-starlette==2.3.6
+    # via mcp
+starlette==0.47.0
+    # via mcp
 sympy==1.14.0
     # via torch
+textblob==0.19.0
+    # via nrclex
 thinc==8.3.6
     # via spacy
 threadpoolctl==3.6.0
     # via scikit-learn
 tokenizers==0.21.1
     # via transformers
-torch==2.7.1
+torch==2.7.1+cpu
     # via
     #   -r /home/foo/workspace/cognitive-memory/requirements.in
     #   sentence-transformers
 tqdm==4.67.1
     # via
     #   huggingface-hub
+    #   nltk
     #   sentence-transformers
     #   spacy
     #   transformers
 transformers==4.52.4
-    # via
-    #   -r /home/foo/workspace/cognitive-memory/requirements.in
-    #   sentence-transformers
-triton==3.3.1
-    # via torch
+    # via sentence-transformers
 typer==0.16.0
     # via
     #   -r /home/foo/workspace/cognitive-memory/requirements.in
@@ -346,12 +350,16 @@ typing-extensions==4.14.0
     #   typer
     #   typing-inspection
 typing-inspection==0.4.1
-    # via pydantic
+    # via
+    #   pydantic
+    #   pydantic-settings
 urllib3==2.4.0
     # via
     #   docker
     #   qdrant-client
     #   requests
+uvicorn==0.34.3
+    # via mcp
 vadersentiment==3.3.2
     # via -r /home/foo/workspace/cognitive-memory/requirements.in
 virtualenv==20.31.2
