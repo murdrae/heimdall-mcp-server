@@ -12,7 +12,7 @@ Your coding assistant forgets everything when you close the chat. Every new sess
 
 ## **What it gives you**
 - Your LLM remembers project-specific knowledge across sessions
-- Learns patterns from your git history (which files change together, common fix approaches)
+- Stores complete git commit history (what changed, when, why, by whom)
 - Stores insights and solutions you discover during coding sessions
 - Connects related concepts it has learned about your codebase
 
@@ -44,7 +44,7 @@ cd /path/to/your/project
 # Save MD documents you want to feed into the cognitive system in .heimdall-mcp
 # You can symlink to some other directory you normally use, like docs/arch-docs
 # Then load the MD files and git history into the cognitive system:
-/path/to/heimdall-mcp-mcp/scripts/load_project_content.sh 
+/path/to/heimdall-mcp-mcp/scripts/load_project_content.sh
 ```
 
 This automatically configures:
@@ -101,7 +101,7 @@ memory_status({detailed: true})
 
 ## What the LLM learns to remember
 
-- **Project patterns** from git history (files that change together, common fixes)
+- **Commit history** from git (what files changed, commit messages, authors, timestamps)
 - **Session insights** stored via MCP calls during conversations
 - **Documentation** from markdown files in your repo
 - **Debugging approaches** that worked or failed
@@ -112,20 +112,20 @@ memory_status({detailed: true})
 You: "Having auth timeout issues again"
 
 LLM: [calls recall_memories("auth timeout")]
-     "Based on stored patterns:
-     • auth/middleware.py and auth/config.py change together 92% of the time
+     "Based on stored memories:
+     • Found commit 3cdc88f by John Doe: 'Fix Redis timeout by increasing pool size'
      • Previous session lesson: 'Redis timeouts correlate with pool exhaustion'
-     • From commit 3cdc88: increasing pool size to 20+ fixed similar timeouts
+     • Commit modified auth/config.py and auth/middleware.py with +15/-3 lines
      • Check connection pool settings in auth/config.py"
 ```
 
 ## How It Works Under the Hood
 
 **For Developers Who Want to Know**:
-We extract memories from project docs and git history, encode them as vectors, and store them in Qdrant with smart retrieval algorithms.
+We extract memories from project docs and git commit history, encode them as vectors, and store them in Qdrant with smart retrieval algorithms.
 
 ```
-Git History → Pattern Extraction → Multi-dimensional Memory
+Git Commits → Direct Storage → Multi-dimensional Memory
      ↓                                      ↓
 Session Insights → Hierarchical Storage → Context-Aware Recall
                          ↓
@@ -134,15 +134,15 @@ Session Insights → Hierarchical Storage → Context-Aware Recall
 
 **Technology Stack**:
 - **Vector Storage**: Qdrant with project-specific collections
-- **Embeddings**: Sentence-BERT + git metadata extraction
-- **Memory Systems**: Session persistence + git pattern mining
+- **Embeddings**: Sentence-BERT + git commit content
+- **Memory Systems**: Session persistence + git commit storage
 - **Integration**: MCP protocol for seamless Claude Code integration
 
 **What Makes It Different**:
-- **Git-Aware**: Mines your actual commit history for proven solutions
+- **Git-Aware**: Stores your actual commit history with full context
 - **Project-Isolated**: Each repo gets its own memory space
 - **Context-Rich**: Remembers not just what, but when, why, and how
-- **Pattern Learning**: Discovers co-change patterns and debugging approaches that work
+- **Historical Access**: Direct access to development decisions and file evolution
 
 ## Requirements
 

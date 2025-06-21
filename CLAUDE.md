@@ -53,10 +53,11 @@ cognitive_memory/
 │   ├── contextual_retrieval.py # Main retrieval coordinator
 │   ├── basic_activation.py     # Activation spreading
 │   └── bridge_discovery.py     # Serendipitous connections
-├── git_analysis/           # Git pattern extraction
-│   ├── history_miner.py    # Git history analysis
-│   ├── pattern_detector.py # Pattern identification
-│   └── pattern_embedder.py # Convert patterns to memories
+├── git_analysis/           # Git commit storage
+│   ├── commit.py           # Commit and FileChange data structures
+│   ├── commit_loader.py    # Convert commits to memories
+│   ├── history_miner.py    # Git history extraction
+│   └── security.py         # Git data validation and sanitization
 └── loaders/               # Memory loading interfaces
     ├── git_loader.py      # Git repository integration
     ├── markdown_loader.py # Main markdown processing coordinator
@@ -122,14 +123,14 @@ The system provides 4 MCP tools for Claude Code integration:
 
 ## Git Integration Features
 
-### Pattern Types Extracted
-- **Co-change Patterns**: Files that frequently change together with confidence scores
-- **Maintenance Hotspots**: Files with high problem frequency and quality ratings
-- **Solution Patterns**: Successful fix approaches with success rate metrics
+### Data Stored as Memories
+- **Commit History**: Each git commit stored as a cognitive memory with full metadata
+- **File Changes**: Detailed file modification information (additions, deletions, change types)
+- **Development Context**: Commit messages, authors, timestamps, and affected files
 
-### Loading Git Patterns
+### Loading Git History
 ```bash
-# Load git history patterns into memory
+# Load git commit history into memory
 ./scripts/load_project_content.sh --git-only
 
 # Preview what would be loaded

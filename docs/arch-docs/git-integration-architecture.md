@@ -2,61 +2,60 @@
 
 ## Executive Overview
 
-This document specifies the architecture for integrating git repository history analysis into the cognitive memory system. The integration leverages the existing MemoryLoader interface to extract development patterns from git history and store them as cognitive memories, enabling LLMs to automatically understand codebase relationships, maintenance hotspots, and solution patterns.
+This document specifies the architecture for integrating git repository history analysis into the cognitive memory system. The integration leverages the existing MemoryLoader interface to store git commits directly as cognitive memories, enabling LLMs to automatically understand development history, file relationships, and project evolution.
 
 **Key Features:**
-- **Pattern Extraction**: Analyzes git history to extract co-change patterns, maintenance hotspots, and solution patterns
-- **Statistical Analysis**: Confidence scoring and quality metrics for reliable pattern detection
-- **Memory Integration**: Patterns stored as cognitive memories using the existing MemoryLoader interface
+- **Direct Commit Storage**: Stores each git commit as a cognitive memory with full metadata
+- **File Change Tracking**: Preserves detailed file change information (additions, deletions, modifications)
+- **Memory Integration**: Commits stored as cognitive memories using the existing MemoryLoader interface
 
 ## Core Components
 
 ### 1. GitHistoryLoader
-**Responsibility**: Extract structured patterns from git repository history
-- Implements the existing `MemoryLoader` interface with mutable memory support
-- Analyzes git commits, file changes, and commit messages
-- Transforms git data into `CognitiveMemory` objects with deterministic IDs
+**Responsibility**: Load git commits as cognitive memories from git repository history
+- Implements the existing `MemoryLoader` interface
+- Uses CommitLoader to convert git commits to CognitiveMemory objects
+- Transforms git commit data into memory objects with deterministic IDs
 - Supports both full repository analysis and incremental updates
 
 **Key Dependencies**:
+- CommitLoader (commit to memory conversion)
 - GitHistoryMiner (data extraction)
-- PatternExtractor (pattern analysis with confidence scoring)
 - Existing CognitiveConfig
 
-**Mutable Memory Architecture**:
-- Uses deterministic pattern IDs: `git::cochange::<hash(file_a|file_b)>`
-- Supports in-place updates via Qdrant upserts when patterns evolve
-- Maintains pattern confidence and quality scores in memory payload
+**Memory Architecture**:
+- Uses deterministic commit IDs: `git::commit::<commit_hash>`
+- Each commit becomes one memory with full metadata
+- File changes embedded in memory content as natural language
 
 ### 2. GitHistoryMiner
 **Responsibility**: Raw data extraction from git repository
 - Execute git commands to gather commit history
 - Parse commit data, file changes, and timestamps
-- Filter and preprocess git data for pattern analysis
+- Return structured Commit objects with FileChange details
 
 **Output Data Structures**:
-- CommitEvent: commit_hash, files_changed, message, timestamp, author
-- FileChangeEvent: file_path, change_type, commit_hash
-- ProblemCommit: commit_hash, message, files_changed (for fix/bug commits)
+- Commit: commit_hash, message, author, timestamp, files_changed list
+- FileChange: file_path, change_type, lines_added, lines_deleted
 
-### 3. PatternExtractor
-**Responsibility**: Transform raw git data into meaningful patterns
-- Analyze co-change relationships between files
-- Identify maintenance hotspots from problem commit frequency
-- Extract solution patterns from fix commits
-- Calculate pattern strength and relevance metrics
+### 3. CommitLoader
+**Responsibility**: Transform git commits into cognitive memories
+- Convert Commit objects to CognitiveMemory format
+- Generate natural language descriptions of commits
+- Embed file change information in memory content
+- Assign appropriate hierarchy levels and importance scores
 
-**Pattern Types with Confidence Scoring**:
-- CoChangePattern: files that frequently change together (support count, confidence score, recency weight)
-- MaintenanceHotspot: files with high problem frequency (hotspot score, trend analysis, quality rating)
-- SolutionPattern: successful fix approaches for specific problems (success rate, applicability confidence)
+**Memory Content Generation**:
+- Commit Summary: Natural language description of commit purpose
+- File Changes: Detailed list of modified files with change types
+- Context Information: Author, timestamp, commit message integration
 
-### 4. GitPatternEmbedder
-**Responsibility**: Convert git patterns into memory content suitable for embedding
-- Generate natural language descriptions of patterns with embedded confidence metrics
-- Structure pattern data for embedding in memory content text
-- Ensure patterns are discoverable through existing retrieval mechanisms
-- Embed quality scores and confidence indicators directly in natural language
+### 4. Security and Validation
+**Responsibility**: Ensure safe processing of git data
+- Validate commit hashes, file paths, and metadata
+- Sanitize input data to prevent injection attacks
+- Limit data sizes to prevent memory exhaustion
+- Filter sensitive information from commit content
 
 
 ## Data Flow Architecture
@@ -65,21 +64,17 @@ This document specifies the architecture for integrating git repository history 
 ```
 Git Repository (.git/)
         ↓
-GitHistoryMiner.extract_commit_data()
+GitHistoryMiner.extract_commits()
         ↓
-Raw Git Data (commits, file changes, messages)
+List[Commit] with FileChange details
         ↓
-PatternExtractor.extract_patterns()
+CommitLoader.convert_to_memories()
         ↓
-Structured Patterns (cochange, hotspots, solutions)
-        ↓
-GitPatternEmbedder.embed_patterns()
-        ↓
-Pattern Descriptions (natural language text)
+Commit Descriptions (natural language text with metadata)
         ↓
 GitHistoryLoader.load_from_source()
         ↓
-List[CognitiveMemory] with embedded pattern data
+List[CognitiveMemory] with embedded commit data
         ↓
 CognitiveSystem.load_memories_from_source()
         ↓
@@ -119,10 +114,10 @@ Available for retrieval via existing interfaces [existing]
 - Must return boolean validation result
 
 **load_from_source(source_path: str, **kwargs) -> List[CognitiveMemory]**
-- Must extract all git patterns from repository with confidence scoring
-- Must convert patterns to CognitiveMemory objects with deterministic IDs
-- Must embed confidence metrics in natural language content
-- Must assign appropriate hierarchy levels (L1 for patterns, L2 for solutions)
+- Must extract all git commits from repository
+- Must convert commits to CognitiveMemory objects with deterministic IDs
+- Must embed commit metadata in natural language content
+- Must assign appropriate hierarchy levels (L1 for significant commits, L2 for routine commits)
 - Must return list compatible with existing memory pipeline
 
 
@@ -135,61 +130,59 @@ Available for retrieval via existing interfaces [existing]
 
 ### GitHistoryMiner Methods
 
-**extract_commit_history(repo_path: str, time_window: str) -> List[CommitEvent]**
+**extract_commits(repo_path: str, time_window: str) -> List[Commit]**
 - Must execute git log commands to gather commit data
 - Must parse commit messages, file changes, and metadata
 - Must filter commits by time window and relevance
+- Must include detailed file change information (lines added/deleted)
 
-**extract_problem_commits(commits: List[CommitEvent]) -> List[ProblemCommit]**
-- Must identify commits containing problem indicators (fix, bug, error)
-- Must extract problem context from commit messages
-- Must associate problems with affected files
+**parse_commit_data(raw_commit: str) -> Commit**
+- Must parse git log output into structured Commit objects
+- Must extract author, timestamp, hash, and message
+- Must parse file changes with change types and line counts
 
-**extract_file_changes(commits: List[CommitEvent]) -> List[FileChangeEvent]**
-- Must parse git diff data for each commit
-- Must track file modification patterns over time
-- Must maintain file path consistency across renames
+**validate_and_sanitize(commit: Commit) -> Commit**
+- Must validate commit hash format and data integrity
+- Must sanitize commit messages and file paths
+- Must enforce size limits on commit data
 
-### PatternExtractor Methods
+### CommitLoader Methods
 
-**extract_cochange_patterns(file_changes: List[FileChangeEvent]) -> List[CoChangePattern]**
-- Must build co-occurrence matrix for file changes
-- Must identify file pairs with significant co-change frequency
-- Must calculate pattern strength, statistical confidence, and recency weighting
-- Must assign quality scores based on pattern consistency and reliability
-- Must filter patterns below minimum confidence thresholds
+**convert_to_memories(commits: List[Commit]) -> List[CognitiveMemory]**
+- Must convert each commit to a CognitiveMemory object
+- Must generate natural language descriptions of commits
+- Must embed file change details in memory content
+- Must assign hierarchy levels based on commit significance
+- Must create deterministic memory IDs from commit hashes
 
-**extract_maintenance_hotspots(problem_commits: List[ProblemCommit]) -> List[MaintenanceHotspot]**
-- Must count problem frequency per file with trend analysis
-- Must calculate hotspot confidence scores based on problem density
-- Must identify files exceeding dynamic hotspot thresholds
-- Must assign quality ratings based on problem type consistency
-- Must collect recent problem examples with confidence indicators
+**generate_commit_description(commit: Commit) -> str**
+- Must create readable description of commit purpose
+- Must include file changes and their types
+- Must embed metadata (author, timestamp) naturally
+- Must make content searchable through existing retrieval
 
-**extract_solution_patterns(problem_commits: List[ProblemCommit]) -> List[SolutionPattern]**
-- Must correlate problem types with solution approaches
-- Must calculate solution success rates and applicability confidence
-- Must identify successful fix patterns with quality scoring
-- Must extract actionable solution insights with confidence indicators
-- Must rank solutions by effectiveness and reliability metrics
+**assess_commit_importance(commit: Commit) -> float**
+- Must calculate importance score based on files changed
+- Must consider commit message indicators (fix, feature, refactor)
+- Must account for file change volume and scope
+- Must assign appropriate hierarchy level (L0/L1/L2)
 
-### GitPatternEmbedder Methods
+### Security and Validation Methods
 
-**embed_cochange_pattern(pattern: CoChangePattern) -> str**
-- Must generate natural language description of file relationships with confidence indicators
-- Must embed pattern confidence score, support count, and quality rating in text
-- Must include recency weighting and trend information
-- Must create content suitable for Sentence-BERT embedding with quality context
+**validate_repository_path(repo_path: str) -> bool**
+- Must verify the path contains a valid git repository
+- Must check for .git directory existence
+- Must validate path safety and accessibility
 
-**embed_hotspot_pattern(hotspot: MaintenanceHotspot) -> str**
-- Must describe maintenance characteristics and risk factors
-- Must include recent problem examples and warning indicators
-- Must embed actionable maintenance guidance
+**sanitize_git_data(data: str) -> str**
+- Must remove potentially harmful characters
+- Must limit string lengths to prevent memory issues
+- Must preserve essential git information while ensuring safety
 
-**embed_solution_pattern(solution: SolutionPattern) -> str**
-- Must describe problem type and successful solution approach
-- Must include specific file and change information
-- Must create retrievable solution guidance
+**validate_commit_hash(hash_str: str) -> bool**
+- Must verify commit hash format (40-character hex)
+- Must check for valid git hash patterns
+- Must reject malformed or suspicious hashes
 
 ## System Structure
 
@@ -202,112 +195,87 @@ cognitive_memory/
 │   └── git_loader.py                  # GitHistoryLoader implementation
 └── git_analysis/                      # Git analysis module
     ├── __init__.py
-    ├── history_miner.py               # GitHistoryMiner
-    ├── pattern_detector.py            # PatternDetector with confidence scoring
-    └── pattern_embedder.py            # GitPatternEmbedder with quality metrics
+    ├── commit.py                      # Commit and FileChange data classes
+    ├── commit_loader.py               # CommitLoader for memory conversion
+    ├── history_miner.py               # GitHistoryMiner for data extraction
+    └── security.py                    # Security validation and sanitization
 ```
 
 ### Memory Content Embedding Strategy
 
-Since the system embeds all pattern information into memory content text rather than separate metadata fields, git patterns must be embedded as natural language:
+Since the system embeds all commit information into memory content text rather than separate metadata fields, git commits must be embedded as natural language:
 
-**Co-change Pattern Embedding with Confidence**:
+**Commit Memory Embedding**:
 ```
-"Development pattern (confidence: 92%, quality: high): Files auth/middleware.py and auth/jwt.py frequently change together (12 co-commits over 6 months, trend: increasing). Strong coupling indicates shared authentication logic. When debugging authentication issues, examine both files together. Pattern strength: 0.85, last updated: commit abc123."
-```
-
-**Maintenance Hotspot Embedding with Quality Scoring**:
-```
-"Maintenance hotspot (hotspot score: 8.5/10, trend: worsening): File payment/gateway.py has high change frequency (23 bug fixes in 6 months, confidence: 94%). Recent issues include timeout handling (commit def456), validation errors (commit ghi789), and connection failures (commit jkl012). Exercise extreme caution when modifying this component - quality rating: requires immediate attention."
+"Git commit abc1234 by John Doe on 2024-01-15: 'Fix authentication timeout in Redis connection'. Modified 3 files: auth/middleware.py (15 lines added, 3 deleted), auth/config.py (8 lines added, 2 deleted), tests/test_auth.py (25 lines added). This commit addresses timeout issues by increasing Redis connection pool size and adjusting timeout parameters."
 ```
 
-**Solution Pattern Embedding with Success Metrics**:
+**Feature Commit Embedding**:
 ```
-"Solution pattern (success rate: 89%, applicability: high): Authentication timeout errors typically resolved by adjusting Redis connection settings in auth/config.py and increasing timeout values in auth/middleware.py. Pattern verified across 8 successful fixes (commits abc123, def456, ghi789). Confidence: 91%, effectiveness rating: proven approach."
+"Git commit def5678 by Jane Smith on 2024-01-16: 'Add user profile caching system'. Created 2 files, modified 4 files: users/cache.py (156 lines added), users/models.py (12 lines added, 4 deleted), users/views.py (23 lines added, 8 deleted), users/serializers.py (18 lines added), settings/base.py (3 lines added), requirements.txt (1 line added). This feature commit introduces Redis-based caching for user profiles to improve API response times."
+```
+
+**Bug Fix Commit Embedding**:
+```
+"Git commit ghi9012 by Bob Wilson on 2024-01-17: 'Fix memory leak in background tasks'. Modified 1 file: tasks/background.py (8 lines added, 15 deleted). This bug fix resolves memory accumulation by properly closing database connections in background task workers."
 ```
 
 ## Integration Benefits
 
 ### For LLM Context Enhancement
-- Automatic file relationship awareness with confidence indicators during debugging
-- Proactive warnings about high-maintenance areas with quality ratings
-- Solution pattern suggestions with success rates and reliability metrics
-- Enhanced understanding of codebase architecture with trend analysis
-- Quality-filtered pattern retrieval prevents noise from low-confidence patterns
+- Automatic access to complete development history during debugging
+- Understanding of file evolution and change patterns over time
+- Context about when and why specific changes were made
+- Enhanced understanding of codebase architecture through commit history
+- Direct access to actual development decisions and rationales
 
 ### For Development Workflow
-- Zero-configuration pattern discovery from existing git history
+- Zero-configuration commit history access from existing git repository
 - Integration with existing memory retrieval mechanisms
 - Compatibility with current CLI and MCP interfaces
 - Batch loading via project scripts
+- Real commit data instead of derived statistical patterns
 
-## Mutable Memory Architecture
+## Immutable Memory Architecture
 
-### Pattern Identity and Updates
-Git patterns are **mutable statistical aggregates** that require special handling:
+### Commit Identity and Storage
+Git commits are **immutable historical records** that provide stable memories:
 
-**Deterministic Pattern IDs:**
+**Deterministic Commit IDs:**
 ```python
-# Co-change patterns
-pattern_id = f"git::cochange::{hashlib.sha256(f'{file_a}|{file_b}'.encode()).hexdigest()}"
+# Commit memories
+memory_id = f"git::commit::{commit_hash}"
 
-# Hotspot patterns
-pattern_id = f"git::hotspot::{hashlib.sha256(file_path.encode()).hexdigest()}"
+# File-based grouping for retrieval
+file_tag = f"git::file::{file_path}"
 
-# Solution patterns
-pattern_id = f"git::solution::{hashlib.sha256(f'{problem_type}|{solution_approach}'.encode()).hexdigest()}"
+# Author-based grouping
+author_tag = f"git::author::{author_email}"
 ```
 
-**Upsert Operations:**
-- When patterns evolve (e.g., co-change count increases), use same ID to update existing memory
-- Qdrant supports native upsert operations: `client.upsert(collection, [PointStruct(id, vector, payload)])`
-- SQLite handles updates via `ON CONFLICT DO UPDATE` clauses
-- Pattern confidence and quality scores recalculated on each update
+**Storage Operations:**
+- Each commit becomes one memory with stable commit hash ID
+- No updates needed - commits are immutable historical facts
+- Qdrant stores vectors with commit metadata in payload
+- SQLite stores commit relationships and file associations
+- New commits simply add new memories without affecting existing ones
 
-**Update Debouncing:**
-- Prevent excessive updates: only upsert when significant changes occur
-- Configurable thresholds: minimum confidence delta, minimum time interval
-- Batch updates from multiple commits to reduce churn
+**Incremental Loading:**
+- Only load new commits since last update
+- Use git log with --since parameter for efficiency
+- Avoid duplicate storage through commit hash checking
+- Maintain chronological order for temporal relationships
 
-### Payload Structure with Confidence
+### Payload Structure
 ```python
 payload = {
-    "pattern_type": "cochange",
-    "support": 13,
-    "confidence": 0.92,
-    "quality_score": 0.85,
-    "recency_weight": 0.8,
-    "updated_at": "2024-01-20T10:30:00Z",
-    "trend": "increasing",
-    "primary_file": "auth/jwt.py",
-    "secondary_file": "auth/middleware.py"
+    "commit_hash": "abc1234567890",
+    "author": "john.doe@example.com",
+    "timestamp": "2024-01-20T10:30:00Z",
+    "files_changed": ["auth/middleware.py", "auth/config.py"],
+    "change_types": ["M", "M"],
+    "lines_added": 23,
+    "lines_deleted": 5,
+    "is_merge": False,
+    "is_fix": True
 }
-```
-
-## Implementation Status
-
-### ✅ Implemented (Phase 1)
-- GitHistoryMiner for data extraction with quality filtering
-- PatternDetector with confidence scoring and quality metrics
-- GitPatternEmbedder with embedded confidence indicators
-- GitHistoryLoader with deterministic ID generation
-- Integration with existing CLI and memory pipeline
-- Comprehensive test suite for all components
-
-## Success Metrics
-
-### Technical Success
-- Git patterns successfully stored as cognitive memories with stable IDs
-- Patterns discoverable through existing retrieval mechanisms with confidence filtering
-- No performance degradation in existing memory operations
-- Pattern confidence and quality metrics embedded in retrievable content
-- Seamless integration with current CLI and MCP interfaces
-
-### Functional Success
-- LLM receives relevant file relationship context with confidence indicators during debugging
-- Maintenance hotspots appropriately flagged with quality ratings during code analysis
-- Solution patterns surface during problem-solving sessions with success rate information
-- Development efficiency improvements measurable through usage patterns
-- High-quality pattern filtering prevents noise in retrieval results
-
-This architecture leverages the existing cognitive memory infrastructure while adding powerful git-based pattern recognition that enhances LLM understanding of codebases through historical development data.
