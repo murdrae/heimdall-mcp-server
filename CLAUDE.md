@@ -178,8 +178,7 @@ COGNITIVE_MEMORY_DB_PATH=./data/cognitive_memory.db
 MCP_MAX_MEMORIES_PER_QUERY=10
 
 # Git integration
-GIT_PATTERN_MIN_CONFIDENCE=0.7
-GIT_HOTSPOT_THRESHOLD=5
+# (No configuration needed - uses optimized defaults)
 ```
 
 ### Configuration Files
