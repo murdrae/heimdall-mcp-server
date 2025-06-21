@@ -67,6 +67,9 @@ class CognitiveShellCompleter(Completer):
         # Load command specific flags
         self.load_flags = ["--recursive", "-r", "--dry-run"]
 
+        # Recall/retrieve command specific flags
+        self.recall_flags = ["--full"]
+
     def get_completions(
         self, document: Document, complete_event: Any
     ) -> Generator[Completion]:
@@ -86,17 +89,22 @@ class CognitiveShellCompleter(Completer):
             yield from self.command_completer.get_completions(document, complete_event)
             return
 
-        if command in ["load", "git-load"]:
-            # Special handling for load and git-load commands
+        if command in ["load", "git-load", "retrieve", "recall"]:
+            # Special handling for commands with flags
             if len(words) >= 2:
                 # Get the current word being typed
                 current_word = words[-1] if not text.endswith(" ") else ""
 
                 # Check if it's a flag
                 if current_word.startswith("-"):
-                    flags = self.load_flags.copy()
-                    if command == "git-load":
-                        flags.extend(["--time-window", "--refresh"])
+                    if command in ["load", "git-load"]:
+                        flags = self.load_flags.copy()
+                        if command == "git-load":
+                            flags.extend(["--time-window", "--refresh"])
+                    elif command in ["retrieve", "recall"]:
+                        flags = self.recall_flags.copy()
+                    else:
+                        flags = []
 
                     for flag in flags:
                         if flag.startswith(current_word):
@@ -106,7 +114,7 @@ class CognitiveShellCompleter(Completer):
                                 display=flag,
                                 display_meta="flag option",
                             )
-                else:
+                elif command in ["load", "git-load"]:
                     # Path completion for load command
                     # Create a document with just the path part
                     if text.endswith(" "):
@@ -304,13 +312,18 @@ class InteractiveShell:
         # Retrieve memories
         elif command.startswith("retrieve ") or command.startswith("recall "):
             # Use original command to preserve case in queries
-            query = (
-                original_command.split(" ", 1)[1].strip()
-                if " " in original_command
-                else ""
-            )
-            if query:
-                self._retrieve_memories(query)
+            if " " in original_command:
+                args = original_command.split(" ", 1)[1].strip().split()
+                # Check for --full flag
+                full_output = "--full" in args
+                # Remove --full from args to get query
+                query_parts = [arg for arg in args if arg != "--full"]
+                query = " ".join(query_parts)
+
+                if query:
+                    self._retrieve_memories(query, full_output=full_output)
+                else:
+                    self.console.print("[bold red]❌ Please provide a query[/bold red]")
             else:
                 self.console.print("[bold red]❌ Please provide a query[/bold red]")
 
@@ -454,11 +467,15 @@ class InteractiveShell:
                 "store 'Working on neural networks'",
             ),
             (
-                "retrieve <query>",
+                "retrieve <query> [--full]",
                 "Retrieve all memory types (core/peripheral/bridge)",
-                "retrieve 'machine learning'",
+                "retrieve 'machine learning' --full",
             ),
-            ("recall <query>", "Same as retrieve", "recall 'debugging issues'"),
+            (
+                "recall <query> [--full]",
+                "Same as retrieve",
+                "recall 'debugging issues' --full",
+            ),
             (
                 "bridges <query>",
                 "Focus on bridge connections only",
@@ -519,7 +536,7 @@ class InteractiveShell:
         except Exception as e:
             self.console.print(f"[bold red]❌ Error storing experience: {e}[/bold red]")
 
-    def _retrieve_memories(self, query: str) -> None:
+    def _retrieve_memories(self, query: str, full_output: bool = False) -> None:
         """Retrieve memories for a query."""
         try:
             self.session_stats["queries_made"] += 1
@@ -563,9 +580,13 @@ class InteractiveShell:
 
                     # Use bridge-specific formatting for bridge memories
                     if memory_type == "bridge":
-                        content = self._format_bridges(memories)
+                        content = self._format_bridges(
+                            memories, full_output=full_output
+                        )
                     else:
-                        content = self._format_memories(memories)
+                        content = self._format_memories(
+                            memories, full_output=full_output
+                        )
 
                     type_panel = Panel(
                         content,
@@ -820,7 +841,7 @@ class InteractiveShell:
 
         self.console.print(summary_table)
 
-    def _format_memories(self, memories: list[Any]) -> str:
+    def _format_memories(self, memories: list[Any], full_output: bool = False) -> str:
         """Format memories for display with intelligent multiline handling."""
         lines = []
         for i, memory in enumerate(memories, 1):
@@ -828,7 +849,10 @@ class InteractiveShell:
             title = memory.metadata.get("title", "")
 
             # Smart content preview
-            content_preview = self._create_content_preview(memory.content, title)
+            if full_output:
+                content_preview = memory.content.strip()
+            else:
+                content_preview = self._create_content_preview(memory.content, title)
 
             # Memory header with type and title
             if title:
@@ -893,7 +917,7 @@ class InteractiveShell:
 
         return "\n".join(preview_lines)
 
-    def _format_bridges(self, bridges: list[Any]) -> str:
+    def _format_bridges(self, bridges: list[Any], full_output: bool = False) -> str:
         """Format bridge connections for display."""
         lines = []
         for i, bridge_item in enumerate(bridges, 1):
@@ -901,11 +925,14 @@ class InteractiveShell:
             if hasattr(bridge_item, "memory"):
                 # This is a BridgeMemory object
                 memory = bridge_item.memory
-                content = (
-                    memory.content[:80] + "..."
-                    if len(memory.content) > 80
-                    else memory.content
-                )
+                if full_output:
+                    content = memory.content.strip()
+                else:
+                    content = (
+                        memory.content[:80] + "..."
+                        if len(memory.content) > 80
+                        else memory.content
+                    )
                 lines.append(f"{i}. {content}")
                 lines.append(
                     f"   Novelty: {bridge_item.novelty_score:.2f}, "
@@ -921,11 +948,14 @@ class InteractiveShell:
                     lines.append(f"   Source: {source_info}")
             else:
                 # Fallback for regular CognitiveMemory objects (backward compatibility)
-                content = (
-                    bridge_item.content[:80] + "..."
-                    if len(bridge_item.content) > 80
-                    else bridge_item.content
-                )
+                if full_output:
+                    content = bridge_item.content.strip()
+                else:
+                    content = (
+                        bridge_item.content[:80] + "..."
+                        if len(bridge_item.content) > 80
+                        else bridge_item.content
+                    )
                 lines.append(f"{i}. {content}")
                 lines.append(
                     f"   Novelty: {getattr(bridge_item, 'novelty_score', 0):.2f}, "
