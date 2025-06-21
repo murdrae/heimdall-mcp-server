@@ -19,26 +19,19 @@ from typing import Any
 
 try:
     from git import GitCommandError, InvalidGitRepositoryError, Repo
-    from git.objects import Commit
+    from git.objects import Commit as GitCommit
 
     GITPYTHON_AVAILABLE = True
 except ImportError:
     GITPYTHON_AVAILABLE = False
     Repo = type(None)
-    Commit = type(None)
+    GitCommit = type(None)
     InvalidGitRepositoryError = Exception
     GitCommandError = Exception
 
 from loguru import logger
 
-from .data_structures import (
-    CoChangePattern,
-    CommitEvent,
-    FileChangeEvent,
-    MaintenanceHotspot,
-    ProblemCommit,
-    SolutionPattern,
-)
+from .commit import Commit, FileChange
 from .security import (
     validate_repository_path,
 )
@@ -163,7 +156,7 @@ class GitHistoryMiner:
         since_date: datetime | None = None,
         until_date: datetime | None = None,
         branch: str | None = None,
-    ) -> Iterator[CommitEvent]:
+    ) -> Iterator[Commit]:
         """Extract commit history with security controls.
 
         Args:
@@ -173,7 +166,7 @@ class GitHistoryMiner:
             branch: Branch to extract from (defaults to current branch)
 
         Yields:
-            CommitEvent: Validated commit events
+            Commit: Validated commit objects
 
         Raises:
             ValueError: If repository is not valid
@@ -217,9 +210,9 @@ class GitHistoryMiner:
                 raise ValueError("Repository not initialized")
             for commit in self.repo.iter_commits(**kwargs):
                 try:
-                    commit_event = self._convert_commit_to_event(commit)
-                    if commit_event:
-                        yield commit_event
+                    commit_obj = self._convert_commit_to_object(commit)
+                    if commit_obj:
+                        yield commit_obj
                         commit_count += 1
 
                         # Log progress periodically
@@ -245,14 +238,14 @@ class GitHistoryMiner:
             logger.error("Unexpected error during history extraction", error=str(e))
             raise
 
-    def _convert_commit_to_event(self, commit: Commit) -> CommitEvent | None:
-        """Convert GitPython commit to CommitEvent with validation.
+    def _convert_commit_to_object(self, commit: GitCommit) -> Commit | None:
+        """Convert GitPython commit to Commit object with validation.
 
         Args:
             commit: GitPython commit object
 
         Returns:
-            Validated CommitEvent or None if conversion fails
+            Validated Commit object or None if conversion fails
         """
         try:
             # Extract basic commit information
@@ -265,425 +258,116 @@ class GitHistoryMiner:
             # Extract parent hashes
             parent_hashes = [parent.hexsha for parent in commit.parents]
 
-            # Extract changed files
-            files = []
+            # Extract file changes
+            file_changes = []
             try:
-                # Get changed files from commit
+                # Get file changes from commit
                 if commit.parents:
                     # Compare with first parent for changed files
                     diffs = commit.parents[0].diff(commit)
                     for diff in diffs:
-                        if diff.a_path:
-                            files.append(diff.a_path)
-                        if diff.b_path and diff.b_path != diff.a_path:
-                            files.append(diff.b_path)
-                else:
-                    # Initial commit - get all files
-                    for item in commit.tree.traverse():
-                        if item.type == "blob":  # Only include files, not directories
-                            files.append(item.path)
-            except Exception as e:
-                logger.debug(
-                    "Failed to extract changed files",
-                    commit_hash=commit_hash,
-                    error=str(e),
-                )
-                files = []
-
-            # Create and validate commit event
-            commit_data = {
-                "hash": commit_hash,
-                "message": message,
-                "author_name": author_name,
-                "author_email": author_email,
-                "timestamp": timestamp,
-                "files": files,
-                "parent_hashes": parent_hashes,
-            }
-
-            return CommitEvent.from_dict(commit_data)
-
-        except Exception as e:
-            logger.warning(
-                "Failed to convert commit to event",
-                commit_hash=getattr(commit, "hexsha", "unknown"),
-                error=str(e),
-            )
-            return None
-
-    def extract_file_changes(
-        self, max_commits: int = 1000, since_date: datetime | None = None
-    ) -> Iterator[FileChangeEvent]:
-        """Extract file change events with security controls.
-
-        Args:
-            max_commits: Maximum number of commits to analyze
-            since_date: Extract changes since this date
-
-        Yields:
-            FileChangeEvent: Validated file change events
-        """
-        if not self.validate_repository():
-            raise ValueError("Repository validation failed")
-
-        try:
-            # Security: limit max_commits
-            if max_commits > 10000:
-                logger.warning(
-                    "Max commits limited to 10000 for security", requested=max_commits
-                )
-                max_commits = 10000
-
-            kwargs: dict[str, Any] = {"max_count": max_commits}
-            if since_date:
-                kwargs["since"] = since_date
-
-            logger.info(
-                "Starting file change extraction",
-                max_commits=max_commits,
-                since_date=since_date,
-            )
-
-            change_count = 0
-
-            if self.repo is None:
-                raise ValueError("Repository not initialized")
-            for commit in self.repo.iter_commits(**kwargs):
-                try:
-                    # Extract file changes from commit
-                    for file_change in self._extract_file_changes_from_commit(commit):
-                        yield file_change
-                        change_count += 1
-
-                        # Log progress periodically
-                        if change_count % 500 == 0:
-                            logger.debug("Processed file changes", count=change_count)
-
-                except Exception as e:
-                    logger.warning(
-                        "Failed to extract file changes from commit",
-                        commit_hash=commit.hexsha,
-                        error=str(e),
-                    )
-                    continue
-
-            logger.info("File change extraction completed", total_changes=change_count)
-
-        except Exception as e:
-            logger.error("Unexpected error during file change extraction", error=str(e))
-            raise
-
-    def _extract_file_changes_from_commit(
-        self, commit: Commit
-    ) -> list[FileChangeEvent]:
-        """Extract file changes from a single commit.
-
-        Args:
-            commit: GitPython commit object
-
-        Returns:
-            List of validated FileChangeEvent objects
-        """
-        file_changes = []
-
-        try:
-            commit_hash = commit.hexsha
-
-            if commit.parents:
-                # Compare with first parent
-                diffs = commit.parents[0].diff(commit)
-
-                for diff in diffs:
-                    try:
-                        # Determine change type and file path
-                        if diff.new_file:
-                            change_type = "A"  # Added
-                            file_path = diff.b_path
-                        elif diff.deleted_file:
-                            change_type = "D"  # Deleted
-                            file_path = diff.a_path
-                        elif diff.renamed_file:
-                            change_type = "R"  # Renamed
-                            file_path = diff.b_path
-                        else:
-                            change_type = "M"  # Modified
-                            file_path = diff.a_path or diff.b_path
-
-                        if not file_path:
-                            continue
-
-                        # Calculate line changes
-                        lines_added = 0
-                        lines_deleted = 0
-
                         try:
-                            if hasattr(diff, "diff") and diff.diff:
-                                diff_text = diff.diff.decode("utf-8", errors="ignore")
-                                for line in diff_text.split("\n"):
-                                    if line.startswith("+") and not line.startswith(
-                                        "+++"
-                                    ):
-                                        lines_added += 1
-                                    elif line.startswith("-") and not line.startswith(
-                                        "---"
-                                    ):
-                                        lines_deleted += 1
-                        except Exception:
-                            # If diff parsing fails, use safe defaults
-                            pass
+                            # Determine change type and file path
+                            if diff.new_file:
+                                change_type = "A"  # Added
+                                file_path = diff.b_path
+                            elif diff.deleted_file:
+                                change_type = "D"  # Deleted
+                                file_path = diff.a_path
+                            elif diff.renamed_file:
+                                change_type = "R"  # Renamed
+                                file_path = diff.b_path
+                            else:
+                                change_type = "M"  # Modified
+                                file_path = diff.a_path or diff.b_path
 
-                        # Create file change event
-                        change_data = {
-                            "file_path": file_path,
-                            "change_type": change_type,
-                            "commit_hash": commit_hash,
-                            "lines_added": lines_added,
-                            "lines_deleted": lines_deleted,
-                        }
+                            if not file_path:
+                                continue
 
-                        file_change = FileChangeEvent.from_dict(change_data)
-                        file_changes.append(file_change)
+                            # Calculate line changes
+                            lines_added = 0
+                            lines_deleted = 0
 
-                    except Exception as e:
-                        logger.debug(
-                            "Failed to process diff",
-                            commit_hash=commit_hash,
-                            error=str(e),
-                        )
-                        continue
-            else:
-                # Initial commit - all files are added
-                for item in commit.tree.traverse():
-                    if item.type == "blob":  # Only files
-                        try:
-                            change_data = {
-                                "file_path": item.path,
-                                "change_type": "A",
-                                "commit_hash": commit_hash,
-                                "lines_added": 0,
-                                "lines_deleted": 0,
-                            }
+                            try:
+                                if hasattr(diff, "diff") and diff.diff:
+                                    diff_text = diff.diff.decode(
+                                        "utf-8", errors="ignore"
+                                    )
+                                    for line in diff_text.split("\n"):
+                                        if line.startswith("+") and not line.startswith(
+                                            "+++"
+                                        ):
+                                            lines_added += 1
+                                        elif line.startswith(
+                                            "-"
+                                        ) and not line.startswith("---"):
+                                            lines_deleted += 1
+                            except Exception:
+                                # If diff parsing fails, use safe defaults
+                                pass
 
-                            file_change = FileChangeEvent.from_dict(change_data)
+                            # Create file change
+                            file_change = FileChange(
+                                file_path=file_path,
+                                change_type=change_type,
+                                lines_added=lines_added,
+                                lines_deleted=lines_deleted,
+                            )
                             file_changes.append(file_change)
 
                         except Exception as e:
                             logger.debug(
-                                "Failed to process initial commit file",
-                                file_path=item.path,
+                                "Failed to process diff",
                                 commit_hash=commit_hash,
                                 error=str(e),
                             )
                             continue
-
-        except Exception as e:
-            logger.warning(
-                "Failed to extract file changes from commit",
-                commit_hash=getattr(commit, "hexsha", "unknown"),
-                error=str(e),
-            )
-
-        return file_changes
-
-    def find_problem_commits(
-        self, max_commits: int = 1000, problem_keywords: list[str] | None = None
-    ) -> Iterator[ProblemCommit]:
-        """Find commits that fix problems with security controls.
-
-        Args:
-            max_commits: Maximum number of commits to analyze
-            problem_keywords: Keywords to search for in commit messages
-
-        Yields:
-            ProblemCommit: Validated problem commit events
-        """
-        if not self.validate_repository():
-            raise ValueError("Repository validation failed")
-
-        # Default problem keywords
-        if problem_keywords is None:
-            problem_keywords = [
-                "fix",
-                "bug",
-                "error",
-                "issue",
-                "problem",
-                "resolve",
-                "patch",
-                "correct",
-                "repair",
-                "hotfix",
-                "bugfix",
-            ]
-
-        try:
-            # Security: limit max_commits
-            if max_commits > 10000:
-                logger.warning(
-                    "Max commits limited to 10000 for security", requested=max_commits
-                )
-                max_commits = 10000
-
-            logger.info(
-                "Starting problem commit search",
-                max_commits=max_commits,
-                keywords_count=len(problem_keywords),
-            )
-
-            problem_count = 0
-
-            if self.repo is None:
-                raise ValueError("Repository not initialized")
-            for commit in self.repo.iter_commits(max_count=max_commits):
-                try:
-                    problem_commit = self._analyze_commit_for_problems(
-                        commit, problem_keywords
-                    )
-                    if problem_commit:
-                        yield problem_commit
-                        problem_count += 1
-
-                        # Log progress periodically
-                        if problem_count % 50 == 0:
-                            logger.debug("Found problem commits", count=problem_count)
-
-                except Exception as e:
-                    logger.warning(
-                        "Failed to analyze commit for problems",
-                        commit_hash=commit.hexsha,
-                        error=str(e),
-                    )
-                    continue
-
-            logger.info("Problem commit search completed", total_found=problem_count)
-
-        except Exception as e:
-            logger.error("Unexpected error during problem commit search", error=str(e))
-            raise
-
-    def _analyze_commit_for_problems(
-        self, commit: Commit, problem_keywords: list[str]
-    ) -> ProblemCommit | None:
-        """Analyze commit for problem-solving indicators.
-
-        Args:
-            commit: GitPython commit object
-            problem_keywords: Keywords to search for
-
-        Returns:
-            ProblemCommit if commit appears to fix problems, None otherwise
-        """
-        try:
-            commit_hash = commit.hexsha
-            message = commit.message.strip().lower()
-
-            # Search for problem keywords in commit message
-            found_keywords = []
-            for keyword in problem_keywords:
-                if keyword.lower() in message:
-                    found_keywords.append(keyword)
-
-            # If no keywords found, not a problem commit
-            if not found_keywords:
-                return None
-
-            # Calculate confidence score based on keyword matches and message patterns
-            confidence_score = self._calculate_problem_confidence(
-                message, found_keywords
-            )
-
-            # Extract changed files
-            files = []
-            try:
-                if commit.parents:
-                    diffs = commit.parents[0].diff(commit)
-                    for diff in diffs:
-                        if diff.a_path:
-                            files.append(diff.a_path)
-                        if diff.b_path and diff.b_path != diff.a_path:
-                            files.append(diff.b_path)
+                else:
+                    # Initial commit - all files are added
+                    for item in commit.tree.traverse():
+                        if item.type == "blob":  # Only files
+                            try:
+                                file_change = FileChange(
+                                    file_path=item.path,
+                                    change_type="A",
+                                    lines_added=0,
+                                    lines_deleted=0,
+                                )
+                                file_changes.append(file_change)
+                            except Exception as e:
+                                logger.debug(
+                                    "Failed to process initial commit file",
+                                    file_path=item.path,
+                                    commit_hash=commit_hash,
+                                    error=str(e),
+                                )
+                                continue
             except Exception as e:
                 logger.debug(
-                    "Failed to extract changed files for problem commit",
+                    "Failed to extract file changes",
                     commit_hash=commit_hash,
                     error=str(e),
                 )
+                file_changes = []
 
-            # Create problem commit data
-            problem_data = {
-                "commit_hash": commit_hash,
-                "problem_type": ", ".join(found_keywords)
-                if found_keywords
-                else "unknown",
-                "affected_files": files,
-                "fix_description": commit.message.strip(),
-                "confidence_score": confidence_score,
-            }
-
-            return ProblemCommit.from_dict(problem_data)
+            # Create and validate commit object
+            return Commit(
+                hash=commit_hash,
+                message=message,
+                author_name=author_name,
+                author_email=author_email,
+                timestamp=timestamp,
+                file_changes=file_changes,
+                parent_hashes=parent_hashes,
+            )
 
         except Exception as e:
             logger.warning(
-                "Failed to analyze commit for problems",
+                "Failed to convert commit to object",
                 commit_hash=getattr(commit, "hexsha", "unknown"),
                 error=str(e),
             )
             return None
-
-    def _calculate_problem_confidence(
-        self, message: str, found_keywords: list[str]
-    ) -> float:
-        """Calculate confidence that commit fixes a problem.
-
-        Args:
-            message: Commit message (lowercase)
-            found_keywords: Keywords found in message
-
-        Returns:
-            Confidence score between 0.0 and 1.0
-        """
-        try:
-            # Base confidence from keyword matches
-            base_confidence = min(len(found_keywords) * 0.2, 0.8)
-
-            # Bonus for specific patterns
-            high_confidence_patterns = [
-                "fixes #",
-                "closes #",
-                "resolves #",
-                "fix #",
-                "critical fix",
-                "urgent fix",
-                "hotfix",
-                "security fix",
-                "vulnerability",
-            ]
-
-            medium_confidence_patterns = [
-                "bug fix",
-                "issue fix",
-                "error fix",
-                "fix for",
-                "fixing",
-                "resolved",
-            ]
-
-            # Check for high confidence patterns
-            for pattern in high_confidence_patterns:
-                if pattern in message:
-                    base_confidence = min(base_confidence + 0.3, 1.0)
-                    break
-
-            # Check for medium confidence patterns
-            for pattern in medium_confidence_patterns:
-                if pattern in message:
-                    base_confidence = min(base_confidence + 0.15, 1.0)
-                    break
-
-            return base_confidence
-
-        except Exception:
-            return 0.5  # Default confidence if calculation fails
 
     def get_repository_stats(self) -> dict[str, Any]:
         """Get basic repository statistics with security controls.
@@ -752,310 +436,6 @@ class GitHistoryMiner:
         except Exception as e:
             logger.error("Failed to collect repository statistics", error=str(e))
             return {}
-
-    def extract_cochange_patterns(
-        self, max_commits: int = 1000, min_confidence: float = 0.3, min_support: int = 3
-    ) -> list[CoChangePattern]:
-        """Extract co-change patterns from repository history.
-
-        Analyzes commit history to identify files that frequently change
-        together with statistical confidence scoring.
-
-        Args:
-            max_commits: Maximum number of commits to analyze
-            min_confidence: Minimum confidence threshold for patterns
-            min_support: Minimum co-change occurrences required
-
-        Returns:
-            List of validated CoChangePattern objects
-
-        Raises:
-            ValueError: If repository is not valid
-        """
-        if not self.validate_repository():
-            raise ValueError("Repository validation failed")
-
-        try:
-            logger.info(
-                "Starting co-change pattern extraction",
-                max_commits=max_commits,
-                min_confidence=min_confidence,
-                min_support=min_support,
-            )
-
-            # Extract commit history
-            commits = list(self.extract_commit_history(max_commits=max_commits))
-
-            if len(commits) < min_support:
-                logger.warning(
-                    "Insufficient commits for pattern analysis",
-                    commit_count=len(commits),
-                    min_support=min_support,
-                )
-                return []
-
-            # Import here to avoid circular imports
-            from .pattern_detector import PatternDetector
-
-            # Create pattern detector
-            detector = PatternDetector(min_confidence=min_confidence)
-
-            # Detect patterns
-            pattern_data = detector.detect_cochange_patterns(commits, min_support)
-
-            # Convert to validated objects
-            patterns = []
-            for data in pattern_data:
-                try:
-                    pattern = CoChangePattern.from_dict(data)
-                    patterns.append(pattern)
-                except Exception as e:
-                    logger.warning(
-                        "Failed to create CoChangePattern",
-                        pattern_data=data,
-                        error=str(e),
-                    )
-                    continue
-
-            logger.info(
-                "Co-change pattern extraction completed",
-                patterns_extracted=len(patterns),
-            )
-
-            return patterns
-
-        except Exception as e:
-            logger.error("Co-change pattern extraction failed", error=str(e))
-            raise
-
-    def extract_maintenance_hotspots(
-        self, max_commits: int = 1000, min_confidence: float = 0.3
-    ) -> list[MaintenanceHotspot]:
-        """Extract maintenance hotspots from repository history.
-
-        Identifies files with high problem frequency and analyzes
-        trends over time to determine maintenance risk.
-
-        Args:
-            max_commits: Maximum number of commits to analyze
-            min_confidence: Minimum confidence threshold for hotspots
-
-        Returns:
-            List of validated MaintenanceHotspot objects
-
-        Raises:
-            ValueError: If repository is not valid
-        """
-        if not self.validate_repository():
-            raise ValueError("Repository validation failed")
-
-        try:
-            logger.info(
-                "Starting maintenance hotspot extraction",
-                max_commits=max_commits,
-                min_confidence=min_confidence,
-            )
-
-            # Extract commit history and problem commits
-            commits = list(self.extract_commit_history(max_commits=max_commits))
-            problem_commits = list(self.find_problem_commits(max_commits=max_commits))
-
-            if len(commits) < 10:  # Need reasonable sample size
-                logger.warning(
-                    "Insufficient commits for hotspot analysis",
-                    commit_count=len(commits),
-                )
-                return []
-
-            # Import here to avoid circular imports
-            from .pattern_detector import PatternDetector
-
-            # Create pattern detector
-            detector = PatternDetector(min_confidence=min_confidence)
-
-            # Detect hotspots
-            hotspot_data = detector.detect_maintenance_hotspots(
-                commits, problem_commits
-            )
-
-            # Convert to validated objects
-            hotspots = []
-            for data in hotspot_data:
-                try:
-                    hotspot = MaintenanceHotspot.from_dict(data)
-                    hotspots.append(hotspot)
-                except Exception as e:
-                    logger.warning(
-                        "Failed to create MaintenanceHotspot",
-                        hotspot_data=data,
-                        error=str(e),
-                    )
-                    continue
-
-            logger.info(
-                "Maintenance hotspot extraction completed",
-                hotspots_extracted=len(hotspots),
-            )
-
-            return hotspots
-
-        except Exception as e:
-            logger.error("Maintenance hotspot extraction failed", error=str(e))
-            raise
-
-    def extract_solution_patterns(
-        self, max_commits: int = 1000, min_confidence: float = 0.3
-    ) -> list[SolutionPattern]:
-        """Extract solution patterns from repository history.
-
-        Analyzes problem-fixing commits to identify successful
-        solution approaches with statistical validation.
-
-        Args:
-            max_commits: Maximum number of commits to analyze
-            min_confidence: Minimum confidence threshold for patterns
-
-        Returns:
-            List of validated SolutionPattern objects
-
-        Raises:
-            ValueError: If repository is not valid
-        """
-        if not self.validate_repository():
-            raise ValueError("Repository validation failed")
-
-        try:
-            logger.info(
-                "Starting solution pattern extraction",
-                max_commits=max_commits,
-                min_confidence=min_confidence,
-            )
-
-            # Extract problem commits
-            problem_commits = list(self.find_problem_commits(max_commits=max_commits))
-
-            if len(problem_commits) < 5:  # Need reasonable sample size
-                logger.warning(
-                    "Insufficient problem commits for solution analysis",
-                    problem_commit_count=len(problem_commits),
-                )
-                return []
-
-            # Import here to avoid circular imports
-            from .pattern_detector import PatternDetector
-
-            # Create pattern detector
-            detector = PatternDetector(min_confidence=min_confidence)
-
-            # Detect solution patterns
-            pattern_data = detector.detect_solution_patterns(problem_commits)
-
-            # Convert to validated objects
-            patterns = []
-            for data in pattern_data:
-                try:
-                    pattern = SolutionPattern.from_dict(data)
-                    patterns.append(pattern)
-                except Exception as e:
-                    logger.warning(
-                        "Failed to create SolutionPattern",
-                        pattern_data=data,
-                        error=str(e),
-                    )
-                    continue
-
-            logger.info(
-                "Solution pattern extraction completed",
-                patterns_extracted=len(patterns),
-            )
-
-            return patterns
-
-        except Exception as e:
-            logger.error("Solution pattern extraction failed", error=str(e))
-            raise
-
-    def extract_all_patterns(
-        self, max_commits: int = 1000, min_confidence: float = 0.3, min_support: int = 3
-    ) -> dict[str, Any]:
-        """Extract all pattern types from repository history.
-
-        Convenience method to extract co-change patterns, maintenance hotspots,
-        and solution patterns in a single operation.
-
-        Args:
-            max_commits: Maximum number of commits to analyze
-            min_confidence: Minimum confidence threshold for patterns
-            min_support: Minimum co-change occurrences required
-
-        Returns:
-            Dictionary containing all pattern types with metadata
-
-        Raises:
-            ValueError: If repository is not valid
-        """
-        if not self.validate_repository():
-            raise ValueError("Repository validation failed")
-
-        try:
-            logger.info(
-                "Starting comprehensive pattern extraction",
-                max_commits=max_commits,
-                min_confidence=min_confidence,
-                min_support=min_support,
-            )
-
-            start_time = datetime.now()
-
-            # Extract all pattern types
-            cochange_patterns = self.extract_cochange_patterns(
-                max_commits, min_confidence, min_support
-            )
-
-            maintenance_hotspots = self.extract_maintenance_hotspots(
-                max_commits, min_confidence
-            )
-
-            solution_patterns = self.extract_solution_patterns(
-                max_commits, min_confidence
-            )
-
-            end_time = datetime.now()
-            extraction_time = (end_time - start_time).total_seconds()
-
-            # Compile results
-            results = {
-                "cochange_patterns": cochange_patterns,
-                "maintenance_hotspots": maintenance_hotspots,
-                "solution_patterns": solution_patterns,
-                "metadata": {
-                    "extraction_time_seconds": extraction_time,
-                    "max_commits_analyzed": max_commits,
-                    "min_confidence_threshold": min_confidence,
-                    "min_support_threshold": min_support,
-                    "repository_path": str(self.repository_path),
-                    "extracted_at": end_time.isoformat(),
-                    "pattern_counts": {
-                        "cochange_patterns": len(cochange_patterns),
-                        "maintenance_hotspots": len(maintenance_hotspots),
-                        "solution_patterns": len(solution_patterns),
-                    },
-                },
-            }
-
-            logger.info(
-                "Comprehensive pattern extraction completed",
-                cochange_patterns=len(cochange_patterns),
-                maintenance_hotspots=len(maintenance_hotspots),
-                solution_patterns=len(solution_patterns),
-                extraction_time=extraction_time,
-            )
-
-            return results
-
-        except Exception as e:
-            logger.error("Comprehensive pattern extraction failed", error=str(e))
-            raise
 
 
 # Utility functions for external use

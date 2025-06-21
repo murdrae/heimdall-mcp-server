@@ -1,39 +1,24 @@
 """
 Git analysis module for the cognitive memory system.
 
-This module provides secure git repository analysis functionality,
-extracting development patterns and storing them as cognitive memories.
+This module provides git repository analysis functionality,
+storing individual commits as cognitive memories with metadata.
 """
 
-from .data_structures import (
-    CoChangePattern,
-    CommitEvent,
-    FileChangeEvent,
-    MaintenanceHotspot,
-    ProblemCommit,
-    SolutionPattern,
-)
+from .commit import Commit, FileChange
+from .commit_loader import CommitLoader
 from .history_miner import GitHistoryMiner
-from .pattern_detector import PatternDetector
-from .pattern_embedder import GitPatternEmbedder
 from .security import (
-    GitPatternIDGenerator,
     canonicalize_path,
     sanitize_git_data,
     validate_repository_path,
 )
 
 __all__ = [
-    "CommitEvent",
-    "FileChangeEvent",
-    "ProblemCommit",
-    "CoChangePattern",
-    "MaintenanceHotspot",
-    "SolutionPattern",
+    "Commit",
+    "FileChange",
+    "CommitLoader",
     "GitHistoryMiner",
-    "PatternDetector",
-    "GitPatternEmbedder",
-    "GitPatternIDGenerator",
     "validate_repository_path",
     "canonicalize_path",
     "sanitize_git_data",

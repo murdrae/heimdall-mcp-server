@@ -108,6 +108,8 @@ class TestPatternDetector:
         assert pattern["support_count"] >= 2
         assert 0.0 <= pattern["confidence_score"] <= 1.0
         assert 0.0 <= pattern["recency_weight"] <= 1.0
+        assert "commit_messages" in pattern
+        assert isinstance(pattern["commit_messages"], list)
 
     def test_detect_cochange_patterns_insufficient_support(self):
         """Test co-change detection with insufficient support."""
@@ -230,17 +232,30 @@ class TestPatternDetector:
         assert len(patterns) == 0
 
     def test_build_cochange_matrix(self):
-        """Test co-change matrix building."""
+        """Test co-change matrix building with commit messages."""
         commits = [
-            self.create_test_commit("abc123", ["file1.py", "file2.py"], days_ago=1),
-            self.create_test_commit("def456", ["file1.py", "file3.py"], days_ago=2),
-            self.create_test_commit("ghi789", ["file2.py", "file3.py"], days_ago=3),
+            self.create_test_commit(
+                "abc123",
+                ["file1.py", "file2.py"],
+                "Fix bug in file1 and file2",
+                days_ago=1,
+            ),
+            self.create_test_commit(
+                "def456", ["file1.py", "file3.py"], "Update file1 and file3", days_ago=2
+            ),
+            self.create_test_commit(
+                "ghi789",
+                ["file2.py", "file3.py"],
+                "Refactor file2 and file3",
+                days_ago=3,
+            ),
         ]
 
-        matrix = self.detector._build_cochange_matrix(commits)
+        matrix, commit_messages = self.detector._build_cochange_matrix(commits)
 
         # Should have 3 pairs: (file1,file2), (file1,file3), (file2,file3)
         assert len(matrix) == 3
+        assert len(commit_messages) == 3
 
         # Check specific pairs exist
         file1_file2 = tuple(sorted(["file1.py", "file2.py"]))
@@ -248,6 +263,11 @@ class TestPatternDetector:
         file2_file3 = tuple(sorted(["file2.py", "file3.py"]))
 
         assert file1_file2 in matrix
+        assert file1_file2 in commit_messages
+
+        # Check that commit messages are collected (raw messages, formatted later)
+        assert "Fix bug in file1 and file2" in commit_messages[file1_file2]
+
         assert file1_file3 in matrix
         assert file2_file3 in matrix
 

@@ -29,6 +29,11 @@ class TestGitPatternEmbedder:
             "quality_rating": "high",
             "recency_weight": 0.9,
             "statistical_significance": 0.7,
+            "commit_messages": [
+                "a1234567: Fix authentication bug",
+                "b1234567: Add validation",
+                "c1234567: Refactor logging",
+            ],
         }
 
     @pytest.fixture
@@ -67,17 +72,62 @@ class TestGitPatternEmbedder:
         result = embedder.embed_cochange_pattern(sample_cochange_pattern)
 
         # Check that essential information is included
-        assert "Development pattern" in result
+        assert "Co-change pattern" in result
         assert "80%" in result  # confidence percentage
-        assert "high" in result  # quality rating
         assert "src/utils.py" in result
         assert "src/main.py" in result
-        assert "5 co-commits" in result
-        assert "coupling" in result.lower()
+        assert "5 times" in result
 
         # Check confidence indicators are embedded
         assert "confidence:" in result
-        assert "quality:" in result
+
+    def test_embed_cochange_pattern_with_commit_messages(self, embedder):
+        """Test co-change pattern embedding with commit messages."""
+        pattern_with_messages = {
+            "file_a": "src/user.py",
+            "file_b": "test/test_user.py",
+            "support_count": 3,
+            "confidence_score": 0.75,
+            "quality_rating": "medium",
+            "recency_weight": 0.8,
+            "statistical_significance": 0.6,
+            "commit_messages": [
+                "Fix user validation bug",
+                "Add timeout handling",
+                "Update user tests",
+            ],
+        }
+
+        result = embedder.embed_cochange_pattern(pattern_with_messages)
+
+        # Check that commit messages are included with hash format
+        assert "Recent commit messages:" in result
+        assert "Fix user validation bug" in result
+        assert "Add timeout handling" in result
+        assert "Update user tests" in result
+        # Check for pipe separator
+        assert "|" in result
+
+    def test_embed_cochange_pattern_without_commit_messages(self, embedder):
+        """Test co-change pattern embedding without commit messages."""
+        pattern_without_messages = {
+            "file_a": "src/utils.py",
+            "file_b": "src/main.py",
+            "support_count": 5,
+            "confidence_score": 0.8,
+            "quality_rating": "high",
+            "recency_weight": 0.9,
+            "statistical_significance": 0.7,
+            "commit_messages": [],  # Empty list
+        }
+
+        result = embedder.embed_cochange_pattern(pattern_without_messages)
+
+        # Should not include commit messages section
+        assert "Recent commit messages:" not in result
+        # But should still have the basic pattern info
+        assert "Co-change pattern" in result
+        assert "80%" in result
 
     def test_embed_cochange_pattern_recency_analysis(
         self, embedder, sample_cochange_pattern
@@ -314,7 +364,7 @@ class TestGitPatternEmbedder:
 
         # Check that different pattern types are represented
         combined_text = " ".join(results)
-        assert "Development pattern" in combined_text  # co-change
+        assert "Co-change pattern" in combined_text  # co-change
         assert "Maintenance hotspot" in combined_text  # hotspot
         assert "Solution pattern" in combined_text  # solution
 
@@ -331,7 +381,7 @@ class TestGitPatternEmbedder:
 
         # Should only embed known patterns
         assert len(results) == 1
-        assert "Development pattern" in results[0]
+        assert "Co-change pattern" in results[0]
 
     def test_error_handling_cochange(self, embedder):
         """Test error handling in co-change pattern embedding."""
@@ -340,7 +390,7 @@ class TestGitPatternEmbedder:
         result = embedder.embed_cochange_pattern(malformed_pattern)
 
         # Should handle gracefully with default values
-        assert "Development pattern" in result
+        assert "Co-change pattern" in result
         assert "confidence: 0%" in result
         assert "unknown" in result
 
@@ -388,6 +438,5 @@ class TestGitPatternEmbedder:
 
         # Core confidence metrics should always be present
         assert "confidence:" in result
-        assert "quality:" in result
         assert "80%" in result  # confidence percentage
-        assert "high" in result  # quality rating
+        # Quality rating no longer in main description (moved to metadata)
