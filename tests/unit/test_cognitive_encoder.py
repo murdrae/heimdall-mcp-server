@@ -16,6 +16,7 @@ from cognitive_memory.encoding.cognitive_encoder import (
 )
 
 
+@pytest.mark.slow
 class TestCognitiveFusionLayer:
     """Test the neural fusion layer."""
 
@@ -264,6 +265,7 @@ class TestCognitiveEncoder:
         assert cognitive_sim < semantic_sim
 
 
+@pytest.mark.slow
 class TestCognitiveEncoderFactory:
     """Test factory function for creating encoders."""
 

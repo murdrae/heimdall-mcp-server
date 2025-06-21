@@ -76,6 +76,8 @@ class TestMarkdownMemoryLoaderUnit:
             max_tokens_per_chunk=100,
             code_block_lines=5,
             strength_floor=0.1,
+            min_memory_tokens=10,  # Lower threshold for testing
+            min_meaningful_words=5,  # Lower threshold for testing
             hierarchical_weight=0.8,
             sequential_weight=0.6,
             associative_weight=0.4,
@@ -440,7 +442,7 @@ def test_function():
     def test_create_memory_from_chunk(self, markdown_loader):
         """Test memory creation from chunk data."""
         chunk_data = {
-            "content": "# Test Header\n\nTest content here.",
+            "content": "# Test Header\n\nThis is test content that is long enough to create a valid memory object.",
             "title": "Test Header",
             "header_level": 1,
             "source_path": "/test.md",
@@ -470,6 +472,7 @@ class TestMarkdownMemoryLoaderIntegration:
             max_tokens_per_chunk=50,  # Small chunks for testing
             code_block_lines=3,
             strength_floor=0.1,
+            min_memory_tokens=5,  # Lower threshold for testing
             hierarchical_weight=0.8,
             sequential_weight=0.6,
             associative_weight=0.4,
@@ -1011,6 +1014,8 @@ class TestMarkdownConnectionExtraction:
             max_tokens_per_chunk=200,
             code_block_lines=3,
             strength_floor=0.1,
+            min_memory_tokens=5,  # Lower threshold for testing
+            min_meaningful_words=4,  # Lower threshold for testing
             hierarchical_weight=0.8,
             sequential_weight=0.6,
             associative_weight=0.4,
