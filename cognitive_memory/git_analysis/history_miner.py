@@ -263,7 +263,19 @@ class GitHistoryMiner:
             try:
                 # Get file changes from commit
                 if commit.parents:
-                    # Compare with first parent for changed files
+                    # Use commit.stats for line counts (much more reliable)
+                    file_stats = {}
+                    try:
+                        if hasattr(commit, "stats") and commit.stats.files:
+                            file_stats = commit.stats.files
+                    except Exception as e:
+                        logger.debug(
+                            "Failed to get commit stats",
+                            commit_hash=commit_hash,
+                            error=str(e),
+                        )
+
+                    # Get change types from diff
                     diffs = commit.parents[0].diff(commit)
                     for diff in diffs:
                         try:
@@ -284,27 +296,14 @@ class GitHistoryMiner:
                             if not file_path:
                                 continue
 
-                            # Calculate line changes
+                            # Get line changes from stats if available
                             lines_added = 0
                             lines_deleted = 0
-
-                            try:
-                                if hasattr(diff, "diff") and diff.diff:
-                                    diff_text = diff.diff.decode(
-                                        "utf-8", errors="ignore"
-                                    )
-                                    for line in diff_text.split("\n"):
-                                        if line.startswith("+") and not line.startswith(
-                                            "+++"
-                                        ):
-                                            lines_added += 1
-                                        elif line.startswith(
-                                            "-"
-                                        ) and not line.startswith("---"):
-                                            lines_deleted += 1
-                            except Exception:
-                                # If diff parsing fails, use safe defaults
-                                pass
+                            if file_path in file_stats:
+                                lines_added = file_stats[file_path].get("insertions", 0)
+                                lines_deleted = file_stats[file_path].get(
+                                    "deletions", 0
+                                )
 
                             # Create file change
                             file_change = FileChange(

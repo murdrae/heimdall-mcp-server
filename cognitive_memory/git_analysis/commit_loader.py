@@ -6,7 +6,7 @@ direct access to commit history with metadata for retrieval and connection.
 Each commit becomes a memory with full context and file change information.
 """
 
-import hashlib
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -259,10 +259,22 @@ class CommitLoader(MemoryLoader):
         )
 
     def _generate_commit_id(self, repo_name: str, commit_hash: str) -> str:
-        """Generate deterministic ID for a commit memory."""
-        # Use repo name and commit hash for deterministic ID
-        id_input = f"git_commit:{repo_name}:{commit_hash}"
-        return hashlib.sha256(id_input.encode()).hexdigest()[:16]
+        """Generate deterministic ID for a commit memory using git commit hash directly."""
+        # Git commit hashes are already perfect unique identifiers (40-char SHA-1)
+        # Convert to UUID format for Qdrant compatibility
+        if len(commit_hash) == 40:
+            # Standard git commit hash - convert to UUID
+            # Take first 32 chars and format as UUID
+            hex_for_uuid = commit_hash[:32]
+            return str(uuid.UUID(hex_for_uuid))
+        else:
+            # Fallback for non-standard hash lengths
+            import hashlib
+
+            hash_hex = hashlib.sha256(
+                f"git_commit:{repo_name}:{commit_hash}".encode()
+            ).hexdigest()
+            return str(uuid.UUID(hash_hex[:32]))
 
     def _calculate_file_connection_strength(
         self, memory1: CognitiveMemory, memory2: CognitiveMemory, file_path: str

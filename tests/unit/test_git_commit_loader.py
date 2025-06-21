@@ -264,7 +264,7 @@ class TestCommitLoaderMemoryCreation:
         id2 = commit_loader._generate_commit_id(repo_name, commit_hash)
 
         assert id1 == id2
-        assert len(id1) == 16  # SHA-256 truncated to 16 chars
+        assert len(id1) == 36  # UUID format (8-4-4-4-12)
 
     def test_generate_commit_id_different_inputs(self, commit_loader):
         """Test ID generation with different inputs."""
