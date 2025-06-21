@@ -131,7 +131,10 @@ class Commit:
 
             # Handle timestamp conversion
             if isinstance(timestamp, str):
-                timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                try:
+                    timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                except ValueError:
+                    timestamp = datetime.now()
             elif not isinstance(timestamp, datetime):
                 timestamp = datetime.now()
 
