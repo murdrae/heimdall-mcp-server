@@ -5,6 +5,8 @@
 [![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://www.docker.com/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io/)
 
+https://github.com/user-attachments/assets/5a556433-97c2-4d57-92cc-3813ac23ff5b
+
 A tool that lets your LLM remember things between conversations - your project patterns, solutions you've found, and insights from past sessions.
 
 ## **The problem it solves**
