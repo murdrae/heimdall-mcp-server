@@ -59,7 +59,13 @@ cognitive_memory/
 │   └── pattern_embedder.py # Convert patterns to memories
 └── loaders/               # Memory loading interfaces
     ├── git_loader.py      # Git repository integration
-    └── markdown_loader.py # Markdown file processing
+    ├── markdown_loader.py # Main markdown processing coordinator
+    └── markdown/          # Specialized markdown components
+        ├── content_analyzer.py    # Linguistic analysis and classification
+        ├── document_parser.py     # Markdown parsing and tree construction
+        ├── memory_factory.py      # Memory creation and content assembly
+        ├── connection_extractor.py # Relationship analysis
+        └── chunk_processor.py     # Document chunking and grouping
 
 interfaces/
 ├── cli.py                 # CognitiveCLI - main CLI interface
@@ -169,7 +175,6 @@ COGNITIVE_MEMORY_DB_PATH=./data/cognitive_memory.db
 
 # MCP specific
 MCP_MAX_MEMORIES_PER_QUERY=10
-MCP_SESSION_LESSON_BOOST=1.5
 
 # Git integration
 GIT_PATTERN_MIN_CONFIDENCE=0.7
