@@ -220,6 +220,73 @@ Bridge memories implement computational serendipity by:
 - Verify memory importance scores
 - Consider if memories need more frequent access to boost relevance
 
+## Memory Decay and Lifecycle
+
+### Dual Memory System with Decay
+
+The system implements biologically-inspired memory decay with two distinct storage types:
+
+#### Episodic Memory (Fast Decay)
+- **Purpose**: Recent, specific experiences and interactions
+- **Decay Rate**: Fast exponential decay (configurable in `cognitive_memory/storage/dual_memory.py`)
+- **Retention**: Maximum 30 days absolute limit
+- **Removal Criteria**: 
+  - Age exceeds retention period
+  - Strength falls below minimum threshold
+  - Importance score becomes negligible
+
+#### Semantic Memory (Slow Decay)
+- **Purpose**: Generalized patterns and consolidated knowledge
+- **Decay Rate**: Very slow exponential decay (10x slower than episodic)
+- **Retention**: Months to years, no automatic expiration
+- **Consolidation**: Frequently accessed episodic memories get promoted to semantic
+
+### Data Flow for Memory Lifecycle
+
+```
+New Experience → Episodic Storage → Access Tracking → Consolidation Decision
+                      ↓                                        ↓
+                 Decay Calculation                    Semantic Storage
+                      ↓                                        ↓
+              Cleanup if Expired                      Long-term Retention
+```
+
+### Configuration Sources
+
+Memory decay parameters are defined in:
+
+- **Decay Rates**: `cognitive_memory/storage/dual_memory.py` (EpisodicMemoryStore, SemanticMemoryStore classes)
+- **Cleanup Intervals**: `cognitive_memory/core/config.py` (SystemConfig.cleanup_interval_hours)
+- **Consolidation Criteria**: `cognitive_memory/core/cognitive_system.py` (consolidate_memories method)
+- **Retention Limits**: `cognitive_memory/storage/dual_memory.py` (max_retention_days)
+
+### Consolidation Process
+
+**Automatic Promotion Criteria** (episodic → semantic):
+- Access frequency threshold (defined in consolidation logic)
+- Minimum strength requirement
+- Age requirement for stability
+- Connection strength to other memories
+
+**Manual Cleanup** via:
+```bash
+# Trigger consolidation cycle
+memory_system shell
+cognitive> consolidate
+
+# Clean expired memories
+cognitive> cleanup
+```
+
+### Key Implementation Files
+
+- `cognitive_memory/storage/dual_memory.py` - Core decay algorithms and cleanup logic
+- `cognitive_memory/core/cognitive_system.py` - Consolidation orchestration  
+- `cognitive_memory/core/config.py` - Configurable parameters and thresholds
+- `memory_system/cli.py` - Manual cleanup trigger interfaces
+
+**Note**: Cleanup is currently manual rather than automated. The system tracks when cleanup should occur but requires explicit triggering through CLI or API calls.
+
 ## Related Documentation
 
 - [Architecture Technical Specification](./architecture-technical-specification.md) - Deep technical details
