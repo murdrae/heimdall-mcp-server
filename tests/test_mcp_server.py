@@ -169,9 +169,7 @@ class TestStoreMemoryTool:
 
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
-        assert "✓ Experience stored successfully" in result[0].text
-        assert "Hierarchy Level: L1 (Context)" in result[0].text
-        assert "Memory Type: semantic" in result[0].text
+        assert "✓ Stored: L1 (Context), semantic" in result[0].text
 
         # Verify CLI was called correctly
         mcp_server.cli.store_experience.assert_called_once_with(
@@ -224,10 +222,7 @@ class TestStoreMemoryTool:
 
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
-        assert (
-            "Hierarchy Level: L2 (Episode)" in result[0].text
-        )  # Default hierarchy_level
-        assert "Memory Type: episodic" in result[0].text  # Default memory_type
+        assert "✓ Stored: L2 (Episode), episodic" in result[0].text
 
 
 class TestRecallMemoriesTool:
@@ -268,8 +263,8 @@ class TestRecallMemoriesTool:
 
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
-        assert '"query": "React performance"' in result[0].text
-        assert '"total_results": 1' in result[0].text
+        assert '"query":"React performance"' in result[0].text
+        assert '"total_results":1' in result[0].text
 
         # Verify CLI was called correctly
         mcp_server.cli.retrieve_memories.assert_called_once_with(
@@ -355,10 +350,7 @@ class TestSessionLessonsTool:
 
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
-        assert "✓ Session lesson recorded for future reference" in result[0].text
-        assert "Lesson Type: pattern" in result[0].text
-        assert "Importance Level: high" in result[0].text
-        assert "Session Context: Working on payment API integration" in result[0].text
+        assert "✓ Lesson recorded: pattern, high" in result[0].text
 
         # Verify CLI was called with correct context
         call_args = mcp_server.cli.store_experience.call_args
@@ -391,8 +383,10 @@ class TestSessionLessonsTool:
 
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
-        assert "could be more detailed" in result[0].text
-        assert "Consider expanding your lesson" in result[0].text
+        assert (
+            "❌ Lesson too brief. Expand with specific insights, patterns, or context for future sessions."
+            in result[0].text
+        )
 
     @pytest.mark.asyncio
     async def test_session_lessons_importance_mapping(self, mcp_server):
@@ -432,7 +426,7 @@ class TestSessionLessonsTool:
             ("context", "Consider adding related discoveries"),
         ]
 
-        for lesson_type, expected_suggestion in lesson_types_and_suggestions:
+        for lesson_type, _expected_suggestion in lesson_types_and_suggestions:
             arguments = {
                 "lesson_content": "Test lesson with sufficient length to pass validation",
                 "lesson_type": lesson_type,
@@ -442,7 +436,7 @@ class TestSessionLessonsTool:
 
             assert len(result) == 1
             assert isinstance(result[0], TextContent)
-            assert expected_suggestion in result[0].text
+            assert f"✓ Lesson recorded: {lesson_type}, medium" in result[0].text
 
     @pytest.mark.asyncio
     async def test_session_lessons_default_values(self, mcp_server):
@@ -486,8 +480,8 @@ class TestMemoryStatusTool:
 
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
-        assert '"system_status": "healthy"' in result[0].text
-        assert '"total_memories": 1247' in result[0].text
+        assert '"system_status":"healthy"' in result[0].text
+        assert '"total_memories":1247' in result[0].text
 
         # Verify CLI was called correctly
         mcp_server.cli.show_status.assert_called_once_with(
@@ -510,8 +504,8 @@ class TestMemoryStatusTool:
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
         assert '"detailed_config"' in result[0].text
-        assert '"embedding_model": "all-MiniLM-L6-v2"' in result[0].text
-        assert '"activation_threshold": 0.7' in result[0].text
+        assert '"embedding_model":"all-MiniLM-L6-v2"' in result[0].text
+        assert '"activation_threshold":0.7' in result[0].text
 
         # Verify CLI was called correctly
         mcp_server.cli.show_status.assert_called_once_with(detailed=True, display=False)
@@ -597,7 +591,7 @@ class TestMCPIntegration:
         store_result = await call_tool_handler(store_request)
 
         assert len(store_result.root.content) == 1
-        assert "✓ Experience stored successfully" in store_result.root.content[0].text
+        assert "✓ Stored: L1 (Context), episodic" in store_result.root.content[0].text
 
         # Step 2: Recall memories
         recall_params = CallToolRequestParams(
@@ -608,7 +602,7 @@ class TestMCPIntegration:
         recall_result = await call_tool_handler(recall_request)
 
         assert len(recall_result.root.content) == 1
-        assert '"query": "React performance"' in recall_result.root.content[0].text
+        assert '"query":"React performance"' in recall_result.root.content[0].text
         assert "React performance insights" in recall_result.root.content[0].text
 
         # Step 3: Record a session lesson
@@ -625,11 +619,7 @@ class TestMCPIntegration:
         lesson_result = await call_tool_handler(lesson_request)
 
         assert len(lesson_result.root.content) == 1
-        assert (
-            "✓ Session lesson recorded for future reference"
-            in lesson_result.root.content[0].text
-        )
-        assert "Lesson Type: pattern" in lesson_result.root.content[0].text
+        assert "✓ Lesson recorded: pattern, high" in lesson_result.root.content[0].text
 
         # Step 4: Check system status
         status_params = CallToolRequestParams(
@@ -639,7 +629,7 @@ class TestMCPIntegration:
         status_result = await call_tool_handler(status_request)
 
         assert len(status_result.root.content) == 1
-        assert '"system_status": "healthy"' in status_result.root.content[0].text
+        assert '"system_status":"healthy"' in status_result.root.content[0].text
         assert '"detailed_config"' in status_result.root.content[0].text
 
         # Verify all CLI methods were called correctly
@@ -694,8 +684,7 @@ class TestMCPIntegration:
         lesson_result = await call_tool_handler(lesson_request)
 
         assert (
-            "✓ Session lesson recorded for future reference"
-            in lesson_result.root.content[0].text
+            "✓ Lesson recorded: discovery, medium" in lesson_result.root.content[0].text
         )
 
         # Test status error handling

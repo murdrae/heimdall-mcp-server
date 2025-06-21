@@ -70,7 +70,7 @@ def create_default_system(config: SystemConfig | None = None) -> CognitiveMemory
 
         # Create embedding provider
         embedding_provider = create_sentence_bert_provider(
-            model_name=config.embedding.model_name, device=config.embedding.device
+            model_name=config.embedding.model_name
         )
 
         # Validate embedding provider

@@ -230,7 +230,7 @@ The system implements biologically-inspired memory decay with two distinct stora
 - **Purpose**: Recent, specific experiences and interactions
 - **Decay Rate**: Fast exponential decay (configurable in `cognitive_memory/storage/dual_memory.py`)
 - **Retention**: Maximum 30 days absolute limit
-- **Removal Criteria**: 
+- **Removal Criteria**:
   - Age exceeds retention period
   - Strength falls below minimum threshold
   - Importance score becomes negligible
@@ -281,7 +281,7 @@ cognitive> cleanup
 ### Key Implementation Files
 
 - `cognitive_memory/storage/dual_memory.py` - Core decay algorithms and cleanup logic
-- `cognitive_memory/core/cognitive_system.py` - Consolidation orchestration  
+- `cognitive_memory/core/cognitive_system.py` - Consolidation orchestration
 - `cognitive_memory/core/config.py` - Configurable parameters and thresholds
 - `memory_system/cli.py` - Manual cleanup trigger interfaces
 

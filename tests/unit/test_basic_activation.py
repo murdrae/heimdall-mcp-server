@@ -7,8 +7,8 @@ through breadth-first traversal of the memory connection graph.
 
 from unittest.mock import Mock
 
+import numpy as np
 import pytest
-import torch
 
 from cognitive_memory.core.interfaces import ConnectionGraph, MemoryStorage
 from cognitive_memory.core.memory import (
@@ -41,8 +41,8 @@ class TestBasicActivationEngine:
         """Create sample memories with embeddings for testing."""
         # Ensure all memories have embeddings
         for i, memory in enumerate(sample_memories):
-            torch.manual_seed(i)  # Deterministic embeddings
-            memory.cognitive_embedding = torch.randn(512)
+            np.random.seed(i)  # Deterministic embeddings
+            memory.cognitive_embedding = np.random.randn(512)
         return sample_memories
 
     @pytest.fixture
@@ -87,14 +87,14 @@ class TestBasicActivationEngine:
         self,
         activation_engine: BasicActivationEngine,
         mock_memory_storage: Mock,
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test activation when no starting memories are found."""
         # Mock empty L0 memories
         mock_memory_storage.get_memories_by_level.return_value = []
 
         result = activation_engine.activate_memories(
-            context=mock_torch_embedding, threshold=0.6
+            context=mock_numpy_embedding, threshold=0.6
         )
 
         assert isinstance(result, ActivationResult)
@@ -109,7 +109,7 @@ class TestBasicActivationEngine:
         mock_memory_storage: Mock,
         mock_connection_graph: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test basic activation flow with memories."""
         # Setup L0 memories
@@ -129,7 +129,7 @@ class TestBasicActivationEngine:
         ]
 
         result = activation_engine.activate_memories(
-            context=mock_torch_embedding, threshold=0.3
+            context=mock_numpy_embedding, threshold=0.3
         )
 
         assert isinstance(result, ActivationResult)
@@ -141,7 +141,7 @@ class TestBasicActivationEngine:
         self,
         activation_engine: BasicActivationEngine,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test _find_starting_memories method."""
         l0_memories = sample_memories_with_embeddings[:3]
@@ -149,7 +149,7 @@ class TestBasicActivationEngine:
             memory.level = 0
 
         starting_memories = activation_engine._find_starting_memories(
-            context=mock_torch_embedding,
+            context=mock_numpy_embedding,
             l0_memories=l0_memories,
             threshold=0.1,  # Low threshold to ensure some matches
         )
@@ -162,7 +162,7 @@ class TestBasicActivationEngine:
         self,
         activation_engine: BasicActivationEngine,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test _find_starting_memories with high threshold."""
         l0_memories = sample_memories_with_embeddings[:3]
@@ -170,7 +170,7 @@ class TestBasicActivationEngine:
             memory.level = 0
 
         starting_memories = activation_engine._find_starting_memories(
-            context=mock_torch_embedding,
+            context=mock_numpy_embedding,
             l0_memories=l0_memories,
             threshold=0.99,  # Very high threshold
         )
@@ -191,7 +191,7 @@ class TestBasicActivationEngine:
             memory.cognitive_embedding = None  # No embedding
 
         starting_memories = activation_engine._find_starting_memories(
-            context=torch.randn(512), l0_memories=l0_memories, threshold=0.5
+            context=np.random.randn(512), l0_memories=l0_memories, threshold=0.5
         )
 
         assert starting_memories == []
@@ -199,11 +199,11 @@ class TestBasicActivationEngine:
     def test_bfs_activation_empty_starting(
         self,
         activation_engine: BasicActivationEngine,
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test BFS activation with empty starting memories."""
         result = activation_engine._bfs_activation(
-            context=mock_torch_embedding,
+            context=mock_numpy_embedding,
             starting_memories=[],
             threshold=0.5,
             max_activations=50,
@@ -225,14 +225,10 @@ class TestBasicActivationEngine:
         target_memory = sample_memories_with_embeddings[1]
 
         # Create similar embeddings to ensure reasonable similarity scores
-        context_embedding = (
-            torch.ones(512) * 0.5
-        )  # Similar to starting memory embedding
-        starting_memory.cognitive_embedding = (
-            torch.ones(512) * 0.6
-        )  # Similar to context
+        context_embedding = np.ones(512) * 0.5  # Similar to starting memory embedding
+        starting_memory.cognitive_embedding = np.ones(512) * 0.6  # Similar to context
         target_memory.cognitive_embedding = (
-            torch.ones(512) * 0.4
+            np.ones(512) * 0.4
         )  # Different but reasonable
 
         # Boost importance to ensure activation
@@ -258,7 +254,7 @@ class TestBasicActivationEngine:
         mock_connection_graph: Mock,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test BFS activation respects max_activations limit."""
         starting_memory = sample_memories_with_embeddings[0]
@@ -279,7 +275,7 @@ class TestBasicActivationEngine:
         )
 
         result = activation_engine._bfs_activation(
-            context=mock_torch_embedding,
+            context=mock_numpy_embedding,
             starting_memories=[starting_memory],
             threshold=0.1,
             max_activations=2,  # Low limit
@@ -292,8 +288,8 @@ class TestBasicActivationEngine:
         self, activation_engine: BasicActivationEngine
     ) -> None:
         """Test cosine similarity computation."""
-        vec1 = torch.tensor([1.0, 2.0, 3.0])
-        vec2 = torch.tensor([2.0, 4.0, 6.0])  # Same direction
+        vec1 = np.array([1.0, 2.0, 3.0])
+        vec2 = np.array([2.0, 4.0, 6.0])  # Same direction
 
         similarity = activation_engine._compute_cosine_similarity(vec1, vec2)
         assert isinstance(similarity, float)
@@ -303,8 +299,8 @@ class TestBasicActivationEngine:
         self, activation_engine: BasicActivationEngine
     ) -> None:
         """Test cosine similarity with orthogonal vectors."""
-        vec1 = torch.tensor([1.0, 0.0])
-        vec2 = torch.tensor([0.0, 1.0])
+        vec1 = np.array([1.0, 0.0])
+        vec2 = np.array([0.0, 1.0])
 
         similarity = activation_engine._compute_cosine_similarity(vec1, vec2)
         assert isinstance(similarity, float)
@@ -314,8 +310,8 @@ class TestBasicActivationEngine:
         self, activation_engine: BasicActivationEngine
     ) -> None:
         """Test cosine similarity with zero vector."""
-        vec1 = torch.tensor([1.0, 2.0])
-        vec2 = torch.tensor([0.0, 0.0])
+        vec1 = np.array([1.0, 2.0])
+        vec2 = np.array([0.0, 0.0])
 
         similarity = activation_engine._compute_cosine_similarity(vec1, vec2)
         assert similarity == 0.0
@@ -324,8 +320,8 @@ class TestBasicActivationEngine:
         self, activation_engine: BasicActivationEngine
     ) -> None:
         """Test cosine similarity with vectors on different devices."""
-        vec1 = torch.tensor([1.0, 2.0, 3.0])
-        vec2 = torch.tensor([1.0, 2.0, 3.0])
+        vec1 = np.array([1.0, 2.0, 3.0])
+        vec2 = np.array([1.0, 2.0, 3.0])
 
         # This should work even if tensors are nominally on different devices
         similarity = activation_engine._compute_cosine_similarity(vec1, vec2)
@@ -338,7 +334,7 @@ class TestBasicActivationEngine:
         mock_memory_storage: Mock,
         mock_connection_graph: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test that activation results are properly categorized into core/peripheral."""
         # Setup memories with different activation strengths
@@ -350,7 +346,7 @@ class TestBasicActivationEngine:
         mock_connection_graph.get_connections.return_value = []
 
         result = activation_engine.activate_memories(
-            context=mock_torch_embedding, threshold=0.3
+            context=mock_numpy_embedding, threshold=0.3
         )
 
         assert isinstance(result, ActivationResult)
@@ -380,7 +376,7 @@ class TestBasicActivationEngine:
         )
 
         result = activation_engine.activate_memories(
-            context=torch.randn(512), threshold=0.5
+            context=np.random.randn(512), threshold=0.5
         )
 
         # Should return empty result gracefully
@@ -404,7 +400,7 @@ class TestBasicActivationEngine:
         mock_connection_graph.get_connections.return_value = []
 
         result = activation_engine.activate_memories(
-            context=torch.randn(512), threshold=threshold
+            context=np.random.randn(512), threshold=threshold
         )
 
         assert isinstance(result, ActivationResult)
@@ -426,7 +422,7 @@ class TestBasicActivationEngine:
         mock_connection_graph.get_connections.return_value = []
 
         result = activation_engine.activate_memories(
-            context=torch.randn(512), threshold=0.5, max_activations=max_activations
+            context=np.random.randn(512), threshold=0.5, max_activations=max_activations
         )
 
         assert isinstance(result, ActivationResult)

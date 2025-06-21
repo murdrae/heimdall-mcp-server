@@ -3,14 +3,15 @@ Cognitive encoder with multi-dimensional fusion layer.
 
 This module implements the core cognitive encoding system that combines
 Sentence-BERT semantic embeddings with rule-based cognitive dimensions
-through a learned linear fusion layer to produce rich cognitive memory
+through a simple linear transformation to produce rich cognitive memory
 representations with configurable dimensions.
+
+Now uses NumPy for reduced dependencies and faster CPU inference.
 """
 
 from typing import Any
 
-import torch
-import torch.nn as nn
+import numpy as np
 from loguru import logger
 
 from ..core.config import SystemConfig
@@ -18,13 +19,13 @@ from .dimensions import CognitiveDimensionExtractor
 from .sentence_bert import SentenceBERTProvider
 
 
-class CognitiveFusionLayer(nn.Module):
+class CognitiveFusionLayer:
     """
-    Neural fusion layer that combines semantic and dimensional features.
+    Linear fusion layer that combines semantic and dimensional features.
 
     Takes concatenated Sentence-BERT embeddings and cognitive dimensions
     and transforms them into a unified cognitive representation
-    through a learned linear transformation with configurable output dimensions.
+    through a simple linear transformation with configurable output dimensions.
     """
 
     def __init__(self, semantic_dim: int, cognitive_dim: int, output_dim: int) -> None:
@@ -36,20 +37,23 @@ class CognitiveFusionLayer(nn.Module):
             cognitive_dim: Dimensionality of cognitive dimensions
             output_dim: Dimensionality of final cognitive embeddings
         """
-        super().__init__()
-
         self.semantic_dim = semantic_dim
         self.cognitive_dim = cognitive_dim
         self.output_dim = output_dim
         self.input_dim = semantic_dim + cognitive_dim
 
-        # Linear transformation layer
-        self.fusion_layer = nn.Linear(self.input_dim, output_dim, bias=True)
+        # Initialize weights and bias for linear transformation
+        self.weight = np.random.normal(0, 0.1, (self.input_dim, output_dim)).astype(
+            np.float32
+        )
+        self.bias = np.zeros(output_dim, dtype=np.float32)
 
-        # Layer normalization for stable training
-        self.layer_norm = nn.LayerNorm(output_dim)
+        # Layer normalization parameters
+        self.layer_norm_weight = np.ones(output_dim, dtype=np.float32)
+        self.layer_norm_bias = np.zeros(output_dim, dtype=np.float32)
+        self.layer_norm_eps = 1e-5
 
-        # Initialize weights using Xavier uniform initialization
+        # Initialize weights using Xavier uniform-like initialization
         self._initialize_weights()
 
         logger.debug(
@@ -57,56 +61,72 @@ class CognitiveFusionLayer(nn.Module):
             semantic_dim=semantic_dim,
             cognitive_dim=cognitive_dim,
             output_dim=output_dim,
-            total_params=sum(p.numel() for p in self.parameters()),
+            total_params=self.weight.size
+            + self.bias.size
+            + self.layer_norm_weight.size
+            + self.layer_norm_bias.size,
         )
 
     def _initialize_weights(self) -> None:
-        """Initialize layer weights using Xavier uniform initialization."""
-        nn.init.xavier_uniform_(self.fusion_layer.weight)
-        nn.init.zeros_(self.fusion_layer.bias)
+        """Initialize layer weights using Xavier uniform-like initialization."""
+        # Xavier uniform initialization approximation
+        limit = np.sqrt(6.0 / (self.input_dim + self.output_dim))
+        self.weight = np.random.uniform(
+            -limit, limit, (self.input_dim, self.output_dim)
+        ).astype(np.float32)
+        self.bias = np.zeros(self.output_dim, dtype=np.float32)
 
     def forward(
-        self, semantic_embedding: torch.Tensor, cognitive_dimensions: torch.Tensor
-    ) -> torch.Tensor:
+        self, semantic_embedding: np.ndarray, cognitive_dimensions: np.ndarray
+    ) -> np.ndarray:
         """
         Forward pass through the fusion layer.
 
         Args:
-            semantic_embedding: Sentence-BERT embedding tensor [batch_size, semantic_dim] or [semantic_dim]
-            cognitive_dimensions: Cognitive dimensions tensor [batch_size, cognitive_dim] or [cognitive_dim]
+            semantic_embedding: Sentence-BERT embedding array [batch_size, semantic_dim] or [semantic_dim]
+            cognitive_dimensions: Cognitive dimensions array [batch_size, cognitive_dim] or [cognitive_dim]
 
         Returns:
-            torch.Tensor: Fused cognitive embedding [batch_size, output_dim] or [output_dim]
+            np.ndarray: Fused cognitive embedding [batch_size, output_dim] or [output_dim]
         """
         # Handle both single and batch inputs
-        if semantic_embedding.dim() == 1:
-            semantic_embedding = semantic_embedding.unsqueeze(0)
+        if semantic_embedding.ndim == 1:
+            semantic_embedding = semantic_embedding.reshape(1, -1)
             single_input = True
         else:
             single_input = False
 
-        if cognitive_dimensions.dim() == 1:
-            cognitive_dimensions = cognitive_dimensions.unsqueeze(0)
+        if cognitive_dimensions.ndim == 1:
+            cognitive_dimensions = cognitive_dimensions.reshape(1, -1)
 
         # Ensure batch dimensions match
-        batch_size = semantic_embedding.size(0)
-        if cognitive_dimensions.size(0) != batch_size:
-            cognitive_dimensions = cognitive_dimensions.expand(batch_size, -1)
+        batch_size = semantic_embedding.shape[0]
+        if cognitive_dimensions.shape[0] != batch_size:
+            cognitive_dimensions = np.tile(cognitive_dimensions, (batch_size, 1))
 
         # Concatenate semantic and cognitive features
-        combined_features = torch.cat([semantic_embedding, cognitive_dimensions], dim=1)
+        combined_features = np.concatenate(
+            [semantic_embedding, cognitive_dimensions], axis=1
+        )
 
-        # Apply linear fusion
-        fused_embedding = self.fusion_layer(combined_features)
+        # Apply linear transformation
+        fused_embedding = np.dot(combined_features, self.weight) + self.bias
 
         # Apply layer normalization
-        fused_embedding = self.layer_norm(fused_embedding)
+        fused_embedding = self._layer_norm(fused_embedding)
 
-        # Return single tensor if single input was provided
+        # Return single array if single input was provided
         if single_input:
             fused_embedding = fused_embedding.squeeze(0)
 
         return fused_embedding
+
+    def _layer_norm(self, x: np.ndarray) -> np.ndarray:
+        """Apply layer normalization."""
+        mean = np.mean(x, axis=-1, keepdims=True)
+        var = np.var(x, axis=-1, keepdims=True)
+        normalized = (x - mean) / np.sqrt(var + self.layer_norm_eps)
+        return normalized * self.layer_norm_weight + self.layer_norm_bias
 
 
 class CognitiveEncoder:
@@ -116,12 +136,16 @@ class CognitiveEncoder:
     This encoder integrates Sentence-BERT semantic embeddings with rule-based
     cognitive dimensions through a learned fusion layer to create rich
     cognitive memory representations suitable for the multi-layered memory system.
+
+    Now uses NumPy for all operations instead of PyTorch.
     """
 
     def __init__(
         self,
         sentence_bert_model: str | None = None,
-        device: str | None = None,
+        model_path: str | None = None,
+        tokenizer_path: str | None = None,
+        config_path: str | None = None,
         fusion_weights_path: str | None = None,
         config: SystemConfig | None = None,
     ) -> None:
@@ -129,9 +153,11 @@ class CognitiveEncoder:
         Initialize the cognitive encoder.
 
         Args:
-            sentence_bert_model: Name of Sentence-BERT model to use
-            device: Device for computation ('cpu', 'cuda', 'mps')
-            fusion_weights_path: Path to pre-trained fusion layer weights
+            sentence_bert_model: Name of Sentence-BERT model to use (for compatibility)
+            model_path: Path to ONNX model file
+            tokenizer_path: Path to tokenizer directory
+            config_path: Path to model config JSON
+            fusion_weights_path: Path to pre-trained fusion layer weights (no longer supported)
             config: System configuration containing embedding dimensions
         """
         # Load configuration
@@ -142,9 +168,12 @@ class CognitiveEncoder:
         # Initialize components
         logger.info("Initializing cognitive encoder components")
 
-        # Initialize Sentence-BERT provider
+        # Initialize Sentence-BERT provider (now using ONNX)
         self.semantic_provider = SentenceBERTProvider(
-            model_name=sentence_bert_model, device=device
+            model_name=sentence_bert_model,
+            model_path=model_path,
+            tokenizer_path=tokenizer_path,
+            config_path=config_path,
         )
 
         # Initialize cognitive dimension extractor
@@ -162,19 +191,19 @@ class CognitiveEncoder:
             output_dim=self.output_dim,
         )
 
-        # Load pre-trained weights if provided
+        # Note: Pre-trained weight loading is no longer supported in NumPy version
         if fusion_weights_path:
-            self._load_fusion_weights(fusion_weights_path)
-
-        # Set to evaluation mode (no training by default)
-        self.fusion_layer.eval()
+            logger.warning(
+                "Pre-trained fusion weights are not supported in NumPy version",
+                path=fusion_weights_path,
+            )
 
         logger.info(
             "Cognitive encoder initialized successfully",
             semantic_dim=self.semantic_dim,
             cognitive_dim=self.cognitive_dim,
             output_dim=self.output_dim,
-            device=self.semantic_provider.device,
+            provider_type="ONNX Runtime + NumPy",
         )
 
     def reset_weights(self, seed: int = 42) -> None:
@@ -184,11 +213,11 @@ class CognitiveEncoder:
         Args:
             seed: Random seed for deterministic weight initialization
         """
-        torch.manual_seed(seed)
+        np.random.seed(seed)
         self.fusion_layer._initialize_weights()
         logger.debug("Fusion layer weights reset", seed=seed)
 
-    def encode(self, text: str, context: dict[str, Any] | None = None) -> torch.Tensor:
+    def encode(self, text: str, context: dict[str, Any] | None = None) -> np.ndarray:
         """
         Encode text into a cognitive memory representation.
 
@@ -197,11 +226,11 @@ class CognitiveEncoder:
             context: Optional context information (currently unused)
 
         Returns:
-            torch.Tensor: Cognitive embedding with configured dimensions
+            np.ndarray: Cognitive embedding with configured dimensions
         """
         if not text or not text.strip():
             logger.warning("Empty text provided for cognitive encoding")
-            return torch.zeros(self.output_dim, dtype=torch.float32)
+            return np.zeros(self.output_dim, dtype=np.float32)
 
         try:
             # Extract semantic embedding
@@ -211,21 +240,20 @@ class CognitiveEncoder:
             dimension_dict = self.dimension_extractor.extract_dimensions(text)
 
             # Concatenate all cognitive dimensions
-            cognitive_dims = torch.cat(
+            cognitive_dims = np.concatenate(
                 [
                     dimension_dict["emotional"],
                     dimension_dict["temporal"],
                     dimension_dict["contextual"],
                     dimension_dict["social"],
                 ],
-                dim=0,
+                axis=0,
             )
 
-            # Fuse through neural layer
-            with torch.no_grad():  # No gradients needed for inference
-                cognitive_embedding = self.fusion_layer(
-                    semantic_embedding, cognitive_dims
-                )
+            # Fuse through linear layer
+            cognitive_embedding = self.fusion_layer.forward(
+                semantic_embedding, cognitive_dims
+            )
 
             logger.debug(
                 "Text encoded into cognitive representation",
@@ -243,11 +271,11 @@ class CognitiveEncoder:
                 text_preview=text[:100] + "..." if len(text) > 100 else text,
                 error=str(e),
             )
-            return torch.zeros(self.output_dim, dtype=torch.float32)
+            return np.zeros(self.output_dim, dtype=np.float32)
 
     def encode_batch(
         self, texts: list[str], contexts: list[dict[str, Any]] | None = None
-    ) -> torch.Tensor:
+    ) -> np.ndarray:
         """
         Encode multiple texts into cognitive memory representations.
 
@@ -256,11 +284,11 @@ class CognitiveEncoder:
             contexts: Optional list of context information (currently unused)
 
         Returns:
-            torch.Tensor: Batch of cognitive embeddings with configured dimensions
+            np.ndarray: Batch of cognitive embeddings with configured dimensions
         """
         if not texts:
             logger.warning("Empty text list provided for batch encoding")
-            return torch.zeros((0, self.output_dim), dtype=torch.float32)
+            return np.zeros((0, self.output_dim), dtype=np.float32)
 
         try:
             # Extract semantic embeddings for all texts
@@ -270,25 +298,24 @@ class CognitiveEncoder:
             batch_cognitive_dims = []
             for text in texts:
                 dimension_dict = self.dimension_extractor.extract_dimensions(text)
-                cognitive_dims = torch.cat(
+                cognitive_dims = np.concatenate(
                     [
                         dimension_dict["emotional"],
                         dimension_dict["temporal"],
                         dimension_dict["contextual"],
                         dimension_dict["social"],
                     ],
-                    dim=0,
+                    axis=0,
                 )
                 batch_cognitive_dims.append(cognitive_dims)
 
-            # Stack cognitive dimensions into batch tensor
-            cognitive_dims_batch = torch.stack(batch_cognitive_dims, dim=0)
+            # Stack cognitive dimensions into batch array
+            cognitive_dims_batch = np.stack(batch_cognitive_dims, axis=0)
 
-            # Fuse through neural layer
-            with torch.no_grad():
-                cognitive_embeddings = self.fusion_layer(
-                    semantic_embeddings, cognitive_dims_batch
-                )
+            # Fuse through linear layer
+            cognitive_embeddings = self.fusion_layer.forward(
+                semantic_embeddings, cognitive_dims_batch
+            )
 
             logger.debug(
                 "Batch encoded into cognitive representations",
@@ -306,7 +333,7 @@ class CognitiveEncoder:
                 batch_size=len(texts),
                 error=str(e),
             )
-            return torch.zeros((len(texts), self.output_dim), dtype=torch.float32)
+            return np.zeros((len(texts), self.output_dim), dtype=np.float32)
 
     def get_dimension_breakdown(self, text: str) -> dict[str, Any]:
         """
@@ -327,14 +354,14 @@ class CognitiveEncoder:
             dimension_names = self.dimension_extractor.get_all_dimension_names()
 
             breakdown: dict[str, Any] = {
-                "semantic_embedding_norm": float(torch.norm(semantic_embedding).item()),
+                "semantic_embedding_norm": float(np.linalg.norm(semantic_embedding)),
                 "dimensions": {},
             }
 
             # Add detailed dimension breakdowns
-            for category, tensor in dimension_dict.items():
+            for category, array in dimension_dict.items():
                 names = dimension_names[category]
-                values = tensor.tolist()
+                values = array.tolist()
 
                 breakdown["dimensions"][category] = {
                     "values": values,
@@ -356,28 +383,39 @@ class CognitiveEncoder:
             )
             return {"error": str(e)}
 
-    def _load_fusion_weights(self, weights_path: str) -> None:
-        """Load pre-trained fusion layer weights."""
-        try:
-            state_dict = torch.load(weights_path, map_location="cpu")
-            self.fusion_layer.load_state_dict(state_dict)
-            logger.info("Fusion layer weights loaded successfully", path=weights_path)
-        except Exception as e:
-            logger.warning(
-                "Failed to load fusion weights, using random initialization",
-                path=weights_path,
-                error=str(e),
-            )
-
     def save_fusion_weights(self, weights_path: str) -> bool:
-        """Save current fusion layer weights."""
+        """Save current fusion layer weights (NumPy format)."""
         try:
-            torch.save(self.fusion_layer.state_dict(), weights_path)
+            weights_data = {
+                "weight": self.fusion_layer.weight,
+                "bias": self.fusion_layer.bias,
+                "layer_norm_weight": self.fusion_layer.layer_norm_weight,
+                "layer_norm_bias": self.fusion_layer.layer_norm_bias,
+            }
+            np.savez(weights_path, **weights_data)
             logger.info("Fusion layer weights saved successfully", path=weights_path)
             return True
         except Exception as e:
             logger.error(
                 "Failed to save fusion weights", path=weights_path, error=str(e)
+            )
+            return False
+
+    def load_fusion_weights(self, weights_path: str) -> bool:
+        """Load fusion layer weights (NumPy format)."""
+        try:
+            weights_data = np.load(weights_path)
+            self.fusion_layer.weight = weights_data["weight"]
+            self.fusion_layer.bias = weights_data["bias"]
+            self.fusion_layer.layer_norm_weight = weights_data["layer_norm_weight"]
+            self.fusion_layer.layer_norm_bias = weights_data["layer_norm_bias"]
+            logger.info("Fusion layer weights loaded successfully", path=weights_path)
+            return True
+        except Exception as e:
+            logger.warning(
+                "Failed to load fusion weights, using random initialization",
+                path=weights_path,
+                error=str(e),
             )
             return False
 
@@ -392,14 +430,18 @@ class CognitiveEncoder:
             "fusion_layer": {
                 "input_dim": self.semantic_dim + self.cognitive_dim,
                 "output_dim": self.output_dim,
-                "parameters": sum(p.numel() for p in self.fusion_layer.parameters()),
+                "parameters": self.fusion_layer.weight.size
+                + self.fusion_layer.bias.size,
+                "implementation": "NumPy linear layer",
             },
         }
 
 
 def create_cognitive_encoder(
     sentence_bert_model: str | None = None,
-    device: str | None = None,
+    model_path: str | None = None,
+    tokenizer_path: str | None = None,
+    config_path: str | None = None,
     fusion_weights_path: str | None = None,
     config: SystemConfig | None = None,
 ) -> CognitiveEncoder:
@@ -407,9 +449,11 @@ def create_cognitive_encoder(
     Factory function to create a cognitive encoder.
 
     Args:
-        sentence_bert_model: Name of Sentence-BERT model to use
-        device: Device for computation
-        fusion_weights_path: Path to pre-trained fusion weights
+        sentence_bert_model: Name of Sentence-BERT model to use (for compatibility)
+        model_path: Path to ONNX model file
+        tokenizer_path: Path to tokenizer directory
+        config_path: Path to model config JSON
+        fusion_weights_path: Path to pre-trained fusion weights (NumPy format)
         config: System configuration
 
     Returns:
@@ -417,7 +461,9 @@ def create_cognitive_encoder(
     """
     return CognitiveEncoder(
         sentence_bert_model=sentence_bert_model,
-        device=device,
+        model_path=model_path,
+        tokenizer_path=tokenizer_path,
+        config_path=config_path,
         fusion_weights_path=fusion_weights_path,
         config=config,
     )

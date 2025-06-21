@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 from typing import Any
 
-import torch
+import numpy as np
 from loguru import logger
 
 from ..core.interfaces import MemoryStorage
@@ -69,7 +69,7 @@ class SimilaritySearch:
 
     def search_memories(
         self,
-        query_vector: torch.Tensor,
+        query_vector: np.ndarray,
         k: int = 10,
         levels: list[int] | None = None,
         min_similarity: float = 0.1,
@@ -105,7 +105,9 @@ class SimilaritySearch:
                 all_results.extend(level_results)
 
             # Apply date-based secondary ranking if enabled
-            if self.cognitive_config and hasattr(self.cognitive_config, 'similarity_closeness_threshold'):
+            if self.cognitive_config and hasattr(
+                self.cognitive_config, "similarity_closeness_threshold"
+            ):
                 all_results = self._apply_date_based_ranking(all_results)
 
             # Sort by combined score and return top-k
@@ -133,7 +135,7 @@ class SimilaritySearch:
 
     def search_by_level(
         self,
-        query_vector: torch.Tensor,
+        query_vector: np.ndarray,
         level: int,
         k: int = 10,
         min_similarity: float = 0.1,
@@ -171,7 +173,7 @@ class SimilaritySearch:
 
     def find_most_similar(
         self,
-        query_vector: torch.Tensor,
+        query_vector: np.ndarray,
         candidate_memories: list[CognitiveMemory],
         include_recency_bias: bool = True,
     ) -> SearchResult | None:
@@ -205,7 +207,7 @@ class SimilaritySearch:
 
     def _search_level(
         self,
-        query_vector: torch.Tensor,
+        query_vector: np.ndarray,
         memories: list[CognitiveMemory],
         min_similarity: float,
         include_recency_bias: bool,
@@ -263,9 +265,7 @@ class SimilaritySearch:
 
         return results
 
-    def _compute_cosine_similarity(
-        self, vec1: torch.Tensor, vec2: torch.Tensor
-    ) -> float:
+    def _compute_cosine_similarity(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
         """
         Compute cosine similarity between two vectors.
 
@@ -277,20 +277,18 @@ class SimilaritySearch:
             Cosine similarity score (0.0 to 1.0)
         """
         try:
-            # Ensure tensors are on the same device and dtype
-            if vec1.device != vec2.device:
-                vec2 = vec2.to(vec1.device)
+            # Ensure arrays have compatible dtypes
             if vec1.dtype != vec2.dtype:
-                vec2 = vec2.to(vec1.dtype)
+                vec2 = vec2.astype(vec1.dtype)
 
             # Flatten vectors for dot product
             vec1_flat = vec1.flatten()
             vec2_flat = vec2.flatten()
 
             # Compute cosine similarity
-            dot_product = torch.dot(vec1_flat, vec2_flat)
-            norm1 = torch.norm(vec1_flat)
-            norm2 = torch.norm(vec2_flat)
+            dot_product = np.dot(vec1_flat, vec2_flat)
+            norm1 = np.linalg.norm(vec1_flat)
+            norm2 = np.linalg.norm(vec2_flat)
 
             if norm1 == 0 or norm2 == 0:
                 return 0.0
@@ -298,9 +296,9 @@ class SimilaritySearch:
             similarity = dot_product / (norm1 * norm2)
 
             # Clamp to [0, 1] range and handle numerical issues
-            similarity = torch.clamp(similarity, 0.0, 1.0)
+            similarity = np.clip(similarity, 0.0, 1.0)
 
-            return float(similarity.item())
+            return float(similarity)
 
         except Exception as e:
             logger.warning("Cosine similarity computation failed", error=str(e))
@@ -326,10 +324,10 @@ class SimilaritySearch:
 
             # Exponential decay: score = exp(-hours_elapsed / decay_constant)
             decay_constant = self.recency_decay_hours
-            recency_score = torch.exp(torch.tensor(-hours_elapsed / decay_constant))
+            recency_score = np.exp(-hours_elapsed / decay_constant)
 
             # Clamp to [0, 1] range
-            return float(torch.clamp(recency_score, 0.0, 1.0).item())
+            return float(np.clip(recency_score, 0.0, 1.0))
 
         except Exception as e:
             logger.warning(
@@ -417,7 +415,9 @@ class SimilaritySearch:
         else:
             logger.warning("Invalid decay hours provided, keeping current value")
 
-    def _apply_date_based_ranking(self, results: list[SearchResult]) -> list[SearchResult]:
+    def _apply_date_based_ranking(
+        self, results: list[SearchResult]
+    ) -> list[SearchResult]:
         """
         Apply date-based secondary ranking to closely-scored memories.
 
@@ -435,28 +435,32 @@ class SimilaritySearch:
 
         threshold = self.cognitive_config.similarity_closeness_threshold
         modification_weight = self.cognitive_config.modification_date_weight
-        
+
         # Group results into similarity clusters
         clusters = self._group_by_similarity_threshold(results, threshold)
-        
+
         final_results = []
         for cluster in clusters:
             if len(cluster) > 1:
                 # Apply secondary ranking by modification date for clusters with multiple results
                 for result in cluster:
-                    mod_recency = self._calculate_modification_recency_score(result.memory)
-                    
+                    mod_recency = self._calculate_modification_recency_score(
+                        result.memory
+                    )
+
                     # Blend existing combined score with modification recency
-                    original_score = getattr(result, "combined_score", result.similarity_score)
+                    original_score = getattr(
+                        result, "combined_score", result.similarity_score
+                    )
                     result.combined_score = self._blend_with_modification_score(
                         original_score, mod_recency, modification_weight
                     )
-                
+
                 # Re-sort cluster by new combined score
                 cluster.sort(key=lambda r: r.combined_score, reverse=True)
-            
+
             final_results.extend(cluster)
-        
+
         return final_results
 
     def _group_by_similarity_threshold(
@@ -474,31 +478,33 @@ class SimilaritySearch:
         """
         if not results:
             return []
-        
+
         # Sort by similarity score first
         sorted_results = sorted(results, key=lambda r: r.similarity_score, reverse=True)
-        
+
         clusters = []
         current_cluster = [sorted_results[0]]
-        
+
         for i in range(1, len(sorted_results)):
             current_result = sorted_results[i]
             last_in_cluster = current_cluster[-1]
-            
+
             # Check if within threshold of the cluster
-            score_diff = abs(last_in_cluster.similarity_score - current_result.similarity_score)
-            
+            score_diff = abs(
+                last_in_cluster.similarity_score - current_result.similarity_score
+            )
+
             if score_diff <= threshold:
                 current_cluster.append(current_result)
             else:
                 # Start new cluster
                 clusters.append(current_cluster)
                 current_cluster = [current_result]
-        
+
         # Add the last cluster
         if current_cluster:
             clusters.append(current_cluster)
-        
+
         return clusters
 
     def _calculate_modification_recency_score(self, memory: CognitiveMemory) -> float:
@@ -514,26 +520,26 @@ class SimilaritySearch:
         try:
             # Get the modification date from the memory
             modification_date = self._get_memory_modification_date(memory)
-            
+
             if modification_date is None:
                 return 0.0  # No modification date available
-            
+
             # Calculate days since modification
             time_diff = datetime.now() - modification_date
             days_elapsed = time_diff.total_seconds() / 86400
-            
+
             # Exponential decay based on configured decay period
             decay_days = self.cognitive_config.modification_recency_decay_days
-            recency_score = torch.exp(torch.tensor(-days_elapsed / decay_days))
-            
+            recency_score = np.exp(-days_elapsed / decay_days)
+
             # Clamp to [0, 1] range
-            return float(torch.clamp(recency_score, 0.0, 1.0).item())
-        
+            return float(np.clip(recency_score, 0.0, 1.0))
+
         except Exception as e:
             logger.warning(
-                "Modification recency score calculation failed", 
-                memory_id=memory.id, 
-                error=str(e)
+                "Modification recency score calculation failed",
+                memory_id=memory.id,
+                error=str(e),
             )
             return 0.0  # Default neutral score
 
@@ -554,36 +560,39 @@ class SimilaritySearch:
             Modification datetime or None if not available
         """
         # Try explicit modified_date field first
-        if hasattr(memory, 'modified_date') and memory.modified_date:
+        if hasattr(memory, "modified_date") and memory.modified_date:
             return memory.modified_date
-        
+
         # Try source_date field
-        if hasattr(memory, 'source_date') and memory.source_date:
+        if hasattr(memory, "source_date") and memory.source_date:
             return memory.source_date
-        
+
         # Try metadata fields for backward compatibility
         if memory.metadata:
             # Check for file modification date in metadata
-            file_mod_date_str = memory.metadata.get('file_modified_date')
+            file_mod_date_str = memory.metadata.get("file_modified_date")
             if file_mod_date_str:
                 try:
                     return datetime.fromisoformat(file_mod_date_str)
                 except (ValueError, TypeError):
                     pass
-            
+
             # Check for git commit dates
-            latest_commit_date_str = memory.metadata.get('latest_commit_date')
+            latest_commit_date_str = memory.metadata.get("latest_commit_date")
             if latest_commit_date_str:
                 try:
                     return datetime.fromisoformat(latest_commit_date_str)
                 except (ValueError, TypeError):
                     pass
-        
+
         # Fallback to memory timestamp
         return memory.timestamp
 
     def _blend_with_modification_score(
-        self, original_score: float, modification_score: float, modification_weight: float
+        self,
+        original_score: float,
+        modification_score: float,
+        modification_weight: float,
     ) -> float:
         """
         Blend original similarity score with modification recency score.
@@ -599,15 +608,17 @@ class SimilaritySearch:
         # Use weighted average approach to prevent ceiling effects
         # This ensures that both high and low similarity scores can benefit from modification recency
         mod_weight = min(modification_weight, 0.5)  # Cap at 50% influence
-        
+
         # Calculate weighted average instead of addition to avoid ceiling effects
-        blended_score = (1.0 - mod_weight) * original_score + mod_weight * modification_score
-        
+        blended_score = (
+            1.0 - mod_weight
+        ) * original_score + mod_weight * modification_score
+
         # For very close similarity scores, add a small boost for modification recency
         # This ensures recent memories get a slight edge when similarities are nearly identical
         if modification_score > 0.5:  # Only boost if modification is reasonably recent
             boost = mod_weight * 0.1 * modification_score  # Small boost
             blended_score += boost
-        
+
         # Ensure result stays within reasonable bounds
         return min(1.0, blended_score)

@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-import torch
+import numpy as np
 
 
 @dataclass
@@ -22,8 +22,8 @@ class CognitiveMemory:
     id: str = field(default_factory=lambda: str(uuid4()))
     content: str = ""
     hierarchy_level: int = 0  # 0=concept, 1=context, 2=episode
-    cognitive_embedding: torch.Tensor | None = None
-    dimensions: dict[str, torch.Tensor] = field(default_factory=dict)
+    cognitive_embedding: np.ndarray | None = None
+    dimensions: dict[str, np.ndarray] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
     last_accessed: datetime = field(default_factory=datetime.now)
     access_count: int = 0
@@ -34,9 +34,13 @@ class CognitiveMemory:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     # Date fields for LLM visibility and ranking
-    created_date: datetime = field(default_factory=datetime.now)  # When memory was created
+    created_date: datetime = field(
+        default_factory=datetime.now
+    )  # When memory was created
     modified_date: datetime | None = None  # When source content was last modified
-    source_date: datetime | None = None  # Original date of the source (e.g., commit date, document date)
+    source_date: datetime | None = (
+        None  # Original date of the source (e.g., commit date, document date)
+    )
 
     # Additional attributes for storage compatibility
     strength: float = 1.0  # Memory strength (0.0-1.0)
@@ -88,7 +92,9 @@ class CognitiveMemory:
             "decay_rate": self.decay_rate,
             "metadata": self.metadata,
             "created_date": self.created_date.isoformat(),
-            "modified_date": self.modified_date.isoformat() if self.modified_date else None,
+            "modified_date": self.modified_date.isoformat()
+            if self.modified_date
+            else None,
             "source_date": self.source_date.isoformat() if self.source_date else None,
         }
 
@@ -107,15 +113,21 @@ class CognitiveMemory:
             memory_type=data.get("memory_type", "episodic"),
             decay_rate=data.get("decay_rate", 0.1),
             metadata=data.get("metadata", {}),
-            created_date=datetime.fromisoformat(data.get("created_date", data["timestamp"])),
-            modified_date=datetime.fromisoformat(data["modified_date"]) if data.get("modified_date") else None,
-            source_date=datetime.fromisoformat(data["source_date"]) if data.get("source_date") else None,
+            created_date=datetime.fromisoformat(
+                data.get("created_date", data["timestamp"])
+            ),
+            modified_date=datetime.fromisoformat(data["modified_date"])
+            if data.get("modified_date")
+            else None,
+            source_date=datetime.fromisoformat(data["source_date"])
+            if data.get("source_date")
+            else None,
         )
 
         if data["cognitive_embedding"] is not None:
-            memory.cognitive_embedding = torch.tensor(data["cognitive_embedding"])
+            memory.cognitive_embedding = np.array(data["cognitive_embedding"])
 
-        memory.dimensions = {k: torch.tensor(v) for k, v in data["dimensions"].items()}
+        memory.dimensions = {k: np.array(v) for k, v in data["dimensions"].items()}
 
         return memory
 

@@ -7,8 +7,8 @@ that create novel connections between query and activated memories.
 
 from unittest.mock import Mock
 
+import numpy as np
 import pytest
-import torch
 
 from cognitive_memory.core.interfaces import MemoryStorage
 from cognitive_memory.core.memory import BridgeMemory, CognitiveMemory
@@ -30,8 +30,8 @@ class TestSimpleBridgeDiscovery:
     ) -> list[CognitiveMemory]:
         """Create sample memories with embeddings."""
         for i, memory in enumerate(sample_memories):
-            torch.manual_seed(i)  # Deterministic embeddings
-            memory.cognitive_embedding = torch.randn(512)
+            np.random.seed(i)  # Deterministic embeddings
+            memory.cognitive_embedding = np.random.randn(512)
             memory.importance_score = 0.5 + (i * 0.1)  # Varied importance scores
         return sample_memories
 
@@ -88,7 +88,7 @@ class TestSimpleBridgeDiscovery:
         bridge_discovery: SimpleBridgeDiscovery,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test basic bridge discovery functionality."""
         activated_memories = sample_memories_with_embeddings[:2]
@@ -98,7 +98,7 @@ class TestSimpleBridgeDiscovery:
         mock_memory_storage.get_memories_by_level.return_value = candidate_memories
 
         bridges = bridge_discovery.discover_bridges(
-            context=mock_torch_embedding, activated=activated_memories, k=3
+            context=mock_numpy_embedding, activated=activated_memories, k=3
         )
 
         assert isinstance(bridges, list)
@@ -115,7 +115,7 @@ class TestSimpleBridgeDiscovery:
         bridge_discovery: SimpleBridgeDiscovery,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test bridge discovery when no candidates are available."""
         activated_memories = sample_memories_with_embeddings[:2]
@@ -124,7 +124,7 @@ class TestSimpleBridgeDiscovery:
         mock_memory_storage.get_memories_by_level.return_value = []
 
         bridges = bridge_discovery.discover_bridges(
-            context=mock_torch_embedding, activated=activated_memories, k=5
+            context=mock_numpy_embedding, activated=activated_memories, k=5
         )
 
         assert bridges == []
@@ -134,7 +134,7 @@ class TestSimpleBridgeDiscovery:
         bridge_discovery: SimpleBridgeDiscovery,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test bridge discovery with no activated memories."""
         candidate_memories = sample_memories_with_embeddings
@@ -142,7 +142,7 @@ class TestSimpleBridgeDiscovery:
         mock_memory_storage.get_memories_by_level.return_value = candidate_memories
 
         bridges = bridge_discovery.discover_bridges(
-            context=mock_torch_embedding,
+            context=mock_numpy_embedding,
             activated=[],  # No activated memories
             k=3,
         )
@@ -155,7 +155,7 @@ class TestSimpleBridgeDiscovery:
         bridge_discovery: SimpleBridgeDiscovery,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test that activated memories are excluded from candidates."""
         activated_memories = sample_memories_with_embeddings[:2]
@@ -164,7 +164,7 @@ class TestSimpleBridgeDiscovery:
         mock_memory_storage.get_memories_by_level.return_value = all_memories
 
         bridges = bridge_discovery.discover_bridges(
-            context=mock_torch_embedding, activated=activated_memories, k=5
+            context=mock_numpy_embedding, activated=activated_memories, k=5
         )
 
         # No bridge should contain an activated memory
@@ -250,14 +250,14 @@ class TestSimpleBridgeDiscovery:
         self,
         bridge_discovery: SimpleBridgeDiscovery,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test _compute_bridge_scores method."""
         candidates = sample_memories_with_embeddings[:3]
         activated = sample_memories_with_embeddings[3:]
 
         bridge_scores = bridge_discovery._compute_bridge_scores(
-            context=mock_torch_embedding, candidates=candidates, activated=activated
+            context=mock_numpy_embedding, candidates=candidates, activated=activated
         )
 
         assert isinstance(bridge_scores, list)
@@ -275,13 +275,13 @@ class TestSimpleBridgeDiscovery:
     ) -> None:
         """Test that low novelty candidates are filtered out."""
         # Use identical embeddings for low novelty
-        context = torch.ones(512)
+        context = np.ones(512)
         candidates = sample_memories_with_embeddings[:3]
         activated = sample_memories_with_embeddings[3:]
 
         # Set all candidate embeddings identical to context for low novelty
         for candidate in candidates:
-            candidate.cognitive_embedding = context.clone()
+            candidate.cognitive_embedding = context.copy()
 
         bridge_scores = bridge_discovery._compute_bridge_scores(
             context=context, candidates=candidates, activated=activated
@@ -294,13 +294,13 @@ class TestSimpleBridgeDiscovery:
         self,
         bridge_discovery: SimpleBridgeDiscovery,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test _calculate_novelty_score method."""
         memory = sample_memories_with_embeddings[0]
 
         novelty = bridge_discovery._calculate_novelty_score(
-            mock_torch_embedding, memory
+            mock_numpy_embedding, memory
         )
 
         assert isinstance(novelty, float)
@@ -313,7 +313,7 @@ class TestSimpleBridgeDiscovery:
     ) -> None:
         """Test novelty score with identical vectors."""
         memory = sample_memories_with_embeddings[0]
-        context = memory.cognitive_embedding.clone()
+        context = memory.cognitive_embedding.copy()
 
         novelty = bridge_discovery._calculate_novelty_score(context, memory)
 
@@ -324,13 +324,13 @@ class TestSimpleBridgeDiscovery:
         self,
         bridge_discovery: SimpleBridgeDiscovery,
         sample_memory: CognitiveMemory,
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test novelty score with memory without embedding."""
         sample_memory.cognitive_embedding = None
 
         novelty = bridge_discovery._calculate_novelty_score(
-            mock_torch_embedding, sample_memory
+            mock_numpy_embedding, sample_memory
         )
 
         assert novelty == 0.0
@@ -385,8 +385,8 @@ class TestSimpleBridgeDiscovery:
         self, bridge_discovery: SimpleBridgeDiscovery
     ) -> None:
         """Test cosine similarity computation."""
-        vec1 = torch.tensor([1.0, 2.0, 3.0])
-        vec2 = torch.tensor([2.0, 4.0, 6.0])  # Same direction
+        vec1 = np.array([1.0, 2.0, 3.0])
+        vec2 = np.array([2.0, 4.0, 6.0])  # Same direction
 
         similarity = bridge_discovery._compute_cosine_similarity(vec1, vec2)
         assert isinstance(similarity, float)
@@ -396,8 +396,8 @@ class TestSimpleBridgeDiscovery:
         self, bridge_discovery: SimpleBridgeDiscovery
     ) -> None:
         """Test cosine similarity with orthogonal vectors."""
-        vec1 = torch.tensor([1.0, 0.0])
-        vec2 = torch.tensor([0.0, 1.0])
+        vec1 = np.array([1.0, 0.0])
+        vec2 = np.array([0.0, 1.0])
 
         similarity = bridge_discovery._compute_cosine_similarity(vec1, vec2)
         assert similarity == pytest.approx(0.0, abs=1e-6)
@@ -406,8 +406,8 @@ class TestSimpleBridgeDiscovery:
         self, bridge_discovery: SimpleBridgeDiscovery
     ) -> None:
         """Test cosine similarity with zero vector."""
-        vec1 = torch.tensor([1.0, 2.0])
-        vec2 = torch.tensor([0.0, 0.0])
+        vec1 = np.array([1.0, 2.0])
+        vec2 = np.array([0.0, 0.0])
 
         similarity = bridge_discovery._compute_cosine_similarity(vec1, vec2)
         assert similarity == 0.0
@@ -535,7 +535,7 @@ class TestSimpleBridgeDiscovery:
         bridge_discovery: SimpleBridgeDiscovery,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test error handling during bridge discovery."""
         activated_memories = sample_memories_with_embeddings[:2]
@@ -546,7 +546,7 @@ class TestSimpleBridgeDiscovery:
         )
 
         bridges = bridge_discovery.discover_bridges(
-            context=mock_torch_embedding, activated=activated_memories, k=3
+            context=mock_numpy_embedding, activated=activated_memories, k=3
         )
 
         # Should return empty list gracefully
@@ -558,7 +558,7 @@ class TestSimpleBridgeDiscovery:
         bridge_discovery: SimpleBridgeDiscovery,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
         k: int,
     ) -> None:
         """Test bridge discovery with different k values."""
@@ -568,7 +568,7 @@ class TestSimpleBridgeDiscovery:
         mock_memory_storage.get_memories_by_level.return_value = candidate_memories
 
         bridges = bridge_discovery.discover_bridges(
-            context=mock_torch_embedding, activated=activated_memories, k=k
+            context=mock_numpy_embedding, activated=activated_memories, k=k
         )
 
         assert len(bridges) <= k
@@ -578,7 +578,7 @@ class TestSimpleBridgeDiscovery:
         bridge_discovery: SimpleBridgeDiscovery,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test that bridge memories have all required attributes."""
         activated_memories = sample_memories_with_embeddings[:2]
@@ -587,7 +587,7 @@ class TestSimpleBridgeDiscovery:
         mock_memory_storage.get_memories_by_level.return_value = candidate_memories
 
         bridges = bridge_discovery.discover_bridges(
-            context=mock_torch_embedding, activated=activated_memories, k=3
+            context=mock_numpy_embedding, activated=activated_memories, k=3
         )
 
         for bridge in bridges:

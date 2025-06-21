@@ -2,8 +2,8 @@
 Unit tests for cognitive dimension extractors.
 """
 
+import numpy as np
 import pytest
-import torch
 
 from cognitive_memory.core.config import CognitiveConfig
 from cognitive_memory.encoding.dimensions import (
@@ -36,8 +36,8 @@ class TestEmotionalExtractor:
         dims = self.extractor.extract(text)
 
         assert dims.shape == (self.config.emotional_dimensions,)
-        assert torch.all(dims >= 0.0)
-        assert torch.all(dims <= 1.0)
+        assert np.all(dims >= 0.0)
+        assert np.all(dims <= 1.0)
         assert (
             dims[0] > 0.3
         )  # frustration should be detected with explicit emotion words
@@ -71,7 +71,7 @@ class TestEmotionalExtractor:
         """Test handling of empty text."""
         dims = self.extractor.extract("")
         assert dims.shape == (self.config.emotional_dimensions,)
-        assert torch.all(dims == 0.0)
+        assert np.all(dims == 0.0)
 
     def test_dimension_names(self) -> None:
         """Test dimension names."""
@@ -234,8 +234,8 @@ class TestCognitiveDimensionExtractor:
 
         # Check values are in valid range
         for _category, tensor in dims.items():
-            assert torch.all(tensor >= 0.0)
-            assert torch.all(tensor <= 1.0)
+            assert np.all(tensor >= 0.0)
+            assert np.all(tensor <= 1.0)
 
     def test_empty_text_handling(self) -> None:
         """Test handling of empty text."""
@@ -243,7 +243,7 @@ class TestCognitiveDimensionExtractor:
 
         # Should return zero tensors
         for _category, tensor in dims.items():
-            assert torch.all(tensor == 0.0)
+            assert np.all(tensor == 0.0)
 
     def test_total_dimensions(self) -> None:
         """Test total dimension count."""
@@ -279,9 +279,9 @@ class TestCognitiveDimensionExtractor:
             # Ensure valid output for all scenarios
             for _category, tensor in dims.items():
                 assert tensor.shape[0] > 0
-                assert torch.all(tensor >= 0.0)
-                assert torch.all(tensor <= 1.0)
+                assert np.all(tensor >= 0.0)
+                assert np.all(tensor <= 1.0)
 
             # At least some dimensions should be activated
-            total_activation = sum(torch.sum(tensor).item() for tensor in dims.values())
+            total_activation = sum(np.sum(tensor) for tensor in dims.values())
             assert total_activation > 0.1

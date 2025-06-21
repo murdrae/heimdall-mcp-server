@@ -7,8 +7,6 @@ import random
 from typing import Any
 
 import numpy as np
-import torch
-import transformers
 
 
 def setup_deterministic_testing(seed: int = 42) -> None:
@@ -27,71 +25,41 @@ def setup_deterministic_testing(seed: int = 42) -> None:
     # NumPy
     np.random.seed(seed)
 
-    # PyTorch CPU
-    torch.manual_seed(seed)
-
-    # PyTorch GPU (if available)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-
-        # CUDA deterministic operations
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-
-    # PyTorch deterministic algorithms (for supported operations)
-    torch.use_deterministic_algorithms(True, warn_only=True)
-
     # Set environment variable for Python hash randomization
     # Note: This only affects subprocesses, not the current process
     os.environ["PYTHONHASHSEED"] = str(seed)
 
-    # Transformers library determinism
-    transformers.set_seed(seed)
-
-    # Set environment variables for additional determinism
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    # Transformers library determinism (replaced with NumPy seed)
+    np.random.seed(seed)
 
 
-def reset_model_weights(model: torch.nn.Module, seed: int = 42) -> None:
+def reset_model_weights(model: Any, seed: int = 42) -> None:
     """
-    Reset all weights in a PyTorch model deterministically.
+    Reset model weights deterministically (NumPy-based).
 
     Args:
-        model: The PyTorch model to reset
+        model: The model to reset
         seed: The seed to use for weight initialization
     """
-    torch.manual_seed(seed)
-
-    def init_weights(m: torch.nn.Module) -> None:
-        if isinstance(m, torch.nn.Linear):
-            torch.nn.init.xavier_uniform_(m.weight)
-            if m.bias is not None:
-                torch.nn.init.zeros_(m.bias)
-        elif isinstance(m, torch.nn.Conv2d):
-            torch.nn.init.kaiming_uniform_(m.weight)
-            if m.bias is not None:
-                torch.nn.init.zeros_(m.bias)
-        elif isinstance(m, torch.nn.BatchNorm1d | torch.nn.BatchNorm2d):
-            torch.nn.init.ones_(m.weight)
-            torch.nn.init.zeros_(m.bias)
-
-    model.apply(init_weights)
+    np.random.seed(seed)
+    # Model weight initialization now handled by NumPy-based implementations
+    # This function is maintained for compatibility but actual weight
+    # initialization should be done in the model implementation
 
 
-def create_deterministic_tensor(shape: tuple[int, ...], seed: int = 42) -> torch.Tensor:
+def create_deterministic_array(shape: tuple[int, ...], seed: int = 42) -> np.ndarray:
     """
-    Create a deterministic tensor with the given shape.
+    Create a deterministic array with the given shape.
 
     Args:
-        shape: The shape of the tensor to create
+        shape: The shape of the array to create
         seed: The seed to use for generation
 
     Returns:
-        A deterministic tensor
+        A deterministic NumPy array
     """
-    torch.manual_seed(seed)
-    return torch.randn(shape)
+    np.random.seed(seed)
+    return np.random.randn(*shape)
 
 
 def create_deterministic_uuid(seed: int = 42) -> str:
@@ -123,23 +91,23 @@ class DeterministicTestMixin:
         pass
 
 
-def assert_tensors_equal(
-    tensor1: torch.Tensor, tensor2: torch.Tensor, rtol: float = 1e-5, atol: float = 1e-8
+def assert_arrays_equal(
+    array1: np.ndarray, array2: np.ndarray, rtol: float = 1e-5, atol: float = 1e-8
 ) -> None:
     """
-    Assert that two tensors are equal within tolerance.
+    Assert that two arrays are equal within tolerance.
 
     Args:
-        tensor1: First tensor
-        tensor2: Second tensor
+        array1: First array
+        array2: Second array
         rtol: Relative tolerance
         atol: Absolute tolerance
     """
-    assert tensor1.shape == tensor2.shape, (
-        f"Shape mismatch: {tensor1.shape} vs {tensor2.shape}"
+    assert array1.shape == array2.shape, (
+        f"Shape mismatch: {array1.shape} vs {array2.shape}"
     )
-    assert torch.allclose(tensor1, tensor2, rtol=rtol, atol=atol), (
-        "Tensors are not equal within tolerance"
+    assert np.allclose(array1, array2, rtol=rtol, atol=atol), (
+        "Arrays are not equal within tolerance"
     )
 
 

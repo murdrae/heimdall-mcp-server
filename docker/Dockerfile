@@ -6,106 +6,74 @@
 # ============================================================================
 FROM python:3.13-slim AS builder
 
-# Install system dependencies for building
+# Install system dependencies and create app directory
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /app
 
-# Set up Python environment
-ENV PYTHONUNBUFFERED=1
-ENV PIP_NO_CACHE_DIR=1
-ENV PIP_DISABLE_PIP_VERSION_CHECK=1
-
-# Create application directory
+# Set working directory and Python environment
 WORKDIR /app
+ENV PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Copy requirements first for better caching
-COPY requirements.in ./
+# Copy only files needed for installation first (better caching)
+COPY requirements.in pyproject.toml docker/setup-deps.sh ./
+COPY docker/entrypoint.sh docker/healthcheck.sh /tmp/
 
-# Install pip-tools and generate requirements.txt
+# Install all dependencies, package, and prepare scripts in one layer
 RUN pip install --upgrade pip setuptools wheel pip-tools && \
     pip-compile requirements.in && \
-    pip install -r requirements.txt
+    pip install -r requirements.txt && \
+    find /usr/local -name "*.pyc" -delete && \
+    find /usr/local -type d -name "__pycache__" -exec rm -rf {} + && \
+    chmod +x setup-deps.sh && \
+    mv /tmp/entrypoint.sh /entrypoint.sh && \
+    mv /tmp/healthcheck.sh /healthcheck.sh && \
+    chmod +x /entrypoint.sh /healthcheck.sh
 
-# Copy source code
+# Now copy all source code and complete installation
 COPY . .
-
-# Install the package
-RUN pip install -e .
-
-# Pre-download sentence-transformers models to avoid runtime downloads
-RUN mkdir -p /app/models && \
-    python -c "\
-import sentence_transformers; \
-import os; \
-os.environ['SENTENCE_TRANSFORMERS_HOME'] = '/app/models'; \
-model = sentence_transformers.SentenceTransformer('all-MiniLM-L6-v2'); \
-print('✅ SentenceTransformer model downloaded successfully')"
-
-# Pre-download spaCy model to avoid runtime downloads
-RUN python -m spacy download en_core_web_md && \
-    echo "✅ spaCy model downloaded successfully"
-
-# Pre-download NLTK data for NRCLex to avoid runtime downloads
-RUN python -c "import nltk; nltk.download('punkt_tab')" && \
-    echo "✅ NLTK punkt_tab data downloaded successfully"
+RUN pip install -e . && \
+    ./setup-deps.sh && \
+    rm setup-deps.sh && \
+    find /usr/local -name "*.pyc" -delete && \
+    find /usr/local -type d -name "__pycache__" -exec rm -rf {} +
 
 # ============================================================================
 # Runtime Stage: Minimal production image
 # ============================================================================
 FROM python:3.13-slim AS runtime
 
-# Install runtime system dependencies
+# Install runtime system dependencies and setup working directory
 RUN apt-get update && apt-get install -y \
     curl \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# No need to create users - we'll run as host user via docker-compose
-
-# Set up Python environment
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PATH="/home/cognitive/.local/bin:$PATH"
-
-# Application directories will be created by entrypoint with proper user permissions
-
-# Switch to application directory
 WORKDIR /app
 
-# Copy Python packages from builder
+# Copy only runtime Python packages and binaries (not cache/build artifacts)
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Copy application code
 COPY --from=builder /app /app
+COPY --from=builder /entrypoint.sh /healthcheck.sh /
 
-# Copy pre-downloaded models
-COPY --from=builder /app/models /app/models
-
-# Just copy the files - permissions will be handled by user mapping
-# No need for complex ownership changes
-
-# Copy entrypoint script with execute permissions
-COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
-
-# Create health check script with execute permissions
-COPY --chmod=755 docker/healthcheck.sh /healthcheck.sh
-
-# Set up environment variables (consistent with .env.template)
-ENV QDRANT_URL=http://qdrant:6333
-ENV SQLITE_PATH=/app/data/cognitive_memory.db
-ENV SENTENCE_BERT_MODEL=all-MiniLM-L6-v2
-ENV MODEL_CACHE_DIR=/app/models
-ENV SENTENCE_TRANSFORMERS_HOME=/app/models
-ENV LOG_LEVEL=INFO
-ENV ACTIVATION_THRESHOLD=0.7
-ENV BRIDGE_DISCOVERY_K=5
-ENV MAX_ACTIVATIONS=50
-ENV PYTHONPATH=/app
-# HOME will be set by user mapping in docker-compose
+# Set all environment variables in one layer
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    QDRANT_URL=http://qdrant:6333 \
+    SQLITE_PATH=/app/data/cognitive_memory.db \
+    ONNX_MODEL_PATH=/app/data/models/all-MiniLM-L6-v2.onnx \
+    ONNX_TOKENIZER_PATH=/app/data/models/tokenizer \
+    ONNX_CONFIG_PATH=/app/data/models/model_config.json \
+    LOG_LEVEL=INFO \
+    ACTIVATION_THRESHOLD=0.7 \
+    BRIDGE_DISCOVERY_K=5 \
+    MAX_ACTIVATIONS=50 \
+    PYTHONPATH=/app
 
 # No exposed ports - MCP server runs on-demand via stdio
 

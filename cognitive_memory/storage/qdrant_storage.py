@@ -8,7 +8,7 @@ with 3-tier collections: L0 (concepts), L1 (contexts), L2 (episodes).
 from dataclasses import dataclass
 from typing import Any
 
-import torch
+import numpy as np
 from loguru import logger
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
@@ -135,7 +135,7 @@ class VectorSearchEngine:
     def search_level(
         self,
         level: int,
-        query_vector: torch.Tensor,
+        query_vector: np.ndarray,
         k: int,
         filters: dict[str, Any] | None = None,
         score_threshold: float | None = None,
@@ -146,7 +146,7 @@ class VectorSearchEngine:
         # Convert tensor to list for Qdrant
         query_list = (
             query_vector.tolist()
-            if isinstance(query_vector, torch.Tensor)
+            if isinstance(query_vector, np.ndarray)
             else query_vector
         )
 
@@ -215,7 +215,7 @@ class VectorSearchEngine:
 
     def search_cross_level(
         self,
-        query_vector: torch.Tensor,
+        query_vector: np.ndarray,
         k_per_level: int,
         levels: list[int] | None = None,
         filters: dict[str, Any] | None = None,
@@ -299,7 +299,7 @@ class HierarchicalMemoryStorage(VectorStorage):
             raise RuntimeError("Failed to initialize Qdrant collections")
 
     def store_vector(
-        self, id: str, vector: torch.Tensor, metadata: dict[str, Any]
+        self, id: str, vector: np.ndarray, metadata: dict[str, Any]
     ) -> None:
         """
         Store a vector with associated metadata in appropriate hierarchy level.
@@ -309,8 +309,8 @@ class HierarchicalMemoryStorage(VectorStorage):
             vector: Cognitive embedding vector (dimension must match configured vector_size)
             metadata: Associated metadata including hierarchy_level
         """
-        if not isinstance(vector, torch.Tensor):
-            vector = torch.tensor(vector, dtype=torch.float32)
+        if not isinstance(vector, np.ndarray):
+            vector = np.array(vector, dtype=np.float32)
 
         # Validate vector dimensions
         if vector.shape[-1] != self.vector_size:
@@ -327,9 +327,7 @@ class HierarchicalMemoryStorage(VectorStorage):
         collection_name = self.collection_manager.get_collection_name(hierarchy_level)
 
         # Convert vector to list
-        vector_list = (
-            vector.tolist() if vector.dim() == 1 else vector.flatten().tolist()
-        )
+        vector_list = vector.tolist() if vector.ndim == 1 else vector.flatten().tolist()
 
         # Create point structure
         point = PointStruct(id=id, vector=vector_list, payload=metadata)
@@ -357,7 +355,7 @@ class HierarchicalMemoryStorage(VectorStorage):
             raise
 
     def search_similar(
-        self, query_vector: torch.Tensor, k: int, filters: dict | None = None
+        self, query_vector: np.ndarray, k: int, filters: dict | None = None
     ) -> list[SearchResult]:
         """
         Search for similar vectors across all hierarchy levels.
@@ -387,7 +385,7 @@ class HierarchicalMemoryStorage(VectorStorage):
 
     def search_by_level(
         self,
-        query_vector: torch.Tensor,
+        query_vector: np.ndarray,
         level: int,
         k: int,
         filters: dict | None = None,
@@ -430,7 +428,7 @@ class HierarchicalMemoryStorage(VectorStorage):
         return success
 
     def update_vector(
-        self, id: str, vector: torch.Tensor, metadata: dict[str, Any]
+        self, id: str, vector: np.ndarray, metadata: dict[str, Any]
     ) -> bool:
         """
         Update an existing vector and its metadata.

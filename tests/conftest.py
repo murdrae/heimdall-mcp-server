@@ -11,7 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-import torch
+import numpy as np
 from pytest import fixture
 
 from cognitive_memory.core.config import DatabaseConfig, QdrantConfig, SystemConfig
@@ -64,17 +64,17 @@ def sample_memory() -> CognitiveMemory:
 
     # Add sample dimensions
     memory.dimensions = {
-        "emotional": torch.tensor(
+        "emotional": np.array(
             [0.2, 0.8, 0.1, 0.3]
         ),  # frustration, satisfaction, curiosity, stress
-        "temporal": torch.tensor([0.7, 0.5, 0.3]),  # urgency, deadline, time_context
-        "contextual": torch.tensor([0.9, 0.6, 0.4, 0.2, 0.1, 0.8]),  # context features
-        "social": torch.tensor([0.3, 0.7, 0.5]),  # social dimensions
+        "temporal": np.array([0.7, 0.5, 0.3]),  # urgency, deadline, time_context
+        "contextual": np.array([0.9, 0.6, 0.4, 0.2, 0.1, 0.8]),  # context features
+        "social": np.array([0.3, 0.7, 0.5]),  # social dimensions
     }
 
     # Add sample cognitive embedding (deterministic)
-    torch.manual_seed(42)
-    memory.cognitive_embedding = torch.randn(512)
+    np.random.seed(42)
+    memory.cognitive_embedding = np.random.randn(512)
 
     return memory
 
@@ -100,25 +100,25 @@ def sample_memories() -> list[CognitiveMemory]:
         )
 
         # Add deterministic dimensions
-        torch.manual_seed(42 + i)  # Different seed per memory
+        np.random.seed(42 + i)  # Different seed per memory
         memory.dimensions = {
-            "emotional": torch.rand(4),
-            "temporal": torch.rand(3),
-            "contextual": torch.rand(6),
-            "social": torch.rand(3),
+            "emotional": np.random.rand(4),
+            "temporal": np.random.rand(3),
+            "contextual": np.random.rand(6),
+            "social": np.random.rand(3),
         }
 
-        memory.cognitive_embedding = torch.randn(512)
+        memory.cognitive_embedding = np.random.randn(512)
         memories.append(memory)
 
     return memories
 
 
 @fixture  # type: ignore[misc]
-def mock_torch_embedding() -> torch.Tensor:
+def mock_numpy_embedding() -> np.ndarray:
     """Create a mock embedding vector for testing."""
-    torch.manual_seed(42)
-    return torch.randn(512)
+    np.random.seed(42)
+    return np.random.randn(512)
 
 
 @fixture  # type: ignore[misc]
@@ -158,24 +158,24 @@ def assert_memory_equal(
     # Compare dimensions
     for key in memory1.dimensions:
         assert key in memory2.dimensions
-        assert torch.allclose(memory1.dimensions[key], memory2.dimensions[key])
+        assert np.allclose(memory1.dimensions[key], memory2.dimensions[key])
 
     # Compare embeddings if present
     if (
         memory1.cognitive_embedding is not None
         and memory2.cognitive_embedding is not None
     ):
-        assert torch.allclose(memory1.cognitive_embedding, memory2.cognitive_embedding)
+        assert np.allclose(memory1.cognitive_embedding, memory2.cognitive_embedding)
 
     if not ignore_timestamps:
         assert memory1.timestamp == memory2.timestamp
         assert memory1.last_accessed == memory2.last_accessed
 
 
-def create_test_vector(size: int = 512, seed: int = 42) -> torch.Tensor:
+def create_test_vector(size: int = 512, seed: int = 42) -> np.ndarray:
     """Create a deterministic test vector."""
-    torch.manual_seed(seed)
-    return torch.randn(size)
+    np.random.seed(seed)
+    return np.random.randn(size)
 
 
 # Factory testing fixtures

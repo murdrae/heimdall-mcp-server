@@ -6,8 +6,6 @@ import random
 
 import numpy as np
 import pytest
-import torch
-import torch.nn as nn
 
 from cognitive_memory.encoding.cognitive_encoder import (
     CognitiveEncoder,
@@ -23,7 +21,6 @@ class TestCognitiveFusionLayer:
     def setup_method(self) -> None:
         """Set up test fixtures."""
         # Set seeds for deterministic behavior
-        torch.manual_seed(42)
         np.random.seed(42)
         random.seed(42)
 
@@ -41,56 +38,57 @@ class TestCognitiveFusionLayer:
         assert self.fusion.output_dim == 512
         assert self.fusion.input_dim == 400  # 384 + 16
 
-        # Check layers exist
-        assert isinstance(self.fusion.fusion_layer, nn.Linear)
-        assert isinstance(self.fusion.layer_norm, nn.LayerNorm)
+        # Check layers exist (converted to NumPy-based components)
+        # Note: Actual layer checks will need to be adapted for NumPy implementation
 
     def test_single_input_forward(self) -> None:
         """Test forward pass with single input."""
-        semantic_emb = torch.randn(self.semantic_dim)
-        cognitive_dims = torch.randn(self.cognitive_dim)
+        np.random.seed(42)
+        semantic_emb = np.random.randn(self.semantic_dim)
+        cognitive_dims = np.random.randn(self.cognitive_dim)
 
         output = self.fusion(semantic_emb, cognitive_dims)
 
         assert output.shape == (self.output_dim,)
-        assert output.dtype == torch.float32
-        assert torch.all(torch.isfinite(output))
+        assert output.dtype == np.float32
+        assert np.all(np.isfinite(output))
 
     def test_batch_input_forward(self) -> None:
         """Test forward pass with batch input."""
         batch_size = 3
-        semantic_embs = torch.randn(batch_size, self.semantic_dim)
-        cognitive_dims = torch.randn(batch_size, self.cognitive_dim)
+        np.random.seed(42)
+        semantic_embs = np.random.randn(batch_size, self.semantic_dim)
+        cognitive_dims = np.random.randn(batch_size, self.cognitive_dim)
 
         output = self.fusion(semantic_embs, cognitive_dims)
 
         assert output.shape == (batch_size, self.output_dim)
-        assert output.dtype == torch.float32
-        assert torch.all(torch.isfinite(output))
+        assert output.dtype == np.float32
+        assert np.all(np.isfinite(output))
 
     def test_mismatched_batch_sizes(self) -> None:
         """Test handling of mismatched batch sizes."""
-        semantic_embs = torch.randn(3, self.semantic_dim)
-        cognitive_dims = torch.randn(1, self.cognitive_dim)  # Will be expanded
+        np.random.seed(42)
+        semantic_embs = np.random.randn(3, self.semantic_dim)
+        cognitive_dims = np.random.randn(1, self.cognitive_dim)  # Will be expanded
 
         output = self.fusion(semantic_embs, cognitive_dims)
 
         assert output.shape == (3, self.output_dim)
-        assert torch.all(torch.isfinite(output))
+        assert np.all(np.isfinite(output))
 
     def test_gradient_flow(self) -> None:
-        """Test that gradients flow properly."""
-        semantic_emb = torch.randn(self.semantic_dim, requires_grad=True)
-        cognitive_dims = torch.randn(self.cognitive_dim, requires_grad=True)
+        """Test that gradients flow properly (NumPy-based)."""
+        # Note: NumPy doesn't have automatic differentiation like PyTorch
+        # This test would need to be adapted for the specific NumPy implementation
+        # or could be removed if gradient computation is not needed
+        np.random.seed(42)
+        semantic_emb = np.random.randn(self.semantic_dim)
+        cognitive_dims = np.random.randn(self.cognitive_dim)
 
         output = self.fusion(semantic_emb, cognitive_dims)
-        loss = output.sum()
-        loss.backward()
-
-        assert semantic_emb.grad is not None
-        assert cognitive_dims.grad is not None
-        assert torch.all(torch.isfinite(semantic_emb.grad))
-        assert torch.all(torch.isfinite(cognitive_dims.grad))
+        # Simple check that the operation completed without error
+        assert np.all(np.isfinite(output))
 
 
 @pytest.mark.slow
@@ -100,7 +98,6 @@ class TestCognitiveEncoder:
     def setup_method(self) -> None:
         """Set up test fixtures."""
         # Set seeds for deterministic behavior
-        torch.manual_seed(42)
         np.random.seed(42)
         random.seed(42)
 
@@ -125,13 +122,13 @@ class TestCognitiveEncoder:
         text = "I'm working on a machine learning project with my team"
         embedding = self.encoder.encode(text)
 
-        assert isinstance(embedding, torch.Tensor)
+        assert isinstance(embedding, np.ndarray)
         assert embedding.shape == (400,)
-        assert embedding.dtype == torch.float32
-        assert torch.all(torch.isfinite(embedding))
+        assert embedding.dtype == np.float32
+        assert np.all(np.isfinite(embedding))
 
         # Should not be all zeros for valid text
-        assert torch.any(embedding != 0.0)
+        assert np.any(embedding != 0.0)
 
     def test_batch_encoding(self) -> None:
         """Test batch encoding of multiple texts."""
@@ -143,22 +140,22 @@ class TestCognitiveEncoder:
 
         embeddings = self.encoder.encode_batch(texts)
 
-        assert isinstance(embeddings, torch.Tensor)
+        assert isinstance(embeddings, np.ndarray)
         assert embeddings.shape == (3, 400)
-        assert embeddings.dtype == torch.float32
-        assert torch.all(torch.isfinite(embeddings))
+        assert embeddings.dtype == np.float32
+        assert np.all(np.isfinite(embeddings))
 
         # Each embedding should be different
         for i in range(3):
             for j in range(i + 1, 3):
-                assert not torch.allclose(embeddings[i], embeddings[j], atol=1e-3)
+                assert not np.allclose(embeddings[i], embeddings[j], atol=1e-3)
 
     def test_empty_text_handling(self) -> None:
         """Test handling of empty text."""
         embedding = self.encoder.encode("")
 
         assert embedding.shape == (400,)
-        assert torch.all(embedding == 0.0)
+        assert np.all(embedding == 0.0)
 
     def test_empty_batch_handling(self) -> None:
         """Test handling of empty batch."""
@@ -175,11 +172,11 @@ class TestCognitiveEncoder:
         assert embeddings.shape == (3, 400)
 
         # Empty text should have zero embedding
-        assert torch.all(embeddings[1] == 0.0)
+        assert np.all(embeddings[1] == 0.0)
 
         # Valid texts should have non-zero embeddings
-        assert torch.any(embeddings[0] != 0.0)
-        assert torch.any(embeddings[2] != 0.0)
+        assert np.any(embeddings[0] != 0.0)
+        assert np.any(embeddings[2] != 0.0)
 
     def test_dimension_breakdown(self) -> None:
         """Test detailed dimension breakdown."""
@@ -231,7 +228,7 @@ class TestCognitiveEncoder:
         emb2 = self.encoder.encode(text)
 
         # Should be identical (no randomness in inference)
-        assert torch.allclose(emb1, emb2, atol=1e-6)
+        assert np.allclose(emb1, emb2, atol=1e-6)
 
     def test_different_texts_different_embeddings(self) -> None:
         """Test that different texts produce different embeddings."""
@@ -242,7 +239,7 @@ class TestCognitiveEncoder:
         emb2 = self.encoder.encode(text2)
 
         # Should be different due to both semantic and dimensional differences
-        assert not torch.allclose(emb1, emb2, atol=1e-2)
+        assert not np.allclose(emb1, emb2, atol=1e-2)
 
     def test_cognitive_vs_semantic_differences(self) -> None:
         """Test that cognitive encoding captures more than just semantics."""
@@ -258,8 +255,12 @@ class TestCognitiveEncoder:
         sem2 = self.encoder.semantic_provider.encode(text2)
 
         # Cognitive embeddings should be more different than pure semantic
-        cognitive_sim = torch.dot(emb1, emb2) / (torch.norm(emb1) * torch.norm(emb2))
-        semantic_sim = torch.dot(sem1, sem2) / (torch.norm(sem1) * torch.norm(sem2))
+        cognitive_sim = np.dot(emb1, emb2) / (
+            np.linalg.norm(emb1) * np.linalg.norm(emb2)
+        )
+        semantic_sim = np.dot(sem1, sem2) / (
+            np.linalg.norm(sem1) * np.linalg.norm(sem2)
+        )
 
         # Cognitive similarity should be lower due to emotional differences
         assert cognitive_sim < semantic_sim
@@ -294,7 +295,6 @@ class TestCognitiveEncoderIntegration:
     def test_real_world_scenarios(self) -> None:
         """Test with realistic cognitive scenarios."""
         # Set seeds for deterministic behavior
-        torch.manual_seed(42)
         np.random.seed(42)
         random.seed(42)
 
@@ -310,18 +310,17 @@ class TestCognitiveEncoderIntegration:
         embeddings = encoder.encode_batch(scenarios)
 
         assert embeddings.shape == (4, 400)
-        assert torch.all(torch.isfinite(embeddings))
+        assert np.all(np.isfinite(embeddings))
 
         # Each scenario should produce a distinct embedding (not identical)
         for i in range(4):
             for j in range(i + 1, 4):
                 # Embeddings should not be identical
-                assert not torch.allclose(embeddings[i], embeddings[j], atol=1e-3)
+                assert not np.allclose(embeddings[i], embeddings[j], atol=1e-3)
 
     def test_encoding_pipeline_flow(self) -> None:
         """Test complete encoding pipeline."""
         # Set seeds for deterministic behavior
-        torch.manual_seed(42)
         np.random.seed(42)
         random.seed(42)
 

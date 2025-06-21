@@ -86,14 +86,16 @@ class GitHistoryMiner:
             logger.error(
                 "Invalid git repository", path=str(self.repository_path), error=str(e)
             )
-            raise
+            # Don't raise - let validate_repository() handle this
+            self.repo = None
         except Exception as e:
             logger.error(
                 "Failed to initialize git repository",
                 path=str(self.repository_path),
                 error=str(e),
             )
-            raise
+            # Don't raise - let validate_repository() handle this
+            self.repo = None
 
     def __enter__(self) -> "GitHistoryMiner":
         """Context manager entry."""
@@ -374,20 +376,21 @@ class GitHistoryMiner:
         Returns:
             Dictionary containing repository statistics
         """
+        # Always return basic structure, even if validation fails
+        stats = {
+            "repository_path": str(self.repository_path),
+            "total_commits": 0,
+            "total_branches": 0,
+            "total_tags": 0,
+            "active_branch": None,
+            "last_commit_date": None,
+            "first_commit_date": None,
+        }
+
         if not self.validate_repository():
-            return {}
+            return stats
 
         try:
-            stats = {
-                "repository_path": str(self.repository_path),
-                "total_commits": 0,
-                "total_branches": 0,
-                "total_tags": 0,
-                "active_branch": None,
-                "last_commit_date": None,
-                "first_commit_date": None,
-            }
-
             # Count commits (limited for security)
             try:
                 if self.repo is None:

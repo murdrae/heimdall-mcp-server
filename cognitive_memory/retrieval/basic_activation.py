@@ -9,7 +9,7 @@ memory connection graph.
 import time
 from collections import deque
 
-import torch
+import numpy as np
 from loguru import logger
 
 from ..core.interfaces import ActivationEngine, ConnectionGraph, MemoryStorage
@@ -47,7 +47,7 @@ class BasicActivationEngine(ActivationEngine):
         self.peripheral_threshold = peripheral_threshold
 
     def activate_memories(
-        self, context: torch.Tensor, threshold: float, max_activations: int = 50
+        self, context: np.ndarray, threshold: float, max_activations: int = 50
     ) -> ActivationResult:
         """
         Activate memories based on context with spreading activation.
@@ -107,7 +107,7 @@ class BasicActivationEngine(ActivationEngine):
 
     def _find_starting_memories(
         self,
-        context: torch.Tensor,
+        context: np.ndarray,
         l0_memories: list[CognitiveMemory],
         threshold: float,
     ) -> list[CognitiveMemory]:
@@ -150,7 +150,7 @@ class BasicActivationEngine(ActivationEngine):
 
     def _bfs_activation(
         self,
-        context: torch.Tensor,
+        context: np.ndarray,
         starting_memories: list[CognitiveMemory],
         threshold: float,
         max_activations: int,
@@ -251,9 +251,7 @@ class BasicActivationEngine(ActivationEngine):
             activation_strengths=activation_strengths,
         )
 
-    def _compute_cosine_similarity(
-        self, vec1: torch.Tensor, vec2: torch.Tensor
-    ) -> float:
+    def _compute_cosine_similarity(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
         """
         Compute cosine similarity between two vectors.
 
@@ -265,16 +263,14 @@ class BasicActivationEngine(ActivationEngine):
             Cosine similarity score (0.0 to 1.0)
         """
         try:
-            # Ensure tensors are on the same device and dtype
-            if vec1.device != vec2.device:
-                vec2 = vec2.to(vec1.device)
+            # Ensure arrays have compatible dtypes
             if vec1.dtype != vec2.dtype:
-                vec2 = vec2.to(vec1.dtype)
+                vec2 = vec2.astype(vec1.dtype)
 
             # Compute cosine similarity
-            dot_product = torch.dot(vec1.flatten(), vec2.flatten())
-            norm1 = torch.norm(vec1)
-            norm2 = torch.norm(vec2)
+            dot_product = np.dot(vec1.flatten(), vec2.flatten())
+            norm1 = np.linalg.norm(vec1)
+            norm2 = np.linalg.norm(vec2)
 
             if norm1 == 0 or norm2 == 0:
                 return 0.0
@@ -282,9 +278,9 @@ class BasicActivationEngine(ActivationEngine):
             similarity = dot_product / (norm1 * norm2)
 
             # Clamp to [0, 1] range and handle numerical issues
-            similarity = torch.clamp(similarity, 0.0, 1.0)
+            similarity = np.clip(similarity, 0.0, 1.0)
 
-            return float(similarity.item())
+            return float(similarity)
 
         except Exception as e:
             logger.warning("Cosine similarity computation failed", error=str(e))

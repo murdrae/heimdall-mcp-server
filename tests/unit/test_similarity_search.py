@@ -8,8 +8,8 @@ and hierarchical search across memory levels.
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
+import numpy as np
 import pytest
-import torch
 
 from cognitive_memory.core.interfaces import MemoryStorage
 from cognitive_memory.core.memory import CognitiveMemory, SearchResult
@@ -31,8 +31,8 @@ class TestSimilaritySearch:
     ) -> list[CognitiveMemory]:
         """Create sample memories with embeddings and varied timestamps."""
         for i, memory in enumerate(sample_memories):
-            torch.manual_seed(i)  # Deterministic embeddings
-            memory.cognitive_embedding = torch.randn(512)
+            np.random.seed(i)  # Deterministic embeddings
+            memory.cognitive_embedding = np.random.randn(512)
             # Vary timestamps for recency testing
             memory.timestamp = datetime.now() - timedelta(
                 hours=i * 24
@@ -91,7 +91,7 @@ class TestSimilaritySearch:
         similarity_search: SimilaritySearch,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test basic memory search functionality."""
         # Mock storage to return all memories for all levels
@@ -100,7 +100,7 @@ class TestSimilaritySearch:
         )
 
         results = similarity_search.search_memories(
-            query_vector=mock_torch_embedding, k=3, min_similarity=0.0
+            query_vector=mock_numpy_embedding, k=3, min_similarity=0.0
         )
 
         assert isinstance(results, list)
@@ -116,13 +116,13 @@ class TestSimilaritySearch:
         self,
         similarity_search: SimilaritySearch,
         mock_memory_storage: Mock,
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test search when no memories are available."""
         mock_memory_storage.get_memories_by_level.return_value = []
 
         results = similarity_search.search_memories(
-            query_vector=mock_torch_embedding, k=5
+            query_vector=mock_numpy_embedding, k=5
         )
 
         assert results == []
@@ -132,7 +132,7 @@ class TestSimilaritySearch:
         similarity_search: SimilaritySearch,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test search with minimum similarity threshold."""
         mock_memory_storage.get_memories_by_level.return_value = (
@@ -140,7 +140,7 @@ class TestSimilaritySearch:
         )
 
         results = similarity_search.search_memories(
-            query_vector=mock_torch_embedding,
+            query_vector=mock_numpy_embedding,
             k=10,
             min_similarity=0.9,  # Very high threshold
         )
@@ -154,7 +154,7 @@ class TestSimilaritySearch:
         similarity_search: SimilaritySearch,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test search on specific hierarchy levels."""
         level_0_memories = [
@@ -176,7 +176,7 @@ class TestSimilaritySearch:
         mock_memory_storage.get_memories_by_level.side_effect = get_memories_side_effect
 
         results = similarity_search.search_memories(
-            query_vector=mock_torch_embedding, k=5, levels=[0, 1]
+            query_vector=mock_numpy_embedding, k=5, levels=[0, 1]
         )
 
         assert isinstance(results, list)
@@ -189,7 +189,7 @@ class TestSimilaritySearch:
         similarity_search: SimilaritySearch,
         mock_memory_storage: Mock,
         sample_memories: list[CognitiveMemory],  # Without embeddings
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test search with memories that have no embeddings."""
         # Ensure memories have no embeddings
@@ -199,7 +199,7 @@ class TestSimilaritySearch:
         mock_memory_storage.get_memories_by_level.return_value = sample_memories
 
         results = similarity_search.search_memories(
-            query_vector=mock_torch_embedding, k=5
+            query_vector=mock_numpy_embedding, k=5
         )
 
         assert results == []
@@ -208,8 +208,8 @@ class TestSimilaritySearch:
         self, similarity_search: SimilaritySearch
     ) -> None:
         """Test cosine similarity computation."""
-        vec1 = torch.tensor([1.0, 2.0, 3.0])
-        vec2 = torch.tensor([2.0, 4.0, 6.0])  # Same direction
+        vec1 = np.array([1.0, 2.0, 3.0])
+        vec2 = np.array([2.0, 4.0, 6.0])  # Same direction
 
         similarity = similarity_search._compute_cosine_similarity(vec1, vec2)
         assert isinstance(similarity, float)
@@ -219,8 +219,8 @@ class TestSimilaritySearch:
         self, similarity_search: SimilaritySearch
     ) -> None:
         """Test cosine similarity with orthogonal vectors."""
-        vec1 = torch.tensor([1.0, 0.0])
-        vec2 = torch.tensor([0.0, 1.0])
+        vec1 = np.array([1.0, 0.0])
+        vec2 = np.array([0.0, 1.0])
 
         similarity = similarity_search._compute_cosine_similarity(vec1, vec2)
         assert similarity == pytest.approx(0.0, abs=1e-6)
@@ -229,8 +229,8 @@ class TestSimilaritySearch:
         self, similarity_search: SimilaritySearch
     ) -> None:
         """Test cosine similarity with zero vector."""
-        vec1 = torch.tensor([1.0, 2.0])
-        vec2 = torch.tensor([0.0, 0.0])
+        vec1 = np.array([1.0, 2.0])
+        vec2 = np.array([0.0, 0.0])
 
         similarity = similarity_search._compute_cosine_similarity(vec1, vec2)
         assert similarity == 0.0
@@ -353,7 +353,7 @@ class TestSimilaritySearch:
         self,
         similarity_search: SimilaritySearch,
         mock_memory_storage: Mock,
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test error handling during search."""
         # Make storage throw exception
@@ -362,7 +362,7 @@ class TestSimilaritySearch:
         )
 
         results = similarity_search.search_memories(
-            query_vector=mock_torch_embedding, k=5
+            query_vector=mock_numpy_embedding, k=5
         )
 
         # Should return empty list gracefully
@@ -374,7 +374,7 @@ class TestSimilaritySearch:
         similarity_search: SimilaritySearch,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
         k: int,
     ) -> None:
         """Test search with different k values."""
@@ -383,7 +383,7 @@ class TestSimilaritySearch:
         )
 
         results = similarity_search.search_memories(
-            query_vector=mock_torch_embedding, k=k
+            query_vector=mock_numpy_embedding, k=k
         )
 
         assert len(results) <= min(k, len(sample_memories_with_embeddings))
@@ -394,7 +394,7 @@ class TestSimilaritySearch:
         similarity_search: SimilaritySearch,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
         levels: list[int],
     ) -> None:
         """Test search across different hierarchy levels."""
@@ -403,7 +403,7 @@ class TestSimilaritySearch:
         )
 
         results = similarity_search.search_memories(
-            query_vector=mock_torch_embedding, k=5, levels=levels
+            query_vector=mock_numpy_embedding, k=5, levels=levels
         )
 
         assert isinstance(results, list)
@@ -416,7 +416,7 @@ class TestSimilaritySearch:
         similarity_search: SimilaritySearch,
         mock_memory_storage: Mock,
         sample_memories_with_embeddings: list[CognitiveMemory],
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test that search results have all required attributes."""
         mock_memory_storage.get_memories_by_level.return_value = (
@@ -424,7 +424,7 @@ class TestSimilaritySearch:
         )
 
         results = similarity_search.search_memories(
-            query_vector=mock_torch_embedding, k=3
+            query_vector=mock_numpy_embedding, k=3
         )
 
         for result in results:

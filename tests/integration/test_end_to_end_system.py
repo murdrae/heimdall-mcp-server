@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-import torch
 
 from cognitive_memory.core.config import (
     CognitiveConfig,
@@ -128,12 +127,9 @@ class TestEndToEndSystem:
         """Set up deterministic random seeds for each test."""
         random.seed(42)
         np.random.seed(42)
-        torch.manual_seed(42)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(42)
-            torch.cuda.manual_seed_all(42)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
+        np.random.seed(42)
+        # CUDA operations not needed with NumPy
+        # CUDA operations not needed with NumPy
 
     @pytest.fixture
     def system_config(self):

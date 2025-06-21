@@ -7,8 +7,8 @@ similarity search, and bridge discovery for comprehensive memory retrieval.
 
 from unittest.mock import Mock
 
+import numpy as np
 import pytest
-import torch
 
 from cognitive_memory.core.interfaces import (
     ActivationEngine,
@@ -66,8 +66,8 @@ class TestContextualRetrieval:
     ) -> list[CognitiveMemory]:
         """Create sample memories with embeddings."""
         for i, memory in enumerate(sample_memories):
-            torch.manual_seed(i)  # Deterministic embeddings
-            memory.cognitive_embedding = torch.randn(512)
+            np.random.seed(i)  # Deterministic embeddings
+            memory.cognitive_embedding = np.random.randn(512)
         return sample_memories
 
     @pytest.fixture
@@ -129,11 +129,11 @@ class TestContextualRetrieval:
     def test_retrieve_memories_basic(
         self,
         contextual_retrieval: ContextualRetrieval,
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test basic memory retrieval."""
         result = contextual_retrieval.retrieve_memories(
-            query_context=mock_torch_embedding,
+            query_context=mock_numpy_embedding,
         )
 
         assert isinstance(result, ContextualRetrievalResult)
@@ -145,11 +145,11 @@ class TestContextualRetrieval:
     def test_retrieve_memories_with_parameters(
         self,
         contextual_retrieval: ContextualRetrieval,
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test memory retrieval with custom parameters."""
         result = contextual_retrieval.retrieve_memories(
-            query_context=mock_torch_embedding,
+            query_context=mock_numpy_embedding,
             max_core=5,
             max_peripheral=10,
             max_bridges=3,
@@ -163,11 +163,11 @@ class TestContextualRetrieval:
     def test_retrieve_memories_disable_components(
         self,
         contextual_retrieval: ContextualRetrieval,
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test retrieval with components disabled."""
         result = contextual_retrieval.retrieve_memories(
-            query_context=mock_torch_embedding,
+            query_context=mock_numpy_embedding,
             use_activation=False,
             use_similarity=False,
             use_bridges=False,
@@ -179,7 +179,7 @@ class TestContextualRetrieval:
     def test_retrieve_memories_no_activation_engine(
         self,
         mock_memory_storage: Mock,
-        mock_torch_embedding: torch.Tensor,
+        mock_numpy_embedding: np.ndarray,
     ) -> None:
         """Test retrieval without activation engine."""
         retrieval = ContextualRetrieval(
@@ -191,7 +191,7 @@ class TestContextualRetrieval:
         )
 
         result = retrieval.retrieve_memories(
-            query_context=mock_torch_embedding,
+            query_context=mock_numpy_embedding,
         )
 
         assert isinstance(result, ContextualRetrievalResult)

@@ -4,8 +4,8 @@ Unit tests for core memory data structures.
 
 from datetime import datetime, timedelta
 
+import numpy as np
 import pytest
-import torch
 
 from cognitive_memory.core.memory import (
     ActivationResult,
@@ -77,10 +77,11 @@ class TestCognitiveMemory:
             content="Test memory", hierarchy_level=2, memory_type="semantic"
         )
         memory.dimensions = {
-            "emotional": torch.tensor([0.1, 0.2, 0.3, 0.4]),
-            "temporal": torch.tensor([0.5, 0.6, 0.7]),
+            "emotional": np.array([0.1, 0.2, 0.3, 0.4]),
+            "temporal": np.array([0.5, 0.6, 0.7]),
         }
-        memory.cognitive_embedding = torch.randn(512)
+        np.random.seed(42)
+        memory.cognitive_embedding = np.random.randn(512)
 
         # Convert to dict
         memory_dict = memory.to_dict()
@@ -96,7 +97,7 @@ class TestCognitiveMemory:
 
         # Check dimensions
         for key in memory.dimensions:
-            assert torch.allclose(memory.dimensions[key], reconstructed.dimensions[key])
+            assert np.allclose(memory.dimensions[key], reconstructed.dimensions[key])
 
 
 class TestSearchResult:

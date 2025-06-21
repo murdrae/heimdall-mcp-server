@@ -8,7 +8,7 @@ activated memories, enabling serendipitous connections.
 
 import time
 
-import torch
+import numpy as np
 from loguru import logger
 
 from ..core.interfaces import BridgeDiscovery, MemoryStorage
@@ -59,7 +59,7 @@ class SimpleBridgeDiscovery(BridgeDiscovery):
             )
 
     def discover_bridges(
-        self, context: torch.Tensor, activated: list[CognitiveMemory], k: int = 5
+        self, context: np.ndarray, activated: list[CognitiveMemory], k: int = 5
     ) -> list[BridgeMemory]:
         """
         Discover bridge memories that create novel connections.
@@ -167,7 +167,7 @@ class SimpleBridgeDiscovery(BridgeDiscovery):
 
     def _compute_bridge_scores(
         self,
-        context: torch.Tensor,
+        context: np.ndarray,
         candidates: list[CognitiveMemory],
         activated: list[CognitiveMemory],
     ) -> list[tuple[CognitiveMemory, float]]:
@@ -208,7 +208,7 @@ class SimpleBridgeDiscovery(BridgeDiscovery):
         return bridge_scores
 
     def _calculate_novelty_score(
-        self, context: torch.Tensor, memory: CognitiveMemory
+        self, context: np.ndarray, memory: CognitiveMemory
     ) -> float:
         """
         Calculate novelty score as inverse similarity to query.
@@ -273,9 +273,7 @@ class SimpleBridgeDiscovery(BridgeDiscovery):
             )
             return 0.0
 
-    def _compute_cosine_similarity(
-        self, vec1: torch.Tensor, vec2: torch.Tensor
-    ) -> float:
+    def _compute_cosine_similarity(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
         """
         Compute cosine similarity between two vectors.
 
@@ -287,20 +285,18 @@ class SimpleBridgeDiscovery(BridgeDiscovery):
             Cosine similarity score (0.0 to 1.0)
         """
         try:
-            # Ensure tensors are on the same device and dtype
-            if vec1.device != vec2.device:
-                vec2 = vec2.to(vec1.device)
+            # Ensure arrays have compatible dtypes
             if vec1.dtype != vec2.dtype:
-                vec2 = vec2.to(vec1.dtype)
+                vec2 = vec2.astype(vec1.dtype)
 
             # Flatten vectors for dot product
             vec1_flat = vec1.flatten()
             vec2_flat = vec2.flatten()
 
             # Compute cosine similarity
-            dot_product = torch.dot(vec1_flat, vec2_flat)
-            norm1 = torch.norm(vec1_flat)
-            norm2 = torch.norm(vec2_flat)
+            dot_product = np.dot(vec1_flat, vec2_flat)
+            norm1 = np.linalg.norm(vec1_flat)
+            norm2 = np.linalg.norm(vec2_flat)
 
             if norm1 == 0 or norm2 == 0:
                 return 0.0
@@ -308,9 +304,9 @@ class SimpleBridgeDiscovery(BridgeDiscovery):
             similarity = dot_product / (norm1 * norm2)
 
             # Clamp to [0, 1] range and handle numerical issues
-            similarity = torch.clamp(similarity, 0.0, 1.0)
+            similarity = np.clip(similarity, 0.0, 1.0)
 
-            return float(similarity.item())
+            return float(similarity)
 
         except Exception as e:
             logger.warning("Cosine similarity computation failed", error=str(e))

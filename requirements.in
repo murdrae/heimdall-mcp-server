@@ -1,7 +1,6 @@
-# Core dependencies for cognitive memory system
---extra-index-url https://download.pytorch.org/whl/cpu
-torch
-sentence-transformers>=2.2.0
+# Core dependencies for cognitive memory system (ONNX-based)
+onnxruntime>=1.16.0
+tokenizers>=0.21.0
 qdrant-client>=1.7.0
 numpy>=1.24.0
 loguru>=0.7.0

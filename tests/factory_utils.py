@@ -8,7 +8,7 @@ the factory pattern and system initialization.
 from dataclasses import dataclass
 from typing import Any
 
-import torch
+import numpy as np
 
 from cognitive_memory.core.config import SystemConfig
 from cognitive_memory.core.interfaces import (
@@ -38,40 +38,40 @@ class MockEmbeddingProvider(EmbeddingProvider):
         self.call_count = 0
         self.last_input = None
 
-    def encode(self, text: str) -> torch.Tensor:
+    def encode(self, text: str) -> np.ndarray:
         """Return deterministic embedding based on text hash."""
         self.call_count += 1
         self.last_input = text
         # Create deterministic embedding
         hash_val = hash(text) % 1000000
-        torch.manual_seed(hash_val)
-        return torch.randn(self.vector_size)
+        np.random.seed(hash_val)
+        return np.random.randn(self.vector_size)
 
-    def encode_batch(self, texts: list[str]) -> torch.Tensor:
+    def encode_batch(self, texts: list[str]) -> np.ndarray:
         """Return batch embeddings."""
         embeddings = [self.encode(text) for text in texts]
-        return torch.stack(embeddings)
+        return np.stack(embeddings)
 
 
 class MockVectorStorage(VectorStorage):
     """Mock vector storage for testing factory pattern."""
 
     def __init__(self):
-        self.stored_vectors: dict[str, torch.Tensor] = {}
+        self.stored_vectors: dict[str, np.ndarray] = {}
         self.stored_metadata: dict[str, dict[str, Any]] = {}
         self.search_results: list[SearchResult] = []
         self.call_counts = {"store": 0, "search": 0, "delete": 0, "update": 0}
 
     def store_vector(
-        self, id: str, vector: torch.Tensor, metadata: dict[str, Any]
+        self, id: str, vector: np.ndarray, metadata: dict[str, Any]
     ) -> None:
         """Store vector with metadata."""
         self.call_counts["store"] += 1
-        self.stored_vectors[id] = vector.clone()
+        self.stored_vectors[id] = vector.copy()
         self.stored_metadata[id] = metadata.copy()
 
     def search_similar(
-        self, query_vector: torch.Tensor, k: int, filters: dict | None = None
+        self, query_vector: np.ndarray, k: int, filters: dict | None = None
     ) -> list[SearchResult]:
         """Return mock search results."""
         self.call_counts["search"] += 1
@@ -87,12 +87,12 @@ class MockVectorStorage(VectorStorage):
         return False
 
     def update_vector(
-        self, id: str, vector: torch.Tensor, metadata: dict[str, Any]
+        self, id: str, vector: np.ndarray, metadata: dict[str, Any]
     ) -> bool:
         """Update an existing vector and its metadata."""
         self.call_counts["update"] += 1
         if id in self.stored_vectors:
-            self.stored_vectors[id] = vector.clone()
+            self.stored_vectors[id] = vector.copy()
             self.stored_metadata[id] = metadata.copy()
             return True
         return False
@@ -101,9 +101,7 @@ class MockVectorStorage(VectorStorage):
         """Get collection statistics."""
         return {
             "vector_count": len(self.stored_vectors),
-            "collection_size": sum(
-                v.numel() * v.element_size() for v in self.stored_vectors.values()
-            ),
+            "collection_size": sum(v.nbytes for v in self.stored_vectors.values()),
         }
 
     def clear_collection(self) -> None:
@@ -254,7 +252,7 @@ class MockActivationEngine(ActivationEngine):
         self.call_count = 0
 
     def activate_memories(
-        self, context: torch.Tensor, threshold: float, max_activations: int = 50
+        self, context: np.ndarray, threshold: float, max_activations: int = 50
     ) -> ActivationResult:
         """Return mock activation result."""
         self.call_count += 1
@@ -269,7 +267,7 @@ class MockBridgeDiscovery(BridgeDiscovery):
         self.call_count = 0
 
     def discover_bridges(
-        self, context: torch.Tensor, activated: list[CognitiveMemory], k: int = 5
+        self, context: np.ndarray, activated: list[CognitiveMemory], k: int = 5
     ) -> list[BridgeMemory]:
         """Return mock bridge results."""
         self.call_count += 1

@@ -7,8 +7,8 @@ proper coordination between subsystems through abstract interfaces.
 
 from unittest.mock import Mock, patch
 
+import numpy as np
 import pytest
-import torch
 
 from cognitive_memory.core.cognitive_system import CognitiveMemorySystem
 from cognitive_memory.core.config import SystemConfig
@@ -47,8 +47,8 @@ def create_fully_mocked_system(config: SystemConfig) -> CognitiveMemorySystem:
 def mock_embedding_provider():
     """Create mock embedding provider."""
     mock = Mock(spec=EmbeddingProvider)
-    mock.encode.return_value = torch.randn(512)
-    mock.encode_batch.return_value = torch.randn(3, 512)
+    mock.encode.return_value = np.random.randn(512)
+    mock.encode_batch.return_value = np.random.randn(3, 512)
     return mock
 
 
@@ -231,7 +231,7 @@ class TestCognitiveMemorySystem:
         test_text = "I learned something new about machine learning today"
 
         # Mock successful operations
-        mock_embedding_provider.encode.return_value = torch.randn(512)
+        mock_embedding_provider.encode.return_value = np.random.randn(512)
         mock_memory_storage.store_memory.return_value = True
 
         # Store experience
@@ -296,7 +296,7 @@ class TestCognitiveMemorySystem:
         query = "machine learning concepts"
 
         # Mock operations
-        mock_embedding_provider.encode.return_value = torch.randn(512)
+        mock_embedding_provider.encode.return_value = np.random.randn(512)
 
         # Retrieve memories
         results = cognitive_system.retrieve_memories(query)
@@ -362,7 +362,7 @@ class TestCognitiveMemorySystem:
         """Test comparing factory pattern vs traditional mocking approaches."""
         # Traditional approach - manual mock creation
         traditional_embedding = Mock(spec=EmbeddingProvider)
-        traditional_embedding.encode.return_value = torch.randn(512)
+        traditional_embedding.encode.return_value = np.random.randn(512)
         traditional_memory = Mock(spec=MemoryStorage)
         traditional_memory.store_memory.return_value = True
 
@@ -417,7 +417,7 @@ class TestCognitiveMemorySystem:
         )
 
         mock_memory_storage.get_memories_by_level.return_value = [episodic_memory]
-        mock_embedding_provider.encode.return_value = torch.randn(512)
+        mock_embedding_provider.encode.return_value = np.random.randn(512)
 
         # Run consolidation
         stats = cognitive_system.consolidate_memories()

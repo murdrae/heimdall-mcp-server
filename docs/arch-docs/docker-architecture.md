@@ -43,7 +43,7 @@ The implementation uses stdio transport with a wrapper script instead of HTTP fo
 
 #### Key Components
 - **MCP Server**: Stdio transport (`interfaces/mcp_server.py`)
-- **Container Integration**: Via `claude_mcp_wrapper.sh` script  
+- **Container Integration**: Via `claude_mcp_wrapper.sh` script
 - **Claude Code Integration**: `--transport stdio` with wrapper script
 - **Health Monitoring**: Built into Docker containers via `memory_system doctor`
 
@@ -96,7 +96,7 @@ Production-ready container infrastructure with script management.
 cognitive-memory/
 ├── docker/
 │   ├── Dockerfile                     # Multi-stage application container
-│   ├── docker-compose.template.yml    # Template for project-specific setup  
+│   ├── docker-compose.template.yml    # Template for project-specific setup
 │   ├── entrypoint.sh                  # Container startup script
 │   └── healthcheck.sh                 # Health monitoring script
 ├── scripts/
@@ -150,7 +150,7 @@ cd /path/to/my-react-project
 # 🎉 Setup complete! Project memory ready.
 ```
 
-### Container Lifecycle Management  
+### Container Lifecycle Management
 Easy management of project-specific containers with simplified commands.
 
 #### Simplified Management
@@ -277,7 +277,7 @@ $PROJECT_PATH/.cognitive-memory/
 
 Docker Volumes:
 ├── cognitive-qdrant-{hash}      # Qdrant data volume
-├── cognitive-data-{hash}        # App data volume  
+├── cognitive-data-{hash}        # App data volume
 └── cognitive-network-{hash}     # Isolated network
 ```
 

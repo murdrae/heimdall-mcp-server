@@ -2,8 +2,8 @@
 Integration tests for the complete encoding pipeline.
 """
 
+import numpy as np
 import pytest
-import torch
 
 from cognitive_memory.core.config import CognitiveConfig
 from cognitive_memory.encoding import (
@@ -26,8 +26,8 @@ class TestEncodingPipelineIntegration:
         setup_deterministic_testing(seed=42)
 
         self.config = CognitiveConfig()
-        self.encoder = CognitiveEncoder(device="cpu")
-        self.semantic_provider = SentenceBERTProvider(device="cpu")
+        self.encoder = CognitiveEncoder()
+        self.semantic_provider = SentenceBERTProvider()
         self.dimension_extractor = CognitiveDimensionExtractor(self.config)
 
         # Reset encoder weights for deterministic initialization
@@ -47,7 +47,7 @@ class TestEncodingPipelineIntegration:
 
         # All results should be identical
         for i in range(1, len(results)):
-            assert torch.allclose(results[0], results[i], atol=1e-6)
+            assert np.allclose(results[0], results[i], atol=1e-6)
 
     def test_semantic_vs_cognitive_encoding(self) -> None:
         """Test differences between semantic and cognitive encoding."""
@@ -60,12 +60,12 @@ class TestEncodingPipelineIntegration:
         cognitive_embs = self.encoder.encode_batch(texts)
 
         # Compute similarities
-        semantic_sim = torch.dot(semantic_embs[0], semantic_embs[1]) / (
-            torch.norm(semantic_embs[0]) * torch.norm(semantic_embs[1])
+        semantic_sim = np.dot(semantic_embs[0], semantic_embs[1]) / (
+            np.linalg.norm(semantic_embs[0]) * np.linalg.norm(semantic_embs[1])
         )
 
-        cognitive_sim = torch.dot(cognitive_embs[0], cognitive_embs[1]) / (
-            torch.norm(cognitive_embs[0]) * torch.norm(cognitive_embs[1])
+        cognitive_sim = np.dot(cognitive_embs[0], cognitive_embs[1]) / (
+            np.linalg.norm(cognitive_embs[0]) * np.linalg.norm(cognitive_embs[1])
         )
 
         # Cognitive similarity should be lower due to emotional differences
@@ -90,8 +90,8 @@ class TestEncodingPipelineIntegration:
         # Calculate similarities to base
         similarities = []
         for i in range(1, len(embeddings)):
-            sim = torch.dot(base_embedding, embeddings[i]) / (
-                torch.norm(base_embedding) * torch.norm(embeddings[i])
+            sim = np.dot(base_embedding, embeddings[i]) / (
+                np.linalg.norm(base_embedding) * np.linalg.norm(embeddings[i])
             )
             similarities.append(sim.item())
 
@@ -117,13 +117,13 @@ class TestEncodingPipelineIntegration:
         for text in texts:
             emb = self.encoder.encode(text)
             individual_embeddings.append(emb)
-        individual_batch = torch.stack(individual_embeddings)
+        individual_batch = np.stack(individual_embeddings)
 
         # Batch encoding
         batch_embeddings = self.encoder.encode_batch(texts)
 
         # Should be very close
-        assert torch.allclose(individual_batch, batch_embeddings, atol=1e-5)
+        assert np.allclose(individual_batch, batch_embeddings, atol=1e-5)
 
     def test_cross_modal_retrieval_simulation(self) -> None:
         """Simulate cross-modal retrieval using cognitive embeddings."""
@@ -152,8 +152,8 @@ class TestEncodingPipelineIntegration:
             # Compute similarities
             similarities = []
             for exp_emb in experience_embeddings:
-                sim = torch.dot(query_embedding, exp_emb) / (
-                    torch.norm(query_embedding) * torch.norm(exp_emb)
+                sim = np.dot(query_embedding, exp_emb) / (
+                    np.linalg.norm(query_embedding) * np.linalg.norm(exp_emb)
                 )
                 similarities.append(sim.item())
 
@@ -198,13 +198,13 @@ class TestEncodingPipelineIntegration:
         # Test hierarchical relationships
         for i in range(len(concepts)):
             # Episode should be most similar to its corresponding context
-            episode_context_sim = torch.dot(episode_embs[i], context_embs[i]) / (
-                torch.norm(episode_embs[i]) * torch.norm(context_embs[i])
+            episode_context_sim = np.dot(episode_embs[i], context_embs[i]) / (
+                np.linalg.norm(episode_embs[i]) * np.linalg.norm(context_embs[i])
             )
 
             # Context should be most similar to its corresponding concept
-            context_concept_sim = torch.dot(context_embs[i], concept_embs[i]) / (
-                torch.norm(context_embs[i]) * torch.norm(concept_embs[i])
+            context_concept_sim = np.dot(context_embs[i], concept_embs[i]) / (
+                np.linalg.norm(context_embs[i]) * np.linalg.norm(concept_embs[i])
             )
 
             print(f"\nLevel relationships for domain {i}:")
@@ -269,15 +269,15 @@ class TestEncodingPipelineIntegration:
             self.config.get_total_cognitive_dimensions() + 384
         )  # cognitive + semantic
         assert embeddings.shape == (len(challenging_inputs), final_dim)
-        assert torch.all(torch.isfinite(embeddings))
+        assert np.all(np.isfinite(embeddings))
 
         # Empty and whitespace should be zero
-        assert torch.all(embeddings[0] == 0.0)
-        assert torch.all(embeddings[1] == 0.0)
+        assert np.all(embeddings[0] == 0.0)
+        assert np.all(embeddings[1] == 0.0)
 
         # Others should have non-zero embeddings (except possibly very short ones)
         for i in range(3, len(challenging_inputs)):
-            assert torch.any(embeddings[i] != 0.0)
+            assert np.any(embeddings[i] != 0.0)
 
     def test_factory_integration(self) -> None:
         """Test that factory functions produce working encoders."""
@@ -290,5 +290,5 @@ class TestEncodingPipelineIntegration:
             CognitiveConfig().get_total_cognitive_dimensions() + 384
         )  # cognitive + semantic
         assert embedding.shape == (expected_dim,)
-        assert torch.any(embedding != 0.0)
-        assert torch.all(torch.isfinite(embedding))
+        assert np.any(embedding != 0.0)
+        assert np.all(np.isfinite(embedding))

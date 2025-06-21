@@ -8,7 +8,7 @@ testing, and scaling as outlined in the technical specification.
 from abc import ABC, abstractmethod
 from typing import Any
 
-import torch
+import numpy as np
 
 from .memory import ActivationResult, BridgeMemory, CognitiveMemory, SearchResult
 
@@ -17,12 +17,12 @@ class EmbeddingProvider(ABC):
     """Abstract interface for embedding models."""
 
     @abstractmethod
-    def encode(self, text: str) -> torch.Tensor:
+    def encode(self, text: str) -> np.ndarray:
         """Encode a single text into a vector representation."""
         pass
 
     @abstractmethod
-    def encode_batch(self, texts: list[str]) -> torch.Tensor:
+    def encode_batch(self, texts: list[str]) -> np.ndarray:
         """Encode multiple texts into vector representations."""
         pass
 
@@ -32,14 +32,14 @@ class VectorStorage(ABC):
 
     @abstractmethod
     def store_vector(
-        self, id: str, vector: torch.Tensor, metadata: dict[str, Any]
+        self, id: str, vector: np.ndarray, metadata: dict[str, Any]
     ) -> None:
         """Store a vector with associated metadata."""
         pass
 
     @abstractmethod
     def search_similar(
-        self, query_vector: torch.Tensor, k: int, filters: dict | None = None
+        self, query_vector: np.ndarray, k: int, filters: dict | None = None
     ) -> list[SearchResult]:
         """Search for similar vectors."""
         pass
@@ -51,7 +51,7 @@ class VectorStorage(ABC):
 
     @abstractmethod
     def update_vector(
-        self, id: str, vector: torch.Tensor, metadata: dict[str, Any]
+        self, id: str, vector: np.ndarray, metadata: dict[str, Any]
     ) -> bool:
         """Update an existing vector and its metadata."""
         pass
@@ -62,7 +62,7 @@ class ActivationEngine(ABC):
 
     @abstractmethod
     def activate_memories(
-        self, context: torch.Tensor, threshold: float, max_activations: int = 50
+        self, context: np.ndarray, threshold: float, max_activations: int = 50
     ) -> ActivationResult:
         """Activate memories based on context with spreading activation."""
         pass
@@ -73,7 +73,7 @@ class BridgeDiscovery(ABC):
 
     @abstractmethod
     def discover_bridges(
-        self, context: torch.Tensor, activated: list[CognitiveMemory], k: int = 5
+        self, context: np.ndarray, activated: list[CognitiveMemory], k: int = 5
     ) -> list[BridgeMemory]:
         """Discover bridge memories that create novel connections."""
         pass
@@ -83,7 +83,7 @@ class DimensionExtractor(ABC):
     """Abstract interface for multi-dimensional feature extraction."""
 
     @abstractmethod
-    def extract_dimensions(self, text: str) -> dict[str, torch.Tensor]:
+    def extract_dimensions(self, text: str) -> dict[str, np.ndarray]:
         """Extract emotional, temporal, contextual, and social dimensions."""
         pass
 

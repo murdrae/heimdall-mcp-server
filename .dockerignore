@@ -80,3 +80,5 @@ tox.ini
 # Project-specific
 scripts/
 setup_mcp_for_claude_code.sh
+.heimdall-mcp/
+.claude/

@@ -195,7 +195,13 @@ class TestGitHistoryLoaderMemoryLoading:
 
     def test_load_from_source_with_branch(self, git_loader, temp_git_repo):
         """Test loading with branch parameter."""
-        memories = git_loader.load_from_source(temp_git_repo, branch="master")
+        # Get the actual branch name from the repo
+        from git import Repo
+
+        repo = Repo(temp_git_repo)
+        current_branch = repo.active_branch.name
+
+        memories = git_loader.load_from_source(temp_git_repo, branch=current_branch)
 
         assert len(memories) > 0
         for memory in memories:

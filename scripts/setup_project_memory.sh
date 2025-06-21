@@ -139,11 +139,11 @@ build_image() {
     # Check if rebuild was requested or image doesn't exist
     if [[ "${FORCE_REBUILD:-}" == "true" ]]; then
         log_info "Force rebuilding Heimdall MCP Docker image: $image_name"
-        docker build -f docker/Dockerfile -t "$image_name" .
+        DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile -t "$image_name" .
         log_success "Docker image rebuilt successfully: $image_name"
     elif ! docker image inspect "$image_name" &> /dev/null; then
         log_info "Building project-specific Heimdall MCP Docker image: $image_name"
-        docker build -f docker/Dockerfile -t "$image_name" .
+        DOCKER_BUILDKIT=1 docker build -f docker/Dockerfile -t "$image_name" .
         log_success "Docker image built successfully: $image_name"
     else
         log_info "Project-specific Docker image already exists: $image_name"
@@ -332,10 +332,16 @@ case "${1:-}" in
             $COMPOSE_CMD -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
         fi
 
-        # Remove existing image
+        # Remove existing project-specific images only
         image_name="heimdall-mcp:$PROJECT_HASH"
+        log_info "Cleaning up project-specific images..."
+
+        # Remove specific project image
         docker rmi "$image_name" 2>/dev/null || true
-        log_info "Removed existing image: $image_name"
+
+        # Only remove dangling images that might be related to this project
+        # (safer than removing all dangling images)
+        log_info "Cleaned up project image: $image_name"
 
         export FORCE_REBUILD=true
         ;;

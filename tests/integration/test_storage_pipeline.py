@@ -11,8 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
-import torch
 
 from cognitive_memory.core.config import SystemConfig
 from cognitive_memory.core.memory import CognitiveMemory
@@ -149,11 +149,11 @@ class TestStoragePipelineIntegration:
         def mock_encode(text):
             # Return a vector with configured dimensions based on text hash
             hash_val = hash(text) % 1000
-            vector = torch.rand(vector_size) * 0.1 + (hash_val / 1000.0)
+            vector = np.random.rand(vector_size) * 0.1 + (hash_val / 1000.0)
             return vector
 
         encoder.encode.side_effect = mock_encode
-        encoder.encode_batch.side_effect = lambda texts: torch.stack(
+        encoder.encode_batch.side_effect = lambda texts: np.stack(
             [mock_encode(t) for t in texts]
         )
 
@@ -639,7 +639,7 @@ class TestStoragePipelineIntegration:
             # Use half the configured dimension as wrong size
             config = SystemConfig.from_env()
             wrong_size = config.embedding.embedding_dimension // 2
-            invalid_vector = torch.rand(wrong_size)  # Wrong dimension
+            invalid_vector = np.random.rand(wrong_size)  # Wrong dimension
             metadata = {"memory_id": "test", "hierarchy_level": 2}
             vector_storage.store_vector("test_invalid", invalid_vector, metadata)
         except ValueError:

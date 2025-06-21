@@ -9,7 +9,7 @@ memories and aggregates results.
 import time
 from typing import Any
 
-import torch
+import numpy as np
 from loguru import logger
 
 from ..core.interfaces import ActivationEngine, BridgeDiscovery, MemoryStorage
@@ -145,7 +145,7 @@ class ContextualRetrieval:
 
     def retrieve_memories(
         self,
-        query_context: torch.Tensor,
+        query_context: np.ndarray,
         max_core: int = 10,
         max_peripheral: int = 15,
         max_bridges: int = 5,
@@ -272,7 +272,7 @@ class ContextualRetrieval:
         self,
         activated_memories: list[CognitiveMemory],
         similarity_memories: list[CognitiveMemory],
-        query_context: torch.Tensor,
+        query_context: np.ndarray,
         max_core: int,
         max_peripheral: int,
     ) -> tuple[list[CognitiveMemory], list[CognitiveMemory]]:
@@ -349,9 +349,7 @@ class ContextualRetrieval:
 
         return core_memories, peripheral_memories
 
-    def _compute_cosine_similarity(
-        self, vec1: torch.Tensor, vec2: torch.Tensor
-    ) -> float:
+    def _compute_cosine_similarity(self, vec1: np.ndarray, vec2: np.ndarray) -> float:
         """
         Compute cosine similarity between two vectors.
 
@@ -363,20 +361,18 @@ class ContextualRetrieval:
             Cosine similarity score (0.0 to 1.0)
         """
         try:
-            # Ensure tensors are on the same device and dtype
-            if vec1.device != vec2.device:
-                vec2 = vec2.to(vec1.device)
+            # Ensure arrays have compatible dtypes
             if vec1.dtype != vec2.dtype:
-                vec2 = vec2.to(vec1.dtype)
+                vec2 = vec2.astype(vec1.dtype)
 
             # Flatten vectors for dot product
             vec1_flat = vec1.flatten()
             vec2_flat = vec2.flatten()
 
             # Compute cosine similarity
-            dot_product = torch.dot(vec1_flat, vec2_flat)
-            norm1 = torch.norm(vec1_flat)
-            norm2 = torch.norm(vec2_flat)
+            dot_product = np.dot(vec1_flat, vec2_flat)
+            norm1 = np.linalg.norm(vec1_flat)
+            norm2 = np.linalg.norm(vec2_flat)
 
             if norm1 == 0 or norm2 == 0:
                 return 0.0
@@ -384,9 +380,9 @@ class ContextualRetrieval:
             similarity = dot_product / (norm1 * norm2)
 
             # Clamp to [0, 1] range and handle numerical issues
-            similarity = torch.clamp(similarity, 0.0, 1.0)
+            similarity = np.clip(similarity, 0.0, 1.0)
 
-            return float(similarity.item())
+            return float(similarity)
 
         except Exception as e:
             logger.warning("Cosine similarity computation failed", error=str(e))

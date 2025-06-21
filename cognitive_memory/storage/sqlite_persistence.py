@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import torch
+import numpy as np
 from loguru import logger
 
 from ..core.interfaces import ConnectionGraph, MemoryStorage
@@ -425,7 +425,7 @@ class MemoryMetadataStore(MemoryStorage):
         if "cognitive_embedding" in row.keys() and row["cognitive_embedding"]:
             try:
                 embedding_list = json.loads(row["cognitive_embedding"])
-                cognitive_embedding = torch.tensor(embedding_list)
+                cognitive_embedding = np.array(embedding_list)
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning(
                     f"Failed to deserialize cognitive embedding for memory {row['id']}: {e}"
@@ -705,7 +705,7 @@ class ConnectionGraphStore(ConnectionGraph):
         if "cognitive_embedding" in row.keys() and row["cognitive_embedding"]:
             try:
                 embedding_list = json.loads(row["cognitive_embedding"])
-                cognitive_embedding = torch.tensor(embedding_list)
+                cognitive_embedding = np.array(embedding_list)
             except (json.JSONDecodeError, ValueError) as e:
                 logger.warning(
                     f"Failed to deserialize cognitive embedding for memory {row['id']}: {e}"
