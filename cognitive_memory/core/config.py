@@ -6,12 +6,44 @@ variables and .env files as specified in the technical architecture.
 """
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from loguru import logger
+
+
+def detect_project_config() -> dict[str, str] | None:
+    """
+    Detect project-specific configuration from Docker Compose file.
+
+    Looks for .heimdall-mcp/docker-compose.yml in current directory
+    and extracts Qdrant port mapping if found.
+
+    Returns:
+        dict with project config overrides, or None if no project setup found
+    """
+    compose_file = Path(".heimdall-mcp/docker-compose.yml")
+    if not compose_file.exists():
+        return None
+
+    try:
+        content = compose_file.read_text()
+
+        # Extract port mapping: "6631:6333" -> external port 6631
+        port_match = re.search(r'"(\d+):6333"', content)
+        if port_match:
+            external_port = port_match.group(1)
+            project_config = {"QDRANT_URL": f"http://localhost:{external_port}"}
+            logger.debug(f"Detected project-specific Qdrant port: {external_port}")
+            return project_config
+
+    except Exception as e:
+        logger.warning(f"Failed to parse project Docker Compose: {e}")
+
+    return None
 
 
 @dataclass
@@ -272,6 +304,15 @@ class SystemConfig:
             default_env = Path(".env")
             if default_env.exists():
                 load_dotenv(default_env)
+
+        # Detect project-specific configuration
+        project_config = detect_project_config()
+        if project_config:
+            # Temporarily set project config in environment (lower precedence than existing env vars)
+            for key, value in project_config.items():
+                if key not in os.environ:  # Only set if not already defined
+                    os.environ[key] = value
+                    logger.debug(f"Using project-specific config: {key}={value}")
 
         return cls(
             qdrant=QdrantConfig.from_env(),

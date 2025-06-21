@@ -31,13 +31,27 @@ while ! curl -s "$QDRANT_URL/health" > /dev/null 2>&1; do
 done
 echo "✅ Qdrant is available"
 
-# Create data directories
-mkdir -p /app/data/logs
-mkdir -p /app/data/backups
+# Create data directories - fail if we can't
+if ! mkdir -p /app/data/logs; then
+    echo "❌ Failed to create /app/data/logs - check volume permissions"
+    exit 1
+fi
+
+if ! mkdir -p /app/data/backups; then
+    echo "❌ Failed to create /app/data/backups - check volume permissions"
+    exit 1
+fi
 
 # Create directories expected by health check
-mkdir -p /app/data/qdrant
-mkdir -p /app/data/models
+if ! mkdir -p /app/data/qdrant; then
+    echo "❌ Failed to create /app/data/qdrant - check volume permissions"
+    exit 1
+fi
+
+if ! mkdir -p /app/data/models; then
+    echo "❌ Failed to create /app/data/models - check volume permissions"
+    exit 1
+fi
 
 # Create compatibility symlinks for health check
 cd /app

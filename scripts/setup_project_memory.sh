@@ -93,6 +93,8 @@ create_compose_file() {
 
     # Create data directory structure
     mkdir -p "$PROJECT_DATA_DIR"/{qdrant,cognitive,logs,models}
+    # Create heimdall directory structure (mounted as /app/data in container)
+    mkdir -p "$PROJECT_DATA_DIR"/heimdall/{logs,backups,qdrant,models}
 
     # Only set permissions on new/empty directories to avoid conflicts with running containers
     if [ ! -f "$PROJECT_DATA_DIR/cognitive/cognitive_memory.db" ]; then
@@ -168,27 +170,44 @@ start_containers() {
 wait_for_health() {
     log_info "Waiting for services to become healthy..."
 
-    local max_wait=60
+    # First check Qdrant
+    log_info "Checking Qdrant health..."
+    local max_wait=30
     local elapsed=0
 
     while [ $elapsed -lt $max_wait ]; do
-        # Check Qdrant health
         if curl -s -f "http://localhost:$QDRANT_PORT/" > /dev/null 2>&1; then
             log_success "QDRANT is healthy"
-            # For stdio mode, just check if container is running and responsive
-            if docker exec "$CONTAINER_PREFIX" memory_system doctor --json > /dev/null 2>&1; then
-                log_success "All services are healthy"
-                return 0
-            fi
+            break
         fi
+        echo -n "."
+        sleep 2
+        elapsed=$((elapsed + 2))
+    done
 
+    if [ $elapsed -ge $max_wait ]; then
+        echo ""
+        log_error "Qdrant failed to become healthy within $max_wait seconds"
+        return 1
+    fi
+
+    # Then check our container
+    log_info "Checking Heimdall MCP container health..."
+    elapsed=0
+
+    while [ $elapsed -lt $max_wait ]; do
+        if docker exec "$CONTAINER_PREFIX" memory_system doctor --json > /dev/null 2>&1; then
+            log_success "Heimdall MCP container is healthy"
+            log_success "All services are healthy"
+            return 0
+        fi
         echo -n "."
         sleep 2
         elapsed=$((elapsed + 2))
     done
 
     echo ""
-    log_error "Services failed to become healthy within $max_wait seconds"
+    log_error "Heimdall MCP container failed to become healthy within $max_wait seconds"
     return 1
 }
 

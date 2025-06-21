@@ -48,6 +48,10 @@ print('✅ SentenceTransformer model downloaded successfully')"
 RUN python -m spacy download en_core_web_md && \
     echo "✅ spaCy model downloaded successfully"
 
+# Pre-download NLTK data for NRCLex to avoid runtime downloads
+RUN python -c "import nltk; nltk.download('punkt_tab')" && \
+    echo "✅ NLTK punkt_tab data downloaded successfully"
+
 # ============================================================================
 # Runtime Stage: Minimal production image
 # ============================================================================
@@ -66,8 +70,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PATH="/home/cognitive/.local/bin:$PATH"
 
-# Create application directories
-RUN mkdir -p /app/data /app/logs /app/models
+# Application directories will be created by entrypoint with proper user permissions
 
 # Switch to application directory
 WORKDIR /app
@@ -85,13 +88,11 @@ COPY --from=builder /app/models /app/models
 # Just copy the files - permissions will be handled by user mapping
 # No need for complex ownership changes
 
-# Copy entrypoint script
-COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Copy entrypoint script with execute permissions
+COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
 
-# Create health check script
-COPY docker/healthcheck.sh /healthcheck.sh
-RUN chmod +x /healthcheck.sh
+# Create health check script with execute permissions
+COPY --chmod=755 docker/healthcheck.sh /healthcheck.sh
 
 # Set up environment variables (consistent with .env.template)
 ENV QDRANT_URL=http://qdrant:6333
