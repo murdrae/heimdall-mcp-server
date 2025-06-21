@@ -51,7 +51,9 @@ FROM python:3.13-slim AS runtime
 RUN apt-get update && apt-get install -y \
     curl \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /app/models /app/data \
+    && chmod 755 /app/models /app/data
 
 WORKDIR /app
 

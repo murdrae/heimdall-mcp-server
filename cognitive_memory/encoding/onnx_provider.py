@@ -7,6 +7,7 @@ stack for significant memory and dependency reduction.
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -43,10 +44,20 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
         """
         self.embedding_config = EmbeddingConfig.from_env()
 
-        # Set default paths
-        self.model_path = Path(model_path or "./data/models/all-MiniLM-L6-v2.onnx")
-        self.tokenizer_path = Path(tokenizer_path or "./data/models/tokenizer")
-        self.config_path = Path(config_path or "./data/models/model_config.json")
+        # Set default paths, checking environment variables first
+        default_model_path = os.getenv(
+            "ONNX_MODEL_PATH", "./data/models/all-MiniLM-L6-v2.onnx"
+        )
+        default_tokenizer_path = os.getenv(
+            "ONNX_TOKENIZER_PATH", "./data/models/tokenizer"
+        )
+        default_config_path = os.getenv(
+            "ONNX_CONFIG_PATH", "./data/models/model_config.json"
+        )
+
+        self.model_path = Path(model_path or default_model_path)
+        self.tokenizer_path = Path(tokenizer_path or default_tokenizer_path)
+        self.config_path = Path(config_path or default_config_path)
 
         logger.info(
             "Initializing ONNX embedding provider",

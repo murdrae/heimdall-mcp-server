@@ -198,10 +198,9 @@ class HealthChecker:
     ) -> HealthCheck:
         """Check required Python packages."""
         required_packages = [
-            "torch",
-            "sentence_transformers",
+            "onnxruntime",
+            "tokenizers",
             "qdrant_client",
-            "transformers",
             "numpy",
             "loguru",
             "dotenv",  # python-dotenv package imports as 'dotenv'
@@ -631,31 +630,30 @@ class HealthChecker:
         verbose: bool = False,
         fix_issues: bool = False,
     ) -> HealthCheck:
-        """Check ML model availability and download if needed."""
+        """Check ONNX model availability and functionality."""
         try:
-            from sentence_transformers import SentenceTransformer
-
-            model_name = "all-MiniLM-L6-v2"
+            from cognitive_memory.encoding.onnx_provider import ONNXEmbeddingProvider
 
             try:
-                # Try to load the model (this will download if not present)
-                model = SentenceTransformer(model_name)
+                # Try to load the ONNX model
+                provider = ONNXEmbeddingProvider()
 
                 # Test encoding
-                test_encoding = model.encode("test sentence")
+                test_encoding = provider.encode("test sentence")
 
                 details = None
                 if verbose:
                     details = {
-                        "model_name": model_name,
+                        "model_name": "all-MiniLM-L6-v2",
                         "embedding_dimension": len(test_encoding),
-                        "model_path": str(model._modules["0"].tokenizer.name_or_path),
+                        "model_format": "ONNX",
+                        "model_path": str(provider.model_path),
                     }
 
                 return HealthCheck(
                     name="Model Availability",
                     status=HealthResult.HEALTHY,
-                    message=f"Model {model_name} is available and working",
+                    message="ONNX model is available and working",
                     details=details,
                 )
 
@@ -663,14 +661,14 @@ class HealthChecker:
                 return HealthCheck(
                     name="Model Availability",
                     status=HealthResult.CRITICAL,
-                    message=f"Model loading failed: {str(model_error)}",
+                    message=f"ONNX model loading failed: {str(model_error)}",
                 )
 
-        except ImportError:
+        except ImportError as import_error:
             return HealthCheck(
                 name="Model Availability",
                 status=HealthResult.CRITICAL,
-                message="sentence-transformers package not available",
+                message=f"ONNX provider not available: {str(import_error)}",
             )
 
     def _check_network_connectivity(
@@ -726,36 +724,32 @@ class HealthChecker:
         verbose: bool = False,
         fix_issues: bool = False,
     ) -> HealthCheck:
-        """Check basic performance baseline."""
+        """Check basic performance baseline using ONNX provider."""
         try:
             start_time = time.time()
 
-            # Simple performance test: encoding speed
-            from sentence_transformers import SentenceTransformer
+            # Simple performance test: encoding speed with ONNX
+            from cognitive_memory.encoding.onnx_provider import ONNXEmbeddingProvider
 
-            model = SentenceTransformer("all-MiniLM-L6-v2")
+            provider = ONNXEmbeddingProvider()
             test_texts = ["test sentence"] * 10
 
             encoding_start = time.time()
-            embeddings = model.encode(test_texts)
+            embeddings = provider.encode_batch(test_texts)
             encoding_time = time.time() - encoding_start
 
             total_time = time.time() - start_time
 
-            # Performance thresholds
-            if encoding_time > 5.0:
+            # Performance thresholds (ONNX should be faster)
+            if encoding_time > 3.0:
                 status = HealthResult.WARNING
-                message = (
-                    f"Slow encoding performance: {encoding_time:.2f}s for 10 sentences"
-                )
-            elif encoding_time > 10.0:
+                message = f"Slow ONNX encoding performance: {encoding_time:.2f}s for 10 sentences"
+            elif encoding_time > 8.0:
                 status = HealthResult.CRITICAL
-                message = f"Very slow encoding performance: {encoding_time:.2f}s for 10 sentences"
+                message = f"Very slow ONNX encoding performance: {encoding_time:.2f}s for 10 sentences"
             else:
                 status = HealthResult.HEALTHY
-                message = (
-                    f"Good encoding performance: {encoding_time:.2f}s for 10 sentences"
-                )
+                message = f"Good ONNX encoding performance: {encoding_time:.2f}s for 10 sentences"
 
             details = None
             if verbose:
@@ -764,6 +758,7 @@ class HealthChecker:
                     "total_time_seconds": round(total_time, 3),
                     "sentences_per_second": round(10 / encoding_time, 1),
                     "embedding_shape": list(embeddings.shape),
+                    "provider": "ONNX",
                 }
 
             return HealthCheck(
@@ -777,7 +772,7 @@ class HealthChecker:
             return HealthCheck(
                 name="Performance Baseline",
                 status=HealthResult.WARNING,
-                message=f"Cannot run performance test: {str(e)}",
+                message=f"Cannot run ONNX performance test: {str(e)}",
             )
 
     def _generate_recommendations(self, checks: list[HealthCheck]) -> list[str]:

@@ -50,6 +50,11 @@ services:
       - BRIDGE_DISCOVERY_K=5
       - MAX_ACTIVATIONS=50
 
+      # ONNX Model paths
+      - ONNX_MODEL_PATH=${PROJECT_PATH}/data/models/all-MiniLM-L6-v2.onnx
+      - ONNX_TOKENIZER_PATH=${PROJECT_PATH}/data/models/tokenizer
+      - ONNX_CONFIG_PATH=${PROJECT_PATH}/data/models/model_config.json
+
       # System configuration
       - PYTHONPATH=/app
       - LOG_LEVEL=INFO

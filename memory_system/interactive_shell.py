@@ -5,6 +5,7 @@ This module provides an enhanced interactive REPL for the cognitive memory syste
 with rich formatting, command completion, and intuitive cognitive operations.
 """
 
+import sys
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
@@ -231,7 +232,9 @@ class InteractiveShell:
 
     def run(self) -> None:
         """Run the interactive shell."""
-        self._show_welcome()
+        # Only show welcome message if running in an interactive terminal
+        if sys.stdin.isatty():
+            self._show_welcome()
 
         while True:
             try:

@@ -22,6 +22,7 @@ from .core.interfaces import (
     MemoryStorage,
     VectorStorage,
 )
+from .core.logging_setup import setup_logging
 
 
 class InitializationError(Exception):
@@ -59,6 +60,9 @@ def create_default_system(config: SystemConfig | None = None) -> CognitiveMemory
             config = SystemConfig.from_env()
         except Exception as e:
             raise InitializationError(f"Failed to load configuration: {e}") from e
+
+    # Setup logging based on configuration
+    setup_logging(config.logging)
 
     try:
         # Import factory functions
