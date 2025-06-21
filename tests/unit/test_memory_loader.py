@@ -453,7 +453,9 @@ def test_function():
         memory = markdown_loader._create_memory_from_chunk(chunk_data, "/test.md")
 
         assert isinstance(memory, CognitiveMemory)
-        assert memory.content == chunk_data["content"]
+        # Content now includes file path prefix
+        expected_content = f"/test.md\n\n{chunk_data['content']}"
+        assert memory.content == expected_content
         assert memory.hierarchy_level in [0, 1, 2]
         assert memory.strength == 1.0
         assert memory.metadata["title"] == "Test Header"

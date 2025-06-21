@@ -7,7 +7,6 @@ markdown chunks, including content assembly and metadata enrichment.
 
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import spacy
@@ -76,9 +75,14 @@ class MemoryFactory:
             content, chunk_data, linguistic_features
         )
 
-        # Check token limits
+        # Check token limits (exempt git commits which have inherent historical value)
         token_count = self.content_analyzer.count_tokens(content)
-        if token_count < self.config.min_memory_tokens:
+        loader_type = chunk_data.get("loader_type", "")
+        is_git_commit = loader_type == "git_commit" or "git_commit" in chunk_data.get(
+            "chunk_type", ""
+        )
+
+        if not is_git_commit and token_count < self.config.min_memory_tokens:
             logger.debug(
                 f"Skipping memory '{title}' with only {token_count} tokens (min: {self.config.min_memory_tokens})"
             )
@@ -282,14 +286,14 @@ class MemoryFactory:
         return truncated_text.strip() + "..." if truncated_text != content else content
 
     def _add_document_name_prefix(self, content: str, source_path: str) -> str:
-        """Add document name as first line of memory content."""
-        # Extract clean document name from path
-        doc_name = Path(source_path).stem.replace("_", " ").replace("-", " ").title()
+        """Add document path as first line of memory content."""
+        # Use the full file path instead of just the document name
+        file_path = source_path
 
-        # Check if document name is already at the start of content
+        # Check if file path is already at the start of content
         content_lines = content.split("\n")
-        if content_lines and doc_name.lower() in content_lines[0].lower():
+        if content_lines and file_path in content_lines[0]:
             return content
 
-        # Add document name as first line
-        return f"Document: {doc_name}\n\n{content}"
+        # Add file path as first line
+        return f"{file_path}\n\n{content}"
