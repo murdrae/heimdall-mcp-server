@@ -1,160 +1,174 @@
-# Heimdall MCP Server - Cognitive Memory Across Coding Sessions
+# Heimdall MCP Server - Your AI Coding Assistant's Long-Term Memory
 
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](hhttps://github.com/lcbcFoo/heimdall-mcp-server/blob/main/README.mdttps://opensource.org/licenses/Apache-2.0)
 [![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://www.docker.com/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io/)
 
+**The Problem:** Your AI coding assistant has short-lived memory. Every chat session starts from a blank slate.
+
+**The Solution:** Heimdall gives your LLM a persistent, growing, cognitive memory of your specific codebase, lessons and memories carry over time.
+
 https://github.com/user-attachments/assets/5a556433-97c2-4d57-92cc-3813ac23ff5b
 
-A tool that lets your LLM remember things between conversations - your project patterns, solutions you've found, and insights from past sessions.
+## Key Features
 
-## **The problem it solves**
-Your coding assistant forgets everything when you close the chat. Every new session starts from zero, even if you discussed the same codebase yesterday.
+- 🧠 **Context-Rich Memory**: Heimdall learns from your documentation, session insights, and development history, allowing your LLM to recall specific solutions and architectural patterns across conversations.
+- 📚 **Git-Aware Context**: It indexes your project's entire git history, understanding not just what changed, but also who changed it, when, and why (via commit messages).
+- 🔗 **Isolated & Organized**: Each project gets its own isolated memory space, ensuring that context from one project doesn't leak into another.
+- ⚡ **Efficient Integration**: Built on the Model Context Protocol (MCP), it provides a standardized, low-overhead way for LLMs to access this powerful memory.
 
-## **What it gives you**
-- Your LLM remembers project-specific knowledge across sessions
-- Stores complete git commit history (what changed, when, why, by whom)
-- Stores insights and solutions you discover during coding sessions
-- Connects related concepts it has learned about your codebase
+## 🚀 Getting Started
 
-This means instead of re-explaining your system every session or having hundreds of tool calls for context, your LLM remembers how it works and what problems you've solved before.
+**Prerequisites**: Docker and Docker Compose must be installed and running.
 
-## **What it still requires from you**
+Heimdall is designed to be set up on a per-project basis. Run these commands from the root directory of your code repository.
 
-This is not magic, it still depends on good documents, meaningful git commits and a good CLAUDE.md (or similar rules) encouraging LLM to use the MCP.
-
-Also, this tool is not meant to keep track of development progress or project management, it is meant to help give LLM context faster and avoid
-work and discussions replication.
-
-Tips:
-
-- Place Markdown architecture documents, guidelines, decisions, etc in `.heimdall-mcp` (or symlink to them)
-- Instruct LLM to use meaningful git messages
-- See CLAUDE.md for Heimdall MCP Server related rules
-
-## Easy Setup
-
-**Important**: Run this setup script from within your project repository - it creates a project-specific MCP server.
+### 1. Navigate to Your Project
 
 ```bash
-# Navigate to your project first
 cd /path/to/your/project
-
-# Run setup (creates isolated memory for THIS project only)
-/path/to/heimdall-mcp-mcp/setup_claude_code_mcp.sh
-# Save MD documents you want to feed into the cognitive system in .heimdall-mcp
-# You can symlink to some other directory you normally use, like docs/arch-docs
-# Then load the MD files and git history into the cognitive system:
-/path/to/heimdall-mcp-mcp/scripts/load_project_content.sh
 ```
 
-This automatically configures:
-- Project-isolated Docker containers with Qdrant + cognitive system
- - Meaning: you have isolated memories on different projects. This is why calling the setup scripts from proper place is crucial.
-- MCP server integration for Claude Code (project-specific)
-  - If you are not integrating to Claude Code, just use `scripts/setup_project_memory.sh*`
-- Loads the git history and relevant docs you places in .heimdall-mcp and transform them into memories.
+### 2. Run the Setup Script
 
-## MCP Tools Available
+This command deploys project-isolated Docker containers for the Heimdall server and its Qdrant vector database.
 
-Your LLM gets access to these 4 memory tools via MCP protocol:
+```bash
+# For integration with Claude Code, just run:
+/path/to/heimdall-mcp-server/setup_claude_code_mcp.sh
 
-**`store_memory`** - Store experiences and insights
-```
-# LLM calls this MCP tool:
-store_memory({
-  text: "Found that React components re-render unnecessarily when using object destructuring in useEffect dependencies",
-  context: {
-    hierarchy_level: 1,
-    importance_score: 0.8,
-    tags: ["react", "performance"]
-  }
-})
+# For a generic setup with other models
+# /path/to/heimdall-mcp-server/scripts/setup_project_memory.sh
+# This will put the MCP server docker up, you will then need to configure the Coding Assistant you are using.
 ```
 
-**`recall_memories`** - Semantic search with rich context
-```
-# LLM calls this MCP tool:
-recall_memories({
-  query: "authentication timeout bug",
-  types: ["core", "peripheral"],
-  max_results: 5
-})
-# Returns: JSON with memories categorized by type, similarity scores, metadata
-```
+### 3. Load Project Knowledge
 
-**`session_lessons`** - Record key learnings for future sessions
-```
-# LLM calls this MCP tool:
-session_lessons({
-  lesson_content: "When debugging API issues, always check network tab first, then API logs, then client error handling",
-  lesson_type: "pattern",
-  importance: "high"
-})
+Populate the `.heimdall-mcp/` directory (created by the above scripts) with your project's documentation (e.g., Markdown files). You can also create symbolic links to an existing docs folder. Then, run the loading script.
+
+```Bash
+# Example: Symlink your existing architecture docs
+# ln -s docs/architecture .heimdall-mcp/arch-docs
+
+# This script indexes your docs and the full git history
+/path/to/heimdall-mcp-server/scripts/load_project_content.sh
 ```
 
-**`memory_status`** - System health and statistics
+Your project's memory is now active and ready for your LLM.
+
+## ⚙️ How It Works Under the Hood
+
+Heimdall extracts unstructured knowledge from your documentation and structured data from your git history. This information is vectorized and stored in a Qdrant database. The LLM can then query this database using a simple set of tools to retrieve relevant, context-aware information.
+
+```mermaid
+graph TD
+    %% Main client outside the server architecture
+    AI_Assistant["🤖 AI Assistant (e.g., Claude)"]
+
+    %% Top-level subgraph for the entire server
+    subgraph Heimdall MCP Server Architecture
+
+        %% 1. Application Interface Layer
+        subgraph Application Interface
+            MCP_Server["MCP Server (interfaces/mcp_server.py)"]
+            CLI["CognitiveCLI (interfaces/cli.py)"]
+            style MCP_Server fill:#b2ebf2,stroke:#00acc1,color:#212121
+            style CLI fill:#b2ebf2,stroke:#00acc1,color:#212121
+        end
+
+        %% 2. Core Logic Engine
+        style Cognitive_System fill:#ccff90,stroke:#689f38,color:#212121
+        Cognitive_System["🧠 CognitiveSystem (core/cognitive_system.py)<br/>"]
+
+        %% 3. Storage Layer (components side-by-side)
+        subgraph Storage Layer
+            Qdrant["🗂️ Qdrant Storage<br/><hr/>- Vector Similarity Search<br/>- Multi-dimensional Encoding"]
+            SQLite["🗃️ SQLite Persistence<br/><hr/>- Memory Metadata & Connections<br/>- Caching & Retrieval Stats"]
+        end
+
+        %% 4. Output Formatting
+        style Formatted_Response fill:#fff9c4,stroke:#fbc02d,color:#212121
+        Formatted_Response["📦 Formatted MCP Response<br/><i>{ core, peripheral, bridge }</i>"]
+
+        %% Define internal flow
+        MCP_Server -- calls --> CLI
+        CLI -- calls --> Cognitive_System
+
+        Cognitive_System -- "1\. Vector search for candidates" --> Qdrant
+        Cognitive_System -- "2\. Hydrates with metadata" --> SQLite
+        Cognitive_System -- "3\. Performs Bridge Discovery" --> Formatted_Response
+
+    end
+
+    %% Define overall request/response flow between client and server
+    AI_Assistant -- "recall_memorie" --> MCP_Server
+    Formatted_Response -- "Returns structured memories" --> AI_Assistant
+
+    %% --- Styling Block ---
+
+    %% 1. Node Styling using Class Definitions
+    classDef aiClientStyle fill:#dbeafe,stroke:#3b82f6,color:#1e3a8a
+    classDef interfaceNodeStyle fill:#cffafe,stroke:#22d3ee,color:#0e7490
+    classDef coreLogicStyle fill:#dcfce7,stroke:#4ade80,color:#166534
+    classDef qdrantNodeStyle fill:#ede9fe,stroke:#a78bfa,color:#5b21b6
+    classDef sqliteNodeStyle fill:#fee2e2,stroke:#f87171,color:#991b1b
+    classDef responseNodeStyle fill:#fef9c3,stroke:#facc15,color:#854d0e
+
+    %% 2. Assigning Classes to Nodes
+    class AI_Assistant aiClientStyle
+    class MCP_Server,CLI interfaceNodeStyle
+    class Cognitive_System coreLogicStyle
+    class Qdrant qdrantNodeStyle
+    class SQLite sqliteNodeStyle
+    class Formatted_Response responseNodeStyle
+
+    %% 3. Link (Arrow) Styling
+    %% Note: Styling edge label text is not reliably supported. This styles the arrow lines themselves.
+    %% Primary request/response flow (links 0 and 1)
+    linkStyle 0,1 stroke:#3b82f6,stroke-width:2px
+    %% Internal application calls (links 2 and 3)
+    linkStyle 2,3 stroke:#22d3ee,stroke-width:2px,stroke-dasharray: 5 5
+    %% Internal data access calls (links 4 and 5)
+    linkStyle 4,5 stroke:#9ca3af,stroke-width:2px
+    %% Final processing call (link 6)
+    linkStyle 6 stroke:#4ade80,stroke-width:2px
+
 ```
-# LLM calls this MCP tool:
-memory_status({detailed: true})
-# Returns: JSON with memory counts, storage stats, system health
-```
 
-## What the LLM learns to remember
+## LLM Tool Reference
 
-- **Commit history** from git (what files changed, commit messages, authors, timestamps)
-- **Session insights** stored via MCP calls during conversations
-- **Documentation** from markdown files in your repo
-- **Debugging approaches** that worked or failed
-- **Context** about ongoing work and decisions
+You can instruct your LLM to use the following four tools to interact with its memory:
 
-**Example conversation:**
-```
-You: "Having auth timeout issues again"
+| Tool              | Description                                                          |
+| :---------------- | :------------------------------------------------------------------- |
+| `store_memory`    | Stores a new piece of information, such as an insight or a solution. |
+| `recall_memories` | Performs a semantic search for relevant memories based on a query.   |
+| `session_lessons` | Records a key takeaway from the current session for future use.      |
+| `memory_status`   | Checks the health and statistics of the memory system.               |
 
-LLM: [calls recall_memories("auth timeout")]
-     "Based on stored memories:
-     • Found commit 3cdc88f by John Doe: 'Fix Redis timeout by increasing pool size'
-     • Previous session lesson: 'Redis timeouts correlate with pool exhaustion'
-     • Commit modified auth/config.py and auth/middleware.py with +15/-3 lines
-     • Check connection pool settings in auth/config.py"
-```
 
-## How It Works Under the Hood
+## 💡 Best Practices
 
-**For Developers Who Want to Know**:
-We extract memories from project docs and git commit history, encode them as vectors, and store them in Qdrant with smart retrieval algorithms.
+To maximize the effectiveness of Heimdall:
 
-```
-Git Commits → Direct Storage → Multi-dimensional Memory
-     ↓                                      ↓
-Session Insights → Hierarchical Storage → Context-Aware Recall
-                         ↓
-               Cross-Reference Discovery
-```
+  * **Provide Quality Documentation:** The more detailed your markdown files in `.heimdall-mcp/`, the better the context. Think architecture decision records, style guides, and API documentation.
+  * **Don't mix progress status documents:** Avoid feeding progress or status documents into the memory system. Prefer using meaningful git commit messages. The system deals better with ranking newer commits than identifying outdated docs.
+  * **Maintain Good Git Hygiene:** Write clear and descriptive commit messages. A message like `feat(api): add user authentication endpoint` is far more valuable than `more stuff`.
+  * **Guide Your Assistant:** Use a system prompt (like a `CLAUDE.md` file) to instruct your LLM on *how* and *when* to use the available memory tools.
 
-**Technology Stack**:
-- **Vector Storage**: Qdrant with project-specific collections
-- **Embeddings**: Sentence-BERT + git commit content
-- **Memory Systems**: Session persistence + git commit storage
-- **Integration**: MCP protocol for seamless Claude Code integration
+## Technology Stack:
 
-**What Makes It Different**:
-- **Git-Aware**: Stores your actual commit history with full context
-- **Project-Isolated**: Each repo gets its own memory space
-- **Context-Rich**: Remembers not just what, but when, why, and how
-- **Historical Access**: Direct access to development decisions and file evolution
+- Vector Storage: Qdrant
+- Sentiment analysis: NRCLex emotion lexicon
+- Semantic analysis: spaCy
+- Integration: Model Context Protocol (MCP)
 
-## Requirements
+## 🗺️ Roadmap
 
-- Docker
-
-## Roadmap
-
-- Git post-commit hooks for automatic pattern updates
-- Auto-detect new documents in shared docs directory
+  * [ ] Git `post-commit` hook for automatic, real-time memory updates.
+  * [ ] Watcher to auto-detect and load new documents in the `.heimdall-mcp` directory.
 
 ## License
 
-Apache 2.0
+This project is licensed under the Apache 2.0 License.
