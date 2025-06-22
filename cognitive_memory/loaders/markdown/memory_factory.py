@@ -112,6 +112,7 @@ class MemoryFactory:
             modified_date=file_modified_date,
             source_date=file_modified_date,  # For markdown files, source date is the file modification date
             metadata={
+                "source_type": "documentation",  # For deterministic content-type decay detection
                 "title": title,
                 "source_path": source_path,
                 "header_level": chunk_data.get("header_level", 0),

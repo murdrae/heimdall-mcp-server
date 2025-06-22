@@ -241,6 +241,7 @@ class CommitLoader(MemoryLoader):
             modified_date=commit.timestamp,
             source_date=commit.timestamp,
             metadata={
+                "source_type": "git_commit",  # For deterministic content-type decay detection
                 "type": "git_commit",
                 "source_path": source_path,
                 "commit_hash": commit.hash,

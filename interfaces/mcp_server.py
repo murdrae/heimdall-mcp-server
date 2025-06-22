@@ -315,6 +315,10 @@ class CognitiveMemoryMCPServer:
             ]
 
         try:
+            # Add source_type for deterministic content-type decay detection
+            if "source_type" not in context:
+                context["source_type"] = "store_memory"
+
             # Store the experience using CLI wrapper
             success = self.cli.store_experience(text=text, context=context)
 
@@ -421,6 +425,7 @@ class CognitiveMemoryMCPServer:
             }
 
             context = {
+                "source_type": "session_lesson",  # For deterministic content-type decay detection
                 "hierarchy_level": 1,  # Context level for lessons
                 "memory_type": "semantic",  # Lessons are semantic knowledge
                 "importance_score": importance_scores.get(importance, 0.6),

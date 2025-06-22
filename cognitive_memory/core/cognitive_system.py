@@ -112,6 +112,14 @@ class CognitiveMemorySystem(CognitiveSystem):
             else:
                 hierarchy_level = self._determine_hierarchy_level(text)
 
+            # Prepare metadata with source_type for deterministic content-type decay detection
+            memory_metadata = {}
+            if context:
+                memory_metadata.update(context)
+            # Set source_type based on context or default to manual_entry
+            if "source_type" not in memory_metadata:
+                memory_metadata["source_type"] = "manual_entry"
+
             # Create cognitive memory object
             memory = CognitiveMemory(
                 id=memory_id,
@@ -122,6 +130,7 @@ class CognitiveMemorySystem(CognitiveSystem):
                 timestamp=current_time,
                 strength=1.0,
                 access_count=0,
+                metadata=memory_metadata,
             )
 
             # Attach the embedding to the memory object

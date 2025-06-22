@@ -601,3 +601,241 @@ class TestDualMemorySystem:
 
         finally:
             Path(db_path).unlink(missing_ok=True)
+
+
+class TestContentTypeDecay:
+    """Test content-type aware decay functionality."""
+
+    @pytest.fixture
+    def config(self):
+        """Create test configuration with content-type decay profiles."""
+        from cognitive_memory.core.config import CognitiveConfig
+
+        config = CognitiveConfig()
+        # Ensure decay profiles are set correctly
+        config.decay_profiles = {
+            "git_commit": 1.2,  # Faster decay
+            "session_lesson": 0.2,  # Very slow decay
+            "store_memory": 1.0,  # Normal decay
+            "documentation": 0.2,  # Slow decay
+            "manual_entry": 1.0,  # Normal decay
+            "L0_concept": 0.3,  # Fallback - slow
+            "L1_context": 0.8,  # Fallback - moderate
+            "L2_episode": 1.0,  # Fallback - normal
+        }
+        return config
+
+    @pytest.fixture
+    def episodic_store_with_config(self, config):
+        """Create episodic store with content-type decay configuration."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+            db_path = tmp.name
+
+        db_manager = DatabaseManager(db_path)
+        store = EpisodicMemoryStore(db_manager, activity_tracker=None, config=config)
+
+        yield store
+
+        Path(db_path).unlink(missing_ok=True)
+
+    def test_content_type_detection_git_commit(self, config):
+        """Test content-type detection for git commits."""
+        memory = CognitiveMemory(
+            id="test_git_001",
+            content="Fix critical bug in authentication module",
+            metadata={"source_type": "git_commit", "commit_hash": "abc123"},
+        )
+
+        content_type = config.detect_content_type(memory)
+        assert content_type == "git_commit"
+
+    def test_content_type_detection_session_lesson(self, config):
+        """Test content-type detection for session lessons."""
+        memory = CognitiveMemory(
+            id="test_lesson_001",
+            content="Key insight: Always validate user input before database operations",
+            metadata={"source_type": "session_lesson", "lesson_type": "discovery"},
+        )
+
+        content_type = config.detect_content_type(memory)
+        assert content_type == "session_lesson"
+
+    def test_content_type_detection_documentation(self, config):
+        """Test content-type detection for documentation."""
+        memory = CognitiveMemory(
+            id="test_doc_001",
+            content="API Reference: Authentication endpoints require JWT tokens",
+            metadata={"source_type": "documentation", "loader_type": "markdown"},
+        )
+
+        content_type = config.detect_content_type(memory)
+        assert content_type == "documentation"
+
+    def test_content_type_detection_store_memory(self, config):
+        """Test content-type detection for store_memory tool."""
+        memory = CognitiveMemory(
+            id="test_store_001",
+            content="Discovered interesting pattern in user behavior data",
+            metadata={"source_type": "store_memory", "importance_score": 0.8},
+        )
+
+        content_type = config.detect_content_type(memory)
+        assert content_type == "store_memory"
+
+    def test_content_type_detection_fallback_hierarchy(self, config):
+        """Test content-type detection fallback to hierarchy level."""
+        # Memory without source_type should fall back to hierarchy level
+        memory = CognitiveMemory(
+            id="test_fallback_001",
+            content="Some memory without source_type",
+            hierarchy_level=0,  # L0 concept
+            metadata={"other_field": "value"},
+        )
+
+        content_type = config.detect_content_type(memory)
+        assert content_type == "L0_concept"
+
+    def test_content_type_detection_final_fallback(self, config):
+        """Test content-type detection final fallback to manual_entry."""
+        # Memory without source_type and invalid hierarchy level
+        memory = CognitiveMemory(
+            id="test_fallback_002",
+            content="Memory with no identifiable type",
+            hierarchy_level=5,  # Invalid level
+            metadata={},
+        )
+
+        content_type = config.detect_content_type(memory)
+        assert content_type == "manual_entry"
+
+    def test_decay_calculation_different_content_types(
+        self, episodic_store_with_config
+    ):
+        """Test that different content types have different decay rates."""
+        from datetime import datetime
+
+        # Create memories of different content types but same age
+        past_time = time.time() - (24 * 3600)  # 1 day ago
+        timestamp = datetime.fromtimestamp(past_time)
+
+        git_memory = CognitiveMemory(
+            id="git_001",
+            content="Git commit memory",
+            timestamp=timestamp,
+            strength=1.0,
+            metadata={"source_type": "git_commit"},
+        )
+
+        lesson_memory = CognitiveMemory(
+            id="lesson_001",
+            content="Session lesson memory",
+            timestamp=timestamp,
+            strength=1.0,
+            metadata={"source_type": "session_lesson"},
+        )
+
+        episodic_store_with_config.store_episodic_memory(git_memory)
+        episodic_store_with_config.store_episodic_memory(lesson_memory)
+
+        memories = episodic_store_with_config.get_episodic_memories()
+
+        # Find memories by ID
+        git_result = next(m for m in memories if m.id == "git_001")
+        lesson_result = next(m for m in memories if m.id == "lesson_001")
+
+        # Git commits should decay faster (1.2x multiplier) than session lessons (0.2x multiplier)
+        assert git_result.strength < lesson_result.strength
+
+    def test_decay_profiles_environment_variables(self):
+        """Test decay profiles can be configured via environment variables."""
+        import os
+
+        from cognitive_memory.core.config import CognitiveConfig
+
+        # Set environment variable
+        os.environ["DECAY_PROFILE_GIT_COMMIT"] = "1.5"
+        os.environ["DECAY_PROFILE_SESSION_LESSON"] = "0.1"
+
+        try:
+            config = CognitiveConfig.from_env()
+
+            # Check if environment variables were applied
+            assert config.decay_profiles["git_commit"] == 1.5
+            assert config.decay_profiles["session_lesson"] == 0.1
+
+        finally:
+            # Clean up environment variables
+            os.environ.pop("DECAY_PROFILE_GIT_COMMIT", None)
+            os.environ.pop("DECAY_PROFILE_SESSION_LESSON", None)
+
+    def test_decay_calculation_with_activity_and_content_type(self, config):
+        """Test combined activity-based and content-type decay calculation."""
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+            db_path = tmp.name
+
+        try:
+            db_manager = DatabaseManager(db_path)
+
+            # Create mock activity tracker
+            from cognitive_memory.storage.project_activity_tracker import (
+                ProjectActivityTracker,
+            )
+
+            activity_tracker = ProjectActivityTracker(repository_path=None)
+
+            store = EpisodicMemoryStore(db_manager, activity_tracker, config)
+
+            memory = CognitiveMemory(
+                id="combined_test_001",
+                content="Test memory for combined decay",
+                timestamp=datetime.fromtimestamp(time.time() - 86400),  # 1 day ago
+                strength=1.0,
+                metadata={
+                    "source_type": "git_commit"
+                },  # Should get 1.2x decay multiplier
+            )
+
+            store.store_episodic_memory(memory)
+
+            # Create mock access patterns for activity calculation
+            from cognitive_memory.storage.dual_memory import MemoryAccessPattern
+
+            access_patterns = {
+                "combined_test_001": MemoryAccessPattern("combined_test_001")
+            }
+
+            # Calculate decayed strength
+            decayed_strength = store._calculate_decayed_strength(
+                memory, access_patterns
+            )
+
+            # Should be less than original strength due to decay
+            assert 0.0 <= decayed_strength <= 1.0
+            assert decayed_strength < memory.strength
+
+        finally:
+            Path(db_path).unlink(missing_ok=True)
+
+    def test_backward_compatibility_no_source_type(self, episodic_store_with_config):
+        """Test backward compatibility for memories without source_type."""
+        # Create memory without source_type (old format)
+        memory = CognitiveMemory(
+            id="legacy_001",
+            content="Legacy memory without source_type",
+            hierarchy_level=2,  # Should fall back to L2_episode
+            timestamp=datetime.fromtimestamp(time.time() - 3600),  # 1 hour ago
+            strength=1.0,
+            metadata={"old_field": "value"},  # No source_type
+        )
+
+        episodic_store_with_config.store_episodic_memory(memory)
+        memories = episodic_store_with_config.get_episodic_memories()
+
+        # Should work without errors
+        assert len(memories) == 1
+        assert memories[0].id == "legacy_001"
+
+        # Should apply fallback decay profile
+        config = episodic_store_with_config.config
+        content_type = config.detect_content_type(memory)
+        assert content_type == "L2_episode"

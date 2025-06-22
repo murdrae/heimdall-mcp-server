@@ -111,17 +111,20 @@ class EpisodicMemoryStore:
         self,
         db_manager: DatabaseManager,
         activity_tracker: ProjectActivityTracker | None = None,
+        config: Any = None,
     ):
         """Initialize episodic memory store.
 
         Args:
             db_manager: Database manager for persistence
             activity_tracker: Optional ProjectActivityTracker for context-aware decay
+            config: CognitiveConfig for content-type decay profiles
         """
         self.db_manager = db_manager
         self.decay_rate = 0.1  # Fast decay rate
         self.max_retention_days = 30  # Maximum retention period
         self.activity_tracker = activity_tracker
+        self.config = config
 
     def store_episodic_memory(self, memory: CognitiveMemory) -> bool:
         """Store an episodic memory with fast decay parameters."""
@@ -266,6 +269,18 @@ class EpisodicMemoryStore:
                     "Failed to get dynamic decay rate, using base rate", error=str(e)
                 )
 
+        # Apply content-type decay multiplier (Step 2 - DETERMINISTIC)
+        if self.config:
+            try:
+                content_type = self.config.detect_content_type(memory)
+                content_multiplier = self.config.decay_profiles.get(content_type, 1.0)
+                effective_decay_rate *= content_multiplier
+            except Exception as e:
+                logger.warning(
+                    "Failed to apply content-type decay multiplier, using base rate",
+                    error=str(e),
+                )
+
         # Exponential decay: strength = initial * exp(-decay_rate * time)
         decayed_strength = memory.strength * math.exp(
             -effective_decay_rate * hours_elapsed / 24
@@ -340,17 +355,20 @@ class SemanticMemoryStore:
         self,
         db_manager: DatabaseManager,
         activity_tracker: ProjectActivityTracker | None = None,
+        config: Any = None,
     ):
         """Initialize semantic memory store.
 
         Args:
             db_manager: Database manager for persistence
             activity_tracker: Optional ProjectActivityTracker for context-aware decay
+            config: CognitiveConfig for content-type decay profiles
         """
         self.db_manager = db_manager
         self.decay_rate = 0.01  # Slow decay rate
         self.min_consolidation_score = 0.6  # Minimum score for consolidation
         self.activity_tracker = activity_tracker
+        self.config = config
 
     def store_semantic_memory(self, memory: CognitiveMemory) -> bool:
         """Store a semantic memory with slow decay parameters."""
@@ -492,6 +510,18 @@ class SemanticMemoryStore:
             except Exception as e:
                 logger.warning(
                     "Failed to get dynamic decay rate, using base rate", error=str(e)
+                )
+
+        # Apply content-type decay multiplier (Step 2 - DETERMINISTIC)
+        if self.config:
+            try:
+                content_type = self.config.detect_content_type(memory)
+                content_multiplier = self.config.decay_profiles.get(content_type, 1.0)
+                effective_decay_rate *= content_multiplier
+            except Exception as e:
+                logger.warning(
+                    "Failed to apply content-type decay multiplier, using base rate",
+                    error=str(e),
                 )
 
         # Very slow exponential decay
@@ -765,9 +795,13 @@ class DualMemorySystem:
                 logger.warning("Failed to initialize activity tracker", error=str(e))
                 self.activity_tracker = None
 
-        # Initialize memory stores with activity tracker
-        self.episodic_store = EpisodicMemoryStore(db_manager, self.activity_tracker)
-        self.semantic_store = SemanticMemoryStore(db_manager, self.activity_tracker)
+        # Initialize memory stores with activity tracker and config
+        self.episodic_store = EpisodicMemoryStore(
+            db_manager, self.activity_tracker, config
+        )
+        self.semantic_store = SemanticMemoryStore(
+            db_manager, self.activity_tracker, config
+        )
         self.consolidation = MemoryConsolidation(db_manager)
 
     def store_experience(self, memory: CognitiveMemory) -> bool:

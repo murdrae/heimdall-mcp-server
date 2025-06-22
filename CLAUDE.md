@@ -180,6 +180,31 @@ MCP_MAX_MEMORIES_PER_QUERY=10
 
 # Git integration
 # (No configuration needed - uses optimized defaults)
+
+# Context-Aware Memory Decay Configuration
+
+# Activity-based decay parameters (from Step 1)
+ACTIVITY_WINDOW_DAYS=30
+MAX_COMMITS_PER_DAY=3
+MAX_ACCESSES_PER_DAY=100
+ACTIVITY_COMMIT_WEIGHT=0.6
+ACTIVITY_ACCESS_WEIGHT=0.4
+HIGH_ACTIVITY_THRESHOLD=0.7
+LOW_ACTIVITY_THRESHOLD=0.2
+HIGH_ACTIVITY_MULTIPLIER=2.0
+NORMAL_ACTIVITY_MULTIPLIER=1.0
+LOW_ACTIVITY_MULTIPLIER=0.1
+
+# Content-type decay profiles (from Step 2)
+# Multipliers applied to base decay rate for different memory sources
+DECAY_PROFILE_GIT_COMMIT=1.2           # Moderate-fast decay (code becomes outdated)
+DECAY_PROFILE_SESSION_LESSON=0.2        # Very slow decay (insights persist)
+DECAY_PROFILE_STORE_MEMORY=1.0          # Normal decay (general experiences)
+DECAY_PROFILE_DOCUMENTATION=0.2         # Slow decay (docs stay relevant)
+DECAY_PROFILE_MANUAL_ENTRY=1.0          # Normal decay (default)
+DECAY_PROFILE_L0_CONCEPT=0.3            # Fallback - slow (concepts persist)
+DECAY_PROFILE_L1_CONTEXT=0.8            # Fallback - moderate (context changes)
+DECAY_PROFILE_L2_EPISODE=1.0            # Fallback - normal (episodes fade)
 ```
 
 ### Configuration Files

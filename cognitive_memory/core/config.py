@@ -7,12 +7,15 @@ variables and .env files as specified in the technical architecture.
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv
 from loguru import logger
+
+if TYPE_CHECKING:
+    from .memory import CognitiveMemory
 
 
 def detect_project_config() -> dict[str, str] | None:
@@ -146,6 +149,23 @@ class CognitiveConfig:
     normal_activity_multiplier: float = 1.0
     low_activity_multiplier: float = 0.1
 
+    # Content-type decay profiles (multipliers applied to base decay rate)
+    # Based on DETERMINISTIC source_type detection from memory metadata
+    decay_profiles: dict[str, float] = field(
+        default_factory=lambda: {
+            # Source-based content types (deterministic)
+            "git_commit": 1.2,  # Moderate-fast decay (code becomes outdated)
+            "session_lesson": 0.2,  # Very slow decay (insights persist)
+            "store_memory": 1.0,  # Normal decay (general experiences)
+            "documentation": 0.2,  # Slow decay (docs stay relevant)
+            "manual_entry": 1.0,  # Normal decay (default)
+            # Hierarchy level fallbacks (when source_type missing)
+            "L0_concept": 0.3,  # Concepts decay very slowly
+            "L1_context": 0.8,  # Context moderately
+            "L2_episode": 1.0,  # Episodes at base rate
+        }
+    )
+
     # Date-based ranking parameters
     similarity_closeness_threshold: float = 0.05
     modification_date_weight: float = 0.3
@@ -187,7 +207,7 @@ class CognitiveConfig:
     @classmethod
     def from_env(cls) -> "CognitiveConfig":
         """Create configuration from environment variables."""
-        return cls(
+        config = cls(
             activation_threshold=float(
                 os.getenv("ACTIVATION_THRESHOLD", str(cls.activation_threshold))
             ),
@@ -290,6 +310,77 @@ class CognitiveConfig:
                 os.getenv("LOW_ACTIVITY_MULTIPLIER", str(cls.low_activity_multiplier))
             ),
         )
+
+        # Update decay profiles with environment variable overrides
+        config.decay_profiles = config._parse_decay_profiles()
+
+        return config
+
+    def _parse_decay_profiles(self) -> dict[str, float]:
+        """Parse decay profiles from environment variables."""
+        # Start with defaults
+        profiles = {
+            "git_commit": 1.2,
+            "session_lesson": 0.2,
+            "store_memory": 1.0,
+            "documentation": 0.2,
+            "manual_entry": 1.0,
+            "L0_concept": 0.3,
+            "L1_context": 0.8,
+            "L2_episode": 1.0,
+        }
+
+        # Override with environment variables if set
+        env_mapping = {
+            "DECAY_PROFILE_GIT_COMMIT": "git_commit",
+            "DECAY_PROFILE_SESSION_LESSON": "session_lesson",
+            "DECAY_PROFILE_STORE_MEMORY": "store_memory",
+            "DECAY_PROFILE_DOCUMENTATION": "documentation",
+            "DECAY_PROFILE_MANUAL_ENTRY": "manual_entry",
+            "DECAY_PROFILE_L0_CONCEPT": "L0_concept",
+            "DECAY_PROFILE_L1_CONTEXT": "L1_context",
+            "DECAY_PROFILE_L2_EPISODE": "L2_episode",
+        }
+
+        for env_var, profile_key in env_mapping.items():
+            env_value = os.getenv(env_var)
+            if env_value is not None:
+                try:
+                    profiles[profile_key] = float(env_value)
+                except ValueError:
+                    logger.warning(
+                        f"Invalid decay profile value for {env_var}: {env_value}"
+                    )
+
+        return profiles
+
+    def detect_content_type(self, memory: "CognitiveMemory") -> str:
+        """
+        Deterministic content-type detection based on memory creation source.
+        NO pattern matching - relies on explicit source_type set by creators.
+
+        Args:
+            memory: CognitiveMemory object with metadata
+
+        Returns:
+            str: Content type key for decay profile lookup
+        """
+        # Primary: Use explicit source_type from metadata
+        if hasattr(memory, "metadata") and memory.metadata:
+            source_type = memory.metadata.get("source_type")
+            if source_type and source_type in self.decay_profiles:
+                return source_type
+
+        # Fallback: Use hierarchy level if source_type missing
+        if hasattr(memory, "hierarchy_level"):
+            hierarchy_level = memory.hierarchy_level
+            # Only use valid hierarchy levels (0, 1, 2)
+            if 0 <= hierarchy_level <= 2:
+                level_key = f"L{hierarchy_level}_{['concept', 'context', 'episode'][hierarchy_level]}"
+                return level_key if level_key in self.decay_profiles else "manual_entry"
+
+        # Final fallback
+        return "manual_entry"
 
     def get_total_cognitive_dimensions(self) -> int:
         """Get total number of cognitive dimensions."""
