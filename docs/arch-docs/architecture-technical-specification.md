@@ -121,6 +121,118 @@ graph TB
     style ONNXMODEL fill:#34c759
 ```
 
+## Automatic File Change Monitoring
+
+The system includes production-ready automatic file change monitoring that synchronizes markdown files with cognitive memory in real-time. The monitoring system uses a hybrid architecture: markdown-specific file detection combined with a generic synchronization layer that can be extended to support other file types.
+
+### Architecture Components
+
+#### Markdown File Monitoring
+- **MarkdownFileMonitor**: Polling-based detection specifically for markdown files (`.md`, `.markdown`, `.mdown`, `.mkd`)
+- **FileChangeEvent System**: Observer pattern with ChangeType enum (ADDED, MODIFIED, DELETED)
+- **FileState Tracking**: Monitors file mtime, size, and existence with efficient change detection
+- **Cross-platform Compatibility**: Reliable polling approach that works on all operating systems
+
+#### Generic File Synchronization Layer
+- **FileSyncHandler**: Generic file synchronization using MemoryLoader interface pattern
+- **LoaderRegistry**: Discovers and manages MemoryLoader implementations for different file types
+- **File Type Detection**: Automatic loader selection via extension matching and source validation
+- **Atomic Operations**: Delete+reload pattern with transaction-like error handling for consistency
+
+#### Service Integration
+- **MonitoringService**: Container-integrated daemon with lifecycle management (`start/stop/restart/status/health`)
+- **Process Management**: PID file tracking and signal handling (SIGTERM/SIGINT)
+- **Health Monitoring**: Service status included in container health check system
+- **Error Recovery**: Automatic restart with exponential backoff on failures
+
+### CLI Integration
+
+The `memory_system` CLI provides monitoring commands:
+
+```bash
+# Monitoring service management
+memory_system monitor start      # Start monitoring service
+memory_system monitor stop       # Stop monitoring service
+memory_system monitor restart    # Restart monitoring service
+memory_system monitor status     # Check service status
+memory_system monitor health     # Detailed health check
+
+# Health check integration
+memory_system doctor             # Includes monitoring service validation
+```
+
+### Memory Source Path Querying
+
+SQLite persistence provides source path querying capabilities:
+
+```sql
+-- JSON index for performance
+CREATE INDEX idx_memories_source_path ON memories(
+    JSON_EXTRACT(context_metadata, '$.source_path')
+) WHERE JSON_EXTRACT(context_metadata, '$.source_path') IS NOT NULL;
+```
+
+**Methods**:
+- `get_memories_by_source_path()`: Efficiently query memories by source file path
+- `delete_memories_by_source_path()`: Atomic deletion of all memories from a specific file
+
+### Configuration
+
+Key environment variables for container deployment:
+
+```yaml
+MONITORING_ENABLED=true                    # Enable automatic monitoring
+MONITORING_INTERVAL_SECONDS=5.0            # Polling interval
+SYNC_ENABLED=true                          # Enable file synchronization
+SYNC_ATOMIC_OPERATIONS=true                # Use atomic operations
+```
+
+### Data Flow
+
+```
+Container Startup → MonitoringService → MarkdownFileMonitor → FileSyncHandler → CognitiveSystem
+                         ↓                        ↓                    ↓
+File Changes → FileChangeEvent → FileSyncHandler → LoaderRegistry → MemoryLoader (auto-selected) → Memory Operations
+```
+
+### Component Interaction
+
+The monitoring architecture uses three distinct layers:
+
+1. **Detection Layer (MarkdownFileMonitor)**:
+   - Polls markdown files for changes using file state tracking (mtime, size, existence)
+   - Emits FileChangeEvents for ADDED/MODIFIED/DELETED files
+   - Currently specialized for markdown extensions only
+
+2. **Coordination Layer (FileSyncHandler)**:
+   - Receives FileChangeEvents from file monitor
+   - Implements atomic delete+reload operations for consistency
+   - Orchestrates synchronization workflow with error recovery
+
+3. **Loading Layer (LoaderRegistry + MemoryLoaders)**:
+   - Auto-discovers appropriate MemoryLoader based on file extension and validation
+   - Converts files to memory objects using existing loader implementations
+   - Provides extensibility point for future file types
+
+### Extensibility
+
+The monitoring system uses a hybrid extensibility model that separates file detection from memory loading:
+
+**Current Implementation**:
+- **MarkdownFileMonitor**: Hardcoded to monitor only markdown files (`.md`, `.markdown`, `.mdown`, `.mkd`)
+- **LoaderRegistry**: Generic registry that auto-discovers and manages any MemoryLoader implementation
+- **FileSyncHandler**: Generic synchronization coordinator that works with any file type
+
+**Adding New File Types**:
+1. **Implement MemoryLoader**: Create a new MemoryLoader for the file type (e.g., PDFMemoryLoader)
+2. **Register with LoaderRegistry**: The registry will automatically handle file type detection and delegation
+3. **File Monitoring**: Extend (and rename to generic) MarkdownFileMonitor to support additional extensions
+
+**Design Benefits**:
+- Memory loading is already generic and extensible
+- File monitoring can be specialized per file type for optimal detection strategies
+- FileSyncHandler provides consistent atomic operations across all file types
+
 ## Technical Implementation Details
 
 ### Multi-Dimensional Encoding Implementation
@@ -284,6 +396,10 @@ cognitive_memory/
 │       ├── memory_factory.py      # Memory creation
 │       ├── connection_extractor.py # Relationship analysis
 │       └── chunk_processor.py     # Document chunking
+├── monitoring/              # Automatic file change monitoring
+│   ├── file_monitor.py       # Polling-based file change detection
+│   ├── file_sync.py         # Generic file synchronization handler
+│   └── loader_registry.py   # MemoryLoader management and discovery
 └── tests/
     ├── unit/                 # Component-level tests
     ├── integration/          # Cross-component tests
@@ -297,7 +413,9 @@ interfaces/
 memory_system/
 ├── cli.py                  # Service management CLI (memory_system command)
 ├── service_manager.py      # Docker/Qdrant service management
-└── interactive_shell.py    # Interactive memory shell
+├── interactive_shell.py    # Interactive memory shell
+├── monitoring_service.py   # Automatic file monitoring service
+└── service_health.py       # Health check system for monitoring
 
 scripts/
 ├── setup_project_memory.sh    # Project isolation setup

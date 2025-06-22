@@ -239,6 +239,94 @@ The command delegates to `CognitiveSystem.load_memories_from_source()` with appr
 
 This architecture maintains the system's interface-driven design principles while adding structured content ingestion capabilities that integrate seamlessly with existing cognitive processing and storage layers.
 
+## Automatic File Change Monitoring
+
+### Overview
+
+The system includes comprehensive automatic markdown file change monitoring that synchronizes markdown files with cognitive memory in real-time. The monitoring system detects markdown file additions, modifications, and deletions, automatically updating the memory system to reflect file system changes.
+
+### Architecture Components
+
+#### Markdown File Monitoring
+- **MarkdownFileMonitor**: Polling-based detection specifically for markdown files (`.md`, `.markdown`, `.mdown`, `.mkd`)
+- **FileState Tracking**: Monitors file mtime, size, and existence with change detection logic
+- **FileChangeEvent System**: Observer pattern with ChangeType enum (ADDED, MODIFIED, DELETED)
+- **Cross-platform Compatibility**: Reliable polling approach that works on all operating systems
+
+#### Generic Synchronization Layer
+- **FileSyncHandler**: Generic file change synchronization using MemoryLoader interface pattern
+- **LoaderRegistry**: Manages and discovers MemoryLoader implementations for different file types
+- **Atomic Operations**: Delete+reload pattern with transaction-like error handling for consistency
+- **File Type Detection**: Automatic loader selection via `get_supported_extensions()` and `validate_source()`
+
+#### Production Service Integration
+- **Container Integration**: Monitoring runs as built-in service within existing `heimdall-mcp` containers
+- **Process Management**: Python multiprocessing with PID file tracking and signal handling
+- **Health Monitoring**: Service status included in container health check system
+- **Resource Management**: Memory/CPU monitoring with configurable thresholds
+
+### Configuration Options
+
+`CognitiveConfig` provides monitoring parameters:
+
+```python
+# File monitoring configuration
+monitoring_enabled: bool = True
+monitoring_interval_seconds: float = 5.0
+monitoring_batch_size: int = 10
+monitoring_ignore_patterns: Set[str] = {'.git', 'node_modules', '__pycache__'}
+
+# File synchronization configuration
+sync_enabled: bool = True
+sync_atomic_operations: bool = True
+sync_continue_on_error: bool = True
+sync_max_retry_attempts: int = 3
+sync_retry_delay_seconds: float = 1.0
+```
+
+### Memory Source Path Querying
+
+SQLite persistence provides source path querying capabilities:
+
+- **`get_memories_by_source_path()`**: Efficiently query memories by source file path
+- **`delete_memories_by_source_path()`**: Atomic deletion of all memories from a specific file
+- **JSON Indexing**: Performance-optimized indexes on `context_metadata.source_path` field
+- **Partial Indexing**: Only indexes rows where source_path exists for efficiency
+
+### CLI Integration
+
+```bash
+# Monitoring service management
+memory_system monitor start        # Start monitoring service
+memory_system monitor stop         # Stop monitoring service
+memory_system monitor restart      # Restart monitoring service
+memory_system monitor status       # Check service status
+memory_system monitor health       # Detailed health check
+
+# Health check integration
+memory_system doctor               # Includes monitoring service validation
+```
+
+### Data Flow
+
+```
+Container Startup → MonitoringService (daemon) → MarkdownFileMonitor (polling) → FileSyncHandler → CognitiveSystem
+                                ↓                                                      ↓
+File System Changes → FileChangeEvent → FileSyncHandler → LoaderRegistry → MemoryLoader → Memory Operations
+                                ↓
+Container Health Check ← Service Status ← Error Recovery ← Statistics Tracking
+```
+
+### Component Interaction
+
+The monitoring system uses a three-layer architecture:
+
+1. **Detection Layer**: MarkdownFileMonitor watches for markdown file changes using polling
+2. **Coordination Layer**: FileSyncHandler receives change events and orchestrates sync operations
+3. **Loading Layer**: LoaderRegistry auto-selects appropriate MemoryLoader for file-to-memory conversion
+
+This separation allows markdown-specific file monitoring while maintaining generic, extensible memory loading capabilities for future file types.
+
 ## Modular Component Architecture
 
 ### Component Responsibilities

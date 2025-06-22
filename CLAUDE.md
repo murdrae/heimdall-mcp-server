@@ -76,7 +76,9 @@ interfaces/
 memory_system/
 ├── cli.py                # Service management CLI (memory_system command)
 ├── service_manager.py    # Docker/Qdrant service management
-└── interactive_shell.py  # Interactive memory shell
+├── interactive_shell.py  # Interactive memory shell
+├── monitoring_service.py # Automatic file monitoring service
+└── service_health.py     # Health check system for monitoring
 ```
 
 ## Development Commands
@@ -84,7 +86,7 @@ memory_system/
 ### System Management
 ```bash
 # Service management
-memory_system qdrant --hel   # See help for Qdrant related commands
+memory_system qdrant --help  # See help for Qdrant related commands
 
 # Health checking
 memory_system doctor          # Full system health check
@@ -94,6 +96,13 @@ memory_system shell          # Interactive memory operations
 
 # MCP server
 memory_system serve mcp      # Start MCP server (stdio)
+
+# File monitoring service
+memory_system monitor start   # Start automatic file monitoring
+memory_system monitor stop    # Stop file monitoring
+memory_system monitor restart # Restart monitoring service
+memory_system monitor status  # Check monitoring service status
+memory_system monitor health  # Detailed monitoring health check
 ```
 
 ### Memory Operations (CLI)
@@ -169,43 +178,8 @@ Each project directory gets isolated Docker containers:
 ## Configuration Management
 
 ### Environment Variables
-```bash
-# Core system
-QDRANT_URL=http://localhost:6333
-SENTENCE_BERT_MODEL=all-MiniLM-L6-v2
-COGNITIVE_MEMORY_DB_PATH=./data/cognitive_memory.db
 
-# MCP specific
-MCP_MAX_MEMORIES_PER_QUERY=10
-
-# Git integration
-# (No configuration needed - uses optimized defaults)
-
-# Context-Aware Memory Decay Configuration
-
-# Activity-based decay parameters (from Step 1)
-ACTIVITY_WINDOW_DAYS=30
-MAX_COMMITS_PER_DAY=3
-MAX_ACCESSES_PER_DAY=100
-ACTIVITY_COMMIT_WEIGHT=0.6
-ACTIVITY_ACCESS_WEIGHT=0.4
-HIGH_ACTIVITY_THRESHOLD=0.7
-LOW_ACTIVITY_THRESHOLD=0.2
-HIGH_ACTIVITY_MULTIPLIER=2.0
-NORMAL_ACTIVITY_MULTIPLIER=1.0
-LOW_ACTIVITY_MULTIPLIER=0.1
-
-# Content-type decay profiles (from Step 2)
-# Multipliers applied to base decay rate for different memory sources
-DECAY_PROFILE_GIT_COMMIT=1.2           # Moderate-fast decay (code becomes outdated)
-DECAY_PROFILE_SESSION_LESSON=0.2        # Very slow decay (insights persist)
-DECAY_PROFILE_STORE_MEMORY=1.0          # Normal decay (general experiences)
-DECAY_PROFILE_DOCUMENTATION=0.2         # Slow decay (docs stay relevant)
-DECAY_PROFILE_MANUAL_ENTRY=1.0          # Normal decay (default)
-DECAY_PROFILE_L0_CONCEPT=0.3            # Fallback - slow (concepts persist)
-DECAY_PROFILE_L1_CONTEXT=0.8            # Fallback - moderate (context changes)
-DECAY_PROFILE_L2_EPISODE=1.0            # Fallback - normal (episodes fade)
-```
+- See ./docker/Dockerfile, ./docker/docker-compose.template.yml, ./scripts/setup_project_memory.sh
 
 ### Configuration Files
 - `.env` files for environment-specific settings
