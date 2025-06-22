@@ -14,7 +14,7 @@ https://github.com/user-attachments/assets/5a556433-97c2-4d57-92cc-3813ac23ff5b
 ## Key Features
 
 - 🧠 **Context-Rich Memory**: Heimdall learns from your documentation, session insights, and development history, allowing your LLM to recall specific solutions and architectural patterns across conversations.
-- 📚 **Git-Aware Context**: It indexes your project's entire git history, understanding not just what changed, but also who changed it, when, and why (via commit messages).
+- 📚 **Git-Aware Context**: It indexes your project's entire git history, understanding not just what changed, but also who changed it, when, and context.
 - 🔗 **Isolated & Organized**: Each project gets its own isolated memory space, ensuring that context from one project doesn't leak into another.
 - ⚡ **Efficient Integration**: Built on the Model Context Protocol (MCP), it provides a standardized, low-overhead way for LLMs to access this powerful memory.
 
@@ -181,9 +181,37 @@ To maximize the effectiveness of Heimdall:
 - Semantic analysis: spaCy
 - Integration: Model Context Protocol (MCP)
 
-## 🗺️ Roadmap
+## 🔄 Real-time Git Integration
 
-  * [ ] Git `post-commit` hook for automatic, real-time memory updates.
+Heimdall supports automatically updates to memories when you make commits via git hooks
+
+### Automatic Git Hook (Recommended)
+
+```bash
+# Install the post-commit hook (run from your project directory)
+/path/to/heimdall-mcp-server/scripts/git-hook-installer.sh --install
+```
+
+**Note**: If you have other post-commit git-hook configured, it will be saved as backup and still executed before Heimdall MCP.
+
+With post-commit git hooks configured, new memories are recovered from commits automatically. To remove:
+
+```bash
+/path/to/heimdall-mcp-server/scripts/git-hook-installer.sh --uninstall
+```
+
+### Manual Updates
+
+If you prefer to now have automatic updates using git hooks, you still can periodically use:
+
+```bash
+# Load only new commits since last update
+/path/to/heimdall-mcp-server/scripts/load_project_content.sh
+```
+
+## 🗺️Short Term Roadmap
+
+  * [x] ~~Git `post-commit` hook for automatic, real-time memory updates~~ ✅ **Completed**
   * [ ] Watcher to auto-detect and load new documents in the `.heimdall-mcp` directory.
 
 ## License

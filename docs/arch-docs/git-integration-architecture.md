@@ -8,6 +8,9 @@ This document specifies the architecture for integrating git repository history 
 - **Direct Commit Storage**: Stores each git commit as a cognitive memory with full metadata
 - **File Change Tracking**: Preserves detailed file change information (additions, deletions, modifications)
 - **Memory Integration**: Commits stored as cognitive memories using the existing MemoryLoader interface
+- **Incremental Loading**: Automatic state tracking with memory-based incremental updates (default behavior)
+- **Real-time Integration**: Git hook support for automatic memory creation on commit
+- **Project Isolation**: Docker container integration for project-specific memory systems
 
 ## Core Components
 
@@ -16,27 +19,43 @@ This document specifies the architecture for integrating git repository history 
 - Implements the existing `MemoryLoader` interface
 - Uses CommitLoader to convert git commits to CognitiveMemory objects
 - Transforms git commit data into memory objects with deterministic IDs
-- Supports both full repository analysis and incremental updates
+- **Supports both full repository analysis and incremental updates with automatic state tracking**
 
 **Key Dependencies**:
 - CommitLoader (commit to memory conversion)
 - GitHistoryMiner (data extraction)
 - Existing CognitiveConfig
+- SQLite persistence for incremental state tracking
 
 **Memory Architecture**:
 - Uses deterministic commit IDs: `git::commit::<commit_hash>`
 - Each commit becomes one memory with full metadata
 - File changes embedded in memory content as natural language
+- **Automatic incremental loading based on existing SQLite state**
+
+**Incremental Features**:
+- `get_latest_processed_commit()` queries SQLite for most recent commit
+- Memory-based state tracking using existing deterministic IDs
+- Graceful fallback to full history when incremental state is unavailable
+- `force_full_load` parameter for explicit full repository reprocessing
 
 ### 2. GitHistoryMiner
 **Responsibility**: Raw data extraction from git repository
 - Execute git commands to gather commit history
 - Parse commit data, file changes, and timestamps
 - Return structured Commit objects with FileChange details
+- **Supports incremental extraction via `since_commit` parameter**
 
 **Output Data Structures**:
 - Commit: commit_hash, message, author, timestamp, files_changed list
 - FileChange: file_path, change_type, lines_added, lines_deleted
+
+**Incremental Capabilities**:
+- `since_commit` parameter for efficient incremental traversal
+- Git revision range syntax: `{since_commit}..HEAD`
+- Commit hash validation with format checking (SHA-1, SHA-256)
+- Cross-branch commit references supported
+- All existing security limits maintained
 
 ### 3. CommitLoader
 **Responsibility**: Transform git commits into cognitive memories
@@ -64,9 +83,11 @@ This document specifies the architecture for integrating git repository history 
 ```
 Git Repository (.git/)
         ↓
-GitHistoryMiner.extract_commits()
+GitHistoryLoader.get_latest_processed_commit() [SQLite state check]
         ↓
-List[Commit] with FileChange details
+GitHistoryMiner.extract_commit_history(since_commit=latest_hash)
+        ↓
+List[Commit] with FileChange details (incremental)
         ↓
 CommitLoader.convert_to_memories()
         ↓
@@ -95,13 +116,31 @@ GitHistoryLoader instantiation
         ↓
 GitHistoryLoader.validate_source() [verify .git exists]
         ↓
-GitHistoryLoader.load_from_source() [extract patterns with confidence scoring]
+GitHistoryLoader.load_from_source() [incremental by default]
+        ├── get_latest_processed_commit() [SQLite state check]
+        ├── extract_commit_history(since_commit=latest) [if state exists]
+        └── extract_commit_history() [full history if no state]
         ↓
 CognitiveSystem.load_memories_from_source() [existing]
         ↓
 Memories stored with deterministic IDs in Qdrant + SQLite [existing]
         ↓
 Available for retrieval via existing interfaces [existing]
+```
+
+**Real-time Git Hook Integration:**
+```
+Git Commit (post-commit hook)
+        ↓
+Docker Container Detection [project-specific]
+        ↓
+memory_system load-git incremental --max-commits=1
+        ↓
+GitHistoryLoader.load_from_source() [single commit processing]
+        ↓
+New commit memory created and stored
+        ↓
+Available immediately for MCP tool retrieval
 ```
 
 ## Key Methods and Responsibilities
@@ -114,12 +153,19 @@ Available for retrieval via existing interfaces [existing]
 - Must return boolean validation result
 
 **load_from_source(source_path: str, **kwargs) -> List[CognitiveMemory]**
-- Must extract all git commits from repository
+- Must extract git commits from repository (incremental by default)
+- **Automatically detects existing processed commits via SQLite state**
 - Must convert commits to CognitiveMemory objects with deterministic IDs
 - Must embed commit metadata in natural language content
 - Must assign appropriate hierarchy levels (L1 for significant commits, L2 for routine commits)
 - Must return list compatible with existing memory pipeline
+- **Supports `force_full_load` parameter to bypass incremental behavior**
 
+**get_latest_processed_commit(repo_path: str) -> tuple[str, datetime] | None**
+- **Queries SQLite memories for most recent git commit**
+- **Extracts commit hash from deterministic memory IDs**
+- **Returns (commit_hash, timestamp) for incremental loading**
+- **Handles edge cases (no existing memories, corrupted state)**
 
 **get_supported_extensions() -> List[str]**
 - Must return empty list (git repos don't have file extensions)
@@ -130,11 +176,20 @@ Available for retrieval via existing interfaces [existing]
 
 ### GitHistoryMiner Methods
 
-**extract_commits(repo_path: str, time_window: str) -> List[Commit]**
+**extract_commit_history(since_commit: str | None = None, max_commits: int = 1000, ...) -> Iterator[Commit]**
 - Must execute git log commands to gather commit data
+- **Supports incremental extraction via `since_commit` parameter**
+- **Uses git revision range syntax: `{since_commit}..HEAD`**
 - Must parse commit messages, file changes, and metadata
-- Must filter commits by time window and relevance
+- Must filter commits by time window and relevance (when not using since_commit)
 - Must include detailed file change information (lines added/deleted)
+- **Maintains existing max_commits safety limits in incremental mode**
+
+**_validate_commit_hash(commit_hash: str) -> bool**
+- **Validates that commit hash exists in repository**
+- **Supports SHA-1 (40 char) and SHA-256 (64 char) formats**
+- **Handles whitespace and mixed-case input**
+- **Cross-branch commit references supported**
 
 **parse_commit_data(raw_commit: str) -> Commit**
 - Must parse git log output into structured Commit objects
@@ -228,6 +283,7 @@ Since the system embeds all commit information into memory content text rather t
 - Context about when and why specific changes were made
 - Enhanced understanding of codebase architecture through commit history
 - Direct access to actual development decisions and rationales
+- **Real-time memory creation via git hooks for continuous context building**
 
 ### For Development Workflow
 - Zero-configuration commit history access from existing git repository
@@ -235,6 +291,15 @@ Since the system embeds all commit information into memory content text rather t
 - Compatibility with current CLI and MCP interfaces
 - Batch loading via project scripts
 - Real commit data instead of derived statistical patterns
+- **Incremental loading by default - only process new commits**
+- **Git hook integration for automatic memory creation on commit**
+- **Docker container integration for project-specific memory isolation**
+
+### Performance Improvements
+- **Before**: Full git history reprocessed every time (O(n) where n = total commits)
+- **After**: Only new commits processed (O(1) per hook execution)
+- **Hook execution**: ~3-5 seconds per commit vs potentially minutes for full history
+- **Memory usage**: Constant per commit vs growing with repository size
 
 ## Immutable Memory Architecture
 
@@ -261,10 +326,12 @@ author_tag = f"git::author::{author_email}"
 - New commits simply add new memories without affecting existing ones
 
 **Incremental Loading:**
-- Only load new commits since last update
-- Use git log with --since parameter for efficiency
+- **Memory-based state tracking using SQLite persistence**
+- **Automatic detection of latest processed commit via deterministic IDs**
+- **Git revision range syntax for efficient incremental traversal**
 - Avoid duplicate storage through commit hash checking
 - Maintain chronological order for temporal relationships
+- **Graceful fallback to full history when incremental state is corrupted**
 
 ### Payload Structure
 ```python
