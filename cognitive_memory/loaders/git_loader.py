@@ -47,18 +47,53 @@ class GitHistoryLoader(MemoryLoader):
         self, source_path: str, **kwargs: Any
     ) -> list[CognitiveMemory]:
         """
-        Load cognitive memories from git commits.
+        Load cognitive memories from git commits with automatic incremental behavior.
 
-        Stores individual git commits as memories with metadata for
-        retrieval and connection analysis.
+        Always checks for existing processed commits and loads only new commits
+        when possible. Falls back to full history for fresh repositories.
 
         Args:
             source_path: Path to the git repository
             **kwargs: Additional parameters (max_commits, since_date, etc.)
+                     Note: since_commit parameter will be automatically set for incremental loading
 
         Returns:
             List of CognitiveMemory objects created from git commits
         """
+        # Always check for existing state first (unless explicitly disabled)
+        force_full_load = kwargs.get("force_full_load", False)
+        
+        if not force_full_load:
+            try:
+                last_processed = self.get_latest_processed_commit(source_path)
+                
+                if last_processed:
+                    commit_hash, last_timestamp = last_processed
+                    logger.info(
+                        f"Found existing git state, loading incrementally since commit {commit_hash[:8]}",
+                        repo_path=source_path,
+                        last_commit=commit_hash,
+                        last_timestamp=last_timestamp
+                    )
+                    
+                    # Set since_commit for incremental loading
+                    kwargs["since_commit"] = commit_hash
+                else:
+                    logger.info(
+                        f"No existing git state found, performing full history load",
+                        repo_path=source_path
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to check existing git state, falling back to full load: {e}",
+                    repo_path=source_path
+                )
+        else:
+            logger.info(
+                f"Force full load requested, skipping incremental check",
+                repo_path=source_path
+            )
+
         return self.commit_loader.load_from_source(source_path, **kwargs)
 
     def extract_connections(

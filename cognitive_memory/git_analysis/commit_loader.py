@@ -46,11 +46,11 @@ class CommitLoader(MemoryLoader):
         self, source_path: str, **kwargs: Any
     ) -> list[CognitiveMemory]:
         """
-        Load cognitive memories from git commits.
+        Load cognitive memories from git commits with incremental support.
 
         Args:
             source_path: Path to the git repository
-            **kwargs: Additional parameters (max_commits, since_date, etc.)
+            **kwargs: Additional parameters (max_commits, since_date, since_commit, etc.)
 
         Returns:
             List of CognitiveMemory objects created from commits
@@ -65,27 +65,110 @@ class CommitLoader(MemoryLoader):
         since_date = kwargs.get("since_date")
         until_date = kwargs.get("until_date")
         branch = kwargs.get("branch")
+        since_commit = kwargs.get("since_commit")
+
+        # Log the loading mode
+        if since_commit:
+            logger.info(f"Loading commits incrementally since {since_commit[:8]}")
+        else:
+            logger.info("Loading commits in full history mode")
 
         try:
             # Initialize history miner for this repository
             with GitHistoryMiner(source_path) as history_miner:
-                # Extract commits directly as Commit objects
-                commits = list(
-                    history_miner.extract_commit_history(
-                        max_commits=max_commits,
-                        since_date=since_date,
-                        until_date=until_date,
-                        branch=branch,
+                try:
+                    # Extract commits directly as Commit objects
+                    commits = list(
+                        history_miner.extract_commit_history(
+                            max_commits=max_commits,
+                            since_date=since_date,
+                            until_date=until_date,
+                            branch=branch,
+                            since_commit=since_commit,
+                        )
                     )
-                )
 
-                logger.info(f"Extracted {len(commits)} commits")
+                    logger.info(f"Extracted {len(commits)} commits from git history")
+
+                except ValueError as ve:
+                    # Handle incremental loading failures (invalid since_commit, etc.)
+                    if since_commit and "commit hash" in str(ve).lower():
+                        logger.warning(
+                            f"Incremental loading failed due to invalid commit {since_commit[:8]}: {ve}"
+                        )
+                        logger.info("Falling back to full history load")
+                        
+                        # Retry without since_commit (full load)
+                        commits = list(
+                            history_miner.extract_commit_history(
+                                max_commits=max_commits,
+                                since_date=since_date,
+                                until_date=until_date,
+                                branch=branch,
+                                since_commit=None,
+                            )
+                        )
+                        logger.info(f"Fallback extracted {len(commits)} commits from git history")
+                    else:
+                        # Re-raise other ValueError types
+                        raise
+                except Exception as e:
+                    # Handle other git extraction errors
+                    if since_commit:
+                        logger.warning(
+                            f"Incremental git extraction failed: {e}"
+                        )
+                        logger.info("Attempting fallback to full history load")
+                        
+                        try:
+                            # Retry without since_commit (full load)
+                            commits = list(
+                                history_miner.extract_commit_history(
+                                    max_commits=max_commits,
+                                    since_date=since_date,
+                                    until_date=until_date,
+                                    branch=branch,
+                                    since_commit=None,
+                                )
+                            )
+                            logger.info(f"Fallback extracted {len(commits)} commits from git history")
+                        except Exception as fallback_error:
+                            logger.error(f"Fallback git extraction also failed: {fallback_error}")
+                            raise fallback_error
+                    else:
+                        # Re-raise if not in incremental mode
+                        raise
+
+                # Filter out already processed commits for incremental loads
+                if since_commit:
+                    try:
+                        filtered_commits = []
+                        skipped_count = 0
+                        for commit in commits:
+                            if not self._is_commit_already_processed(commit.hash, source_path):
+                                filtered_commits.append(commit)
+                            else:
+                                skipped_count += 1
+                        
+                        commits = filtered_commits
+                        if skipped_count > 0:
+                            logger.info(f"Skipped {skipped_count} already processed commits")
+                    except Exception as filter_error:
+                        logger.warning(f"Commit filtering failed: {filter_error}")
+                        logger.info("Proceeding with all commits (may include duplicates)")
+                        # Continue with unfiltered commits
+
+                logger.info(f"Processing {len(commits)} new commits")
 
                 # Convert to cognitive memories
                 memories = []
                 for commit in commits:
-                    memory = self._create_commit_memory(commit, source_path)
-                    memories.append(memory)
+                    try:
+                        memory = self._create_commit_memory(commit, source_path)
+                        memories.append(memory)
+                    except Exception as memory_error:
+                        logger.warning(f"Failed to create memory for commit {commit.hash[:8]}: {memory_error}")
+                        # Continue processing other commits
 
                 logger.info(
                     f"Created {len(memories)} cognitive memories from git commits"
@@ -318,6 +401,61 @@ class CommitLoader(MemoryLoader):
 
         except Exception:
             return 0.5  # Default strength
+
+    def _is_commit_already_processed(self, commit_hash: str, source_path: str) -> bool:
+        """
+        Check if a commit has already been processed and stored as a memory.
+        
+        Args:
+            commit_hash: Git commit hash to check
+            source_path: Path to the git repository (for generating correct memory ID)
+            
+        Returns:
+            True if commit has already been processed, False otherwise
+        """
+        if not self.cognitive_system:
+            logger.debug("No cognitive system available for duplicate detection")
+            return False
+            
+        try:
+            # Access the SQLite storage through the cognitive system
+            storage = getattr(self.cognitive_system, "storage", None)
+            if not storage:
+                logger.debug("No storage available in cognitive system")
+                return False
+
+            # Query for git commit memories - use the database manager directly
+            db_manager = getattr(storage, "db_manager", None)
+            if not db_manager:
+                logger.debug("No database manager available in storage")
+                return False
+
+            with db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Generate the expected memory ID using the same logic as memory creation
+                from pathlib import Path
+                repo_name = Path(source_path).name
+                expected_memory_id = self._generate_commit_id(repo_name, commit_hash)
+                
+                cursor.execute("""
+                    SELECT COUNT(*) as count
+                    FROM memories
+                    WHERE id = ?
+                """, (expected_memory_id,))
+
+                row = cursor.fetchone()
+                exists = row["count"] > 0 if row else False
+                
+                if exists:
+                    logger.debug(f"Commit {commit_hash[:8]} already processed, skipping")
+                    
+                return exists
+
+        except Exception as e:
+            logger.warning(f"Failed to check if commit {commit_hash[:8]} is processed: {e}")
+            # Err on the side of caution - assume not processed to avoid missing commits
+            return False
 
     def _extract_author_connections(
         self, memories: list[CognitiveMemory]

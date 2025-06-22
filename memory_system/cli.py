@@ -284,6 +284,66 @@ def interactive_shell(
         raise typer.Exit(1) from e
 
 
+# Git loading commands
+load_git_app = typer.Typer(help="Git history loading commands")
+app.add_typer(load_git_app, name="load-git")
+
+
+@load_git_app.command("incremental")  # type: ignore[misc]
+def load_git_incremental(
+    source_path: str = typer.Argument(".", help="Path to git repository"),
+    max_commits: int = typer.Option(1000, help="Maximum commits to process"),
+    force_full_load: bool = typer.Option(
+        False, "--force-full", help="Force full history load ignoring incremental state"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be loaded without actually loading"
+    ),
+    config: str | None = typer.Option(None, help="Path to configuration file"),
+) -> None:
+    """Load git commits incrementally (only new commits since last run)."""
+    console.print("📚 Loading git commits incrementally...", style="bold blue")
+    
+    try:
+        # Initialize cognitive system
+        if config:
+            cognitive_system = initialize_with_config(config)
+        else:
+            cognitive_system = initialize_system("default")
+
+        # Create CLI interface and delegate to it
+        from interfaces.cli import CognitiveCLI
+
+        cli = CognitiveCLI(cognitive_system)
+
+        # Load git history with incremental mode
+        success = cli.load_memories(
+            source_path=source_path, 
+            loader_type="git", 
+            dry_run=dry_run,
+            max_commits=max_commits,
+            force_full_load=force_full_load
+        )
+
+        if not success:
+            raise typer.Exit(1)
+            
+        console.print("✅ Git incremental loading completed", style="bold green")
+
+    except InitializationError as e:
+        console.print(f"❌ Failed to initialize system: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    except Exception as e:
+        console.print(f"❌ Error: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    finally:
+        # Graceful shutdown
+        try:
+            graceful_shutdown(cognitive_system)
+        except Exception:
+            pass  # Ignore shutdown errors
+
+
 @app.command("load")  # type: ignore[misc]
 def load_memories(
     source_path: str = typer.Argument(..., help="Path to the source file to load"),
