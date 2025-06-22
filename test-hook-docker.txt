@@ -1,1 +1,0 @@
-Test hook with Docker integration
