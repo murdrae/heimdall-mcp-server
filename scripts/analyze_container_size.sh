@@ -19,10 +19,6 @@ CONTAINER_NAME="heimdall-$REPO_NAME-$PROJECT_HASH"
 QDRANT_CONTAINER="qdrant-$REPO_NAME-$PROJECT_HASH"
 DATA_DIR="$PROJECT_PATH/.heimdall-mcp"
 
-echo -e "${CYAN}🔍 Heimdall MCP Container & Data Analysis${NC}"
-echo "============================================"
-echo ""
-
 # Function to convert bytes to human readable
 human_readable() {
     local bytes=$1
@@ -37,172 +33,188 @@ human_readable() {
     fi
 }
 
-# 1. Docker Image Analysis
-echo -e "${BLUE}📦 Docker Image Analysis${NC}"
-echo "------------------------"
+echo -e "${CYAN}📊 Heimdall MCP System Analysis${NC}"
+echo "=================================="
+echo ""
 
-# Check if image exists
+# Collect key metrics first
 if docker image inspect "$IMAGE_NAME" &> /dev/null; then
-    # Get image size
     IMAGE_SIZE=$(docker image inspect "$IMAGE_NAME" --format='{{.Size}}')
     IMAGE_SIZE_HUMAN=$(human_readable $IMAGE_SIZE)
+    IMAGE_EXISTS=true
+else
+    IMAGE_EXISTS=false
+fi
 
+if [ -d "$DATA_DIR" ]; then
+    TOTAL_SIZE=$(du -s "$DATA_DIR" 2>/dev/null | awk '{print $1*1024}')
+    TOTAL_SIZE_HUMAN=$(human_readable $TOTAL_SIZE)
+    DATA_EXISTS=true
+    
+    # Get memory count
+    if [ -f "$DATA_DIR/heimdall/cognitive_memory.db" ] && command -v sqlite3 &> /dev/null; then
+        MEMORY_COUNT=$(sqlite3 "$DATA_DIR/heimdall/cognitive_memory.db" "SELECT COUNT(*) FROM memories;" 2>/dev/null || echo "N/A")
+    else
+        MEMORY_COUNT="N/A"
+    fi
+else
+    DATA_EXISTS=false
+fi
+
+# Check container status
+CONTAINERS_RUNNING=0
+if docker ps --format "{{.Names}}" | grep -q "$CONTAINER_NAME"; then
+    ((CONTAINERS_RUNNING++))
+fi
+if docker ps --format "{{.Names}}" | grep -q "$QDRANT_CONTAINER"; then
+    ((CONTAINERS_RUNNING++))
+fi
+
+echo -e "${BLUE}🎯 Key Metrics${NC}"
+echo "-------------"
+if [ "$IMAGE_EXISTS" = true ]; then
+    echo -e "Docker Image: ${YELLOW}$IMAGE_SIZE_HUMAN${NC}"
+else
+    echo -e "Docker Image: ${RED}Not built${NC}"
+fi
+
+if [ "$DATA_EXISTS" = true ]; then
+    echo -e "Data Storage: ${YELLOW}$TOTAL_SIZE_HUMAN${NC}"
+    echo -e "Memory Records: ${YELLOW}$MEMORY_COUNT${NC}"
+else
+    echo -e "Data Storage: ${RED}Not initialized${NC}"
+fi
+
+if [ $CONTAINERS_RUNNING -eq 0 ]; then
+    echo -e "Status: ${YELLOW}No containers running${NC}"
+elif [ $CONTAINERS_RUNNING -eq 1 ]; then
+    echo -e "Status: ${GREEN}1 container running${NC}"
+else
+    echo -e "Status: ${GREEN}$CONTAINERS_RUNNING containers running${NC}"
+fi
+
+if [ "$DATA_EXISTS" = true ]; then
+    echo -e "\n${BLUE}📦 Storage Breakdown${NC}"
+    echo "-------------------"
+    echo -e "Data Directory: ${CYAN}$TOTAL_SIZE_HUMAN${NC}"
+    
+    # Clean directory listing
+    du -sh "$DATA_DIR"/* 2>/dev/null | sort -hr | while read size dir; do
+        dir_name=$(basename "$dir")
+        case $dir_name in
+            "qdrant") echo -e "├── Qdrant vectors: ${YELLOW}$size${NC}" ;;
+            "heimdall") echo -e "├── Cognitive DB: ${YELLOW}$size${NC}" ;;
+            "models") echo -e "├── Models: ${YELLOW}$size${NC}" ;;
+            "logs") echo -e "├── Logs: ${YELLOW}$size${NC}" ;;
+            *) echo -e "├── $dir_name: ${YELLOW}$size${NC}" ;;
+        esac
+    done
+fi
+
+if [ "$IMAGE_EXISTS" = true ]; then
+    echo -e "\n${BLUE}🐳 Docker Image${NC}"
+    echo "---------------"
     echo -e "Image: ${GREEN}$IMAGE_NAME${NC}"
     echo -e "Size: ${YELLOW}$IMAGE_SIZE_HUMAN${NC}"
-
-    # Show image layers
-    echo -e "\n${CYAN}Image Layers:${NC}"
-    docker history "$IMAGE_NAME" --format "table {{.CreatedBy}}\t{{.Size}}" | head -20
-
-    # Base image size comparison
+    
+    # Base image comparison
     BASE_SIZE=$(docker image inspect python:3.13-slim --format='{{.Size}}' 2>/dev/null || echo 0)
     if [[ $BASE_SIZE -gt 0 ]]; then
         ADDED_SIZE=$((IMAGE_SIZE - BASE_SIZE))
-        echo -e "\n${CYAN}Size Breakdown:${NC}"
-        echo -e "Base image (python:3.13-slim): $(human_readable $BASE_SIZE)"
-        echo -e "Added by build: $(human_readable $ADDED_SIZE)"
+        echo -e "├── Base (python:3.13-slim): ${YELLOW}$(human_readable $BASE_SIZE)${NC}"
+        echo -e "└── Added by build: ${YELLOW}$(human_readable $ADDED_SIZE)${NC}"
     fi
-else
-    echo -e "${RED}Image not found: $IMAGE_NAME${NC}"
 fi
 
-# 2. Container Runtime Analysis
-echo -e "\n${BLUE}🏃 Container Runtime Analysis${NC}"
-echo "--------------------------------"
-
-# Check both containers
+# Container status
+echo -e "\n${BLUE}🏃 Container Status${NC}"
+echo "------------------"
+FOUND_CONTAINERS=false
 for container in "$CONTAINER_NAME" "$QDRANT_CONTAINER"; do
     if docker container inspect "$container" &> /dev/null; then
-        echo -e "\n${CYAN}Container: $container${NC}"
-
-        # Get container size (writable layer)
-        CONTAINER_SIZE=$(docker ps -s --format "table {{.Names}}\t{{.Size}}" | grep "$container" | awk '{print $2}' || echo "0B")
-        echo -e "Writable layer size: ${YELLOW}$CONTAINER_SIZE${NC}"
-
-        # Get memory usage if running
+        FOUND_CONTAINERS=true
         if docker ps --format "{{.Names}}" | grep -q "$container"; then
-            STATS=$(docker stats "$container" --no-stream --format "{{.MemUsage}}\t{{.CPUPerc}}")
+            STATS=$(docker stats "$container" --no-stream --format "{{.MemUsage}}\t{{.CPUPerc}}" 2>/dev/null || echo "N/A N/A")
             MEM_USAGE=$(echo "$STATS" | awk '{print $1}')
             CPU_USAGE=$(echo "$STATS" | awk '{print $2}')
-            echo -e "Memory usage: ${YELLOW}$MEM_USAGE${NC}"
-            echo -e "CPU usage: ${YELLOW}$CPU_USAGE${NC}"
+            echo -e "${GREEN}●${NC} $(basename $container): Running (${YELLOW}$MEM_USAGE${NC} RAM, ${YELLOW}$CPU_USAGE${NC} CPU)"
+        else
+            echo -e "${YELLOW}○${NC} $(basename $container): Stopped"
         fi
     fi
 done
 
-# 3. Data Volume Analysis
-echo -e "\n${BLUE}💾 Data Volume Analysis${NC}"
-echo "-----------------------"
-
-if [ -d "$DATA_DIR" ]; then
-    # Total data directory size (use actual disk usage, not apparent size)
-    TOTAL_SIZE=$(du -s "$DATA_DIR" 2>/dev/null | awk '{print $1*1024}')
-    echo -e "Total data directory (actual disk usage): ${YELLOW}$(human_readable $TOTAL_SIZE)${NC}"
-    echo -e "Path: $DATA_DIR"
-
-    # Breakdown by subdirectory
-    echo -e "\n${CYAN}Directory breakdown:${NC}"
-    du -sh "$DATA_DIR"/* 2>/dev/null | sort -hr | while read size dir; do
-        dir_name=$(basename "$dir")
-        echo -e "  $size\t$dir_name"
-    done
-
-    # Specific file analysis
-    echo -e "\n${CYAN}Key files:${NC}"
-
-    # SQLite database
-    if [ -f "$DATA_DIR/heimdall/cognitive_memory.db" ]; then
-        DB_SIZE=$(stat -f%z "$DATA_DIR/heimdall/cognitive_memory.db" 2>/dev/null || stat -c%s "$DATA_DIR/heimdall/cognitive_memory.db" 2>/dev/null || echo 0)
-        echo -e "  Cognitive Memory DB: $(human_readable $DB_SIZE)"
-
-        # Count records if possible
-        if command -v sqlite3 &> /dev/null; then
-            MEMORY_COUNT=$(sqlite3 "$DATA_DIR/heimdall/cognitive_memory.db" "SELECT COUNT(*) FROM memories;" 2>/dev/null || echo "N/A")
-            echo -e "    Memory records: $MEMORY_COUNT"
-        fi
+if [ "$FOUND_CONTAINERS" = false ]; then
+    echo -e "${YELLOW}No containers for this project${NC}"
+    
+    # Check for other Heimdall projects
+    OTHER_HEIMDALL=$(docker ps --format "{{.Names}}" | grep -E "^(heimdall|qdrant)-.*-[a-f0-9]{8}$" | wc -l)
+    if [ "$OTHER_HEIMDALL" -gt 0 ]; then
+        echo -e "${CYAN}Other Heimdall projects running:${NC}"
+        # Use process substitution to avoid subshell issues
+        while IFS= read -r name; do
+            if [[ "$name" == heimdall-* ]]; then
+                project=$(echo "$name" | sed -E 's/heimdall-(.+)-[a-f0-9]{8}/\1/')
+                echo -e "  ${GREEN}●${NC} $project"
+            fi
+        done < <(docker ps --format "{{.Names}}" | grep -E "^heimdall-.*-[a-f0-9]{8}$")
     fi
-
-    # Qdrant data
-    if [ -d "$DATA_DIR/qdrant" ]; then
-        QDRANT_SIZE=$(du -s "$DATA_DIR/qdrant" 2>/dev/null | awk '{print $1*1024}')
-        QDRANT_APPARENT=$(du -sb "$DATA_DIR/qdrant" 2>/dev/null | awk '{print $1}')
-        echo -e "  Qdrant vector data (actual): $(human_readable $QDRANT_SIZE)"
-        echo -e "    Note: Uses memory-mapped files - apparent size $(human_readable $QDRANT_APPARENT) but actual disk usage $(human_readable $QDRANT_SIZE)"
-    fi
-
-    # Models
-    if [ -d "$DATA_DIR/models" ]; then
-        MODEL_SIZE=$(du -sb "$DATA_DIR/models" 2>/dev/null | awk '{print $1}')
-        echo -e "  Downloaded models: $(human_readable $MODEL_SIZE)"
-
-        # List models
-        echo -e "\n${CYAN}Models:${NC}"
-        find "$DATA_DIR/models" -type f -name "*.bin" -o -name "*.safetensors" 2>/dev/null | while read model; do
-            model_size=$(stat -f%z "$model" 2>/dev/null || stat -c%s "$model" 2>/dev/null || echo 0)
-            model_name=$(basename "$(dirname "$model")")
-            echo -e "    $model_name: $(human_readable $model_size)"
-        done
-    fi
-else
-    echo -e "${RED}Data directory not found: $DATA_DIR${NC}"
 fi
 
-# 4. Docker System Impact
-echo -e "\n${BLUE}🐳 Docker System Impact${NC}"
-echo "------------------------"
+# Docker system overview
+echo -e "\n${BLUE}🐳 Docker System${NC}"
+echo "----------------"
+DOCKER_STATS=$(docker system df)
+IMAGES_LINE=$(echo "$DOCKER_STATS" | grep "Images")
+CONTAINERS_LINE=$(echo "$DOCKER_STATS" | grep "Containers")
+VOLUMES_LINE=$(echo "$DOCKER_STATS" | grep "Volumes")
 
-# Docker disk usage
-echo -e "${CYAN}Docker disk usage:${NC}"
-docker system df | grep -E "(Images|Containers|Volumes)"
+echo -e "Images: $(echo "$IMAGES_LINE" | awk '{print $2}') total, $(echo "$IMAGES_LINE" | awk '{print $3}') active ($(echo "$IMAGES_LINE" | awk '{print $4}'))"
+echo -e "Containers: $(echo "$CONTAINERS_LINE" | awk '{print $2}') total, $(echo "$CONTAINERS_LINE" | awk '{print $3}') active"
 
-# Volume analysis
-echo -e "\n${CYAN}Project volumes:${NC}"
-docker volume ls --format "table {{.Name}}\t{{.Size}}" | grep "$PROJECT_HASH" || echo "No named volumes found"
+# List all Docker images
+echo -e "\n${CYAN}All Docker Images:${NC}"
+docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}" | head -10
 
-# 5. Recommendations
-echo -e "\n${BLUE}💡 Optimization Recommendations${NC}"
-echo "--------------------------------"
-
-# Check for optimization opportunities
-if [[ $IMAGE_SIZE -gt 1073741824 ]]; then  # > 1GB
-    echo -e "${YELLOW}⚠️  Image size is over 1GB (${IMAGE_SIZE_HUMAN}). Priority optimizations:${NC}"
-    echo "  1. Models are likely in image - should be downloaded at runtime or cached"
-    echo "  2. Clear pip cache: RUN pip cache purge"
-    echo "  3. Review what's being copied in COPY layers"
-    echo "  4. Use .dockerignore more aggressively"
-    echo "  5. Consider using slim base images or distroless"
-fi
-
-# Data usage is actually fine
-echo -e "${GREEN}✅ Data volume usage is healthy:${NC}"
-echo "  - Actual disk usage: $(du -sh "$DATA_DIR" 2>/dev/null | cut -f1)"
-echo "  - Qdrant sparse files are normal behavior"
-
-# Check for unused images and provide detailed cleanup info
+# Cleanup opportunities
 UNUSED_IMAGES=$(docker images -f "dangling=true" -q | wc -l)
 ALL_IMAGES=$(docker images -q | wc -l)
 USED_IMAGES=$(docker ps -a --format "{{.Image}}" | sort -u | wc -l)
 
-echo -e "${CYAN}Image cleanup opportunities:${NC}"
+echo -e "\n${BLUE}🧹 Cleanup Opportunities${NC}"
+echo "------------------------"
 if [[ $UNUSED_IMAGES -gt 0 ]]; then
-    echo -e "  ${YELLOW}⚠️  Dangling images: $UNUSED_IMAGES${NC}"
+    echo -e "${YELLOW}⚠️${NC}  Dangling images: $UNUSED_IMAGES"
+    # Show details of dangling images and check if they're Heimdall-related
+    docker images -f "dangling=true" --format "{{.ID}}\t{{.Size}}\t{{.CreatedSince}}" | while read id size created; do
+        # Check if size matches known Heimdall images (likely 600-800MB range)
+        if [[ "$size" =~ ^[67][0-9][0-9]MB$ ]]; then
+            echo -e "    ${CYAN}$id${NC} ($size, created $created) ${YELLOW}[likely Heimdall build]${NC}"
+        else
+            echo -e "    ${CYAN}$id${NC} ($size, created $created)"
+        fi
+    done
 fi
-echo -e "  Total images: $ALL_IMAGES (using $(docker system df | grep Images | awk '{print $4}'))"
-echo -e "  Images in use: $USED_IMAGES"
-echo -e "  Potential cleanup: $((ALL_IMAGES - USED_IMAGES)) unused images"
+echo -e "Unused images: $((ALL_IMAGES - USED_IMAGES)) of $ALL_IMAGES total"
 
-# Cleanup commands
-echo -e "\n${CYAN}Safe cleanup commands:${NC}"
-echo "# Remove only THIS project:"
+echo -e "\n${CYAN}Quick cleanup commands:${NC}"
+echo "# Remove this project:"
 echo "$SCRIPT_DIR/setup_project_memory.sh --cleanup"
 echo ""
-echo "# Remove only dangling images (safe):"
+echo "# Remove dangling images:"
 echo "docker image prune -f"
-echo ""
-echo "# List all images to manually review:"
-echo "docker images"
-echo ""
-echo -e "${YELLOW}# Full cleanup (CAREFUL - affects other projects!):${NC}"
-echo "# docker system prune -a --volumes"
+
+# Recommendations
+echo -e "\n${BLUE}💡 Recommendations${NC}"
+echo "------------------"
+if [ "$IMAGE_EXISTS" = true ] && [[ $IMAGE_SIZE -gt 1073741824 ]]; then
+    echo -e "${YELLOW}⚠️${NC}  Image over 1GB - consider optimization"
+fi
+
+if [ "$DATA_EXISTS" = true ]; then
+    echo -e "${GREEN}✅${NC} Data usage is healthy ($TOTAL_SIZE_HUMAN)"
+else
+    echo -e "${YELLOW}ℹ️${NC}  Run setup to initialize data directory"
+fi
 
 echo -e "\n${GREEN}✅ Analysis complete${NC}"
