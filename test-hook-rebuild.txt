@@ -1,0 +1,1 @@
+Test hook after container rebuild
