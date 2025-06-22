@@ -4,12 +4,15 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](hhttps://github.com/lcbcFoo/heimdall-mcp-server/blob/main/README.mdttps://opensource.org/licenses/Apache-2.0)
 [![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://www.docker.com/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io/)
+[![Heimdall Demo Video](https://img.shields.io/badge/YouTube-red)](https://youtu.be/7X1gntAXsao)
 
 **The Problem:** Your AI coding assistant has short-lived memory. Every chat session starts from a blank slate.
 
 **The Solution:** Heimdall gives your LLM a persistent, growing, cognitive memory of your specific codebase, lessons and memories carry over time.
 
-https://github.com/user-attachments/assets/5a556433-97c2-4d57-92cc-3813ac23ff5b
+
+https://github.com/user-attachments/assets/120b3d32-72d1-4d42-b3ab-285e8a711981
+
 
 ## Key Features
 
