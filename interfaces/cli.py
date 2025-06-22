@@ -319,7 +319,7 @@ class CognitiveCLI:
             elif loader_type == "git":
                 from cognitive_memory.loaders import GitHistoryLoader
 
-                loader = GitHistoryLoader(config.cognitive)
+                loader = GitHistoryLoader(config.cognitive, self.cognitive_system)
             else:
                 # This shouldn't happen due to earlier check, but be safe
                 print(f"✗ Unsupported loader type: {loader_type}")
