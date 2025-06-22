@@ -28,6 +28,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from cognitive_memory.core.interfaces import CognitiveSystem
+from cognitive_memory.core.version import get_version_info
 from cognitive_memory.main import initialize_system, initialize_with_config
 from interfaces.cli import CognitiveCLI
 from memory_system.display_utils import format_source_info
@@ -474,10 +475,12 @@ class CognitiveMemoryMCPServer:
                 ]
 
             # Format status as JSON for optimal LLM processing
+            version_info = get_version_info()
             formatted_status = {
                 "system_status": "healthy",
-                "timestamp": datetime.now().isoformat(),
+                "version": version_info,
                 **status_data,
+                "timestamp": datetime.now().isoformat(),  # Ensure ISO format overrides any Unix timestamp
             }
 
             if detailed:
@@ -529,7 +532,7 @@ class CognitiveMemoryMCPServer:
                             "status": "healthy",
                             "service": "cognitive-memory-mcp",
                             "timestamp": datetime.now().isoformat(),
-                            "version": "1.0.0",
+                            "version": get_version_info(),
                         }
                     )
                 else:

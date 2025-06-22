@@ -520,7 +520,7 @@ class CognitiveMemorySystem(CognitiveSystem):
             storage_stats: dict[str, Any] = {}
 
             stats: dict[str, Any] = {
-                "timestamp": time.time(),
+                "timestamp": datetime.now().isoformat(),
                 "system_config": {
                     "activation_threshold": self.config.cognitive.activation_threshold,
                     "bridge_discovery_k": self.config.cognitive.bridge_discovery_k,
