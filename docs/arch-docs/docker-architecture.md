@@ -288,6 +288,35 @@ Docker Volumes:
 - **User Permissions**: Host user mapping via docker-compose
 - **Resource Limits**: Memory and CPU constraints can be added
 
+### Docker Container User Permissions
+
+#### Permission Architecture
+The system uses different user permission strategies for different containers:
+
+1. **Heimdall MCP Container**: Runs as host user via `user: "${HOST_UID}:${HOST_GID}"` mapping
+2. **Qdrant Container**: Runs as root (required by official Qdrant image design)
+
+#### File Ownership Implications
+- **Qdrant creates root-owned files** in mounted volumes (`/path/to/project/.heimdall-mcp/qdrant/`)
+- **Host user cannot directly delete** these files with `rm -rf`
+- **Standard Docker cleanup pattern** is implemented for proper file removal
+
+#### Cleanup Requirements
+**❌ Don't use `rm -rf .heimdall-mcp/`** - will fail with permission denied errors
+
+**✅ Use the provided cleanup script:**
+```bash
+# Proper cleanup that handles root-owned files
+/path/to/heimdall-mcp-server/scripts/cleanup_memory.sh --project
+```
+
+#### Technical Implementation
+The cleanup script uses the standard Docker pattern for removing root-owned files:
+```bash
+# Uses temporary Alpine container with root privileges to remove files
+docker run --rm -v "$PROJECT_DATA_DIR:/cleanup" alpine:latest rm -rf /cleanup/* /cleanup/.[!.]*
+```
+
 ## Benefits Summary
 
 ### For Users

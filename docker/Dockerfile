@@ -84,6 +84,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD /healthcheck.sh
 
 # User will be set by docker-compose user mapping
+# Note: Qdrant container runs as root and creates root-owned files in volumes.
+# Use scripts/cleanup_memory.sh for proper cleanup to avoid permission issues.
 
 # Set entrypoint
 ENTRYPOINT ["/entrypoint.sh"]

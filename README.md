@@ -64,6 +64,16 @@ Populate the `.heimdall-mcp/` directory (created by the above scripts) with your
 
 Your project's memory is now active and ready for your LLM.
 
+## 🧹 Cleanup
+
+To remove Heimdall from a project, use the cleanup script instead of `rm -rf`:
+
+```bash
+/path/to/heimdall-mcp-server/scripts/cleanup_memory.sh --project
+```
+
+This handles Docker permission issues automatically.
+
 ## ⚙️ How It Works Under the Hood
 
 Heimdall extracts unstructured knowledge from your documentation and structured data from your git history. This information is vectorized and stored in a Qdrant database. The LLM can then query this database using a simple set of tools to retrieve relevant, context-aware information.
