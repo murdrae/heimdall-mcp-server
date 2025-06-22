@@ -158,6 +158,7 @@ class GitHistoryMiner:
         since_date: datetime | None = None,
         until_date: datetime | None = None,
         branch: str | None = None,
+        since_commit: str | None = None,
     ) -> Iterator[Commit]:
         """Extract commit history with security controls.
 
@@ -166,12 +167,13 @@ class GitHistoryMiner:
             since_date: Extract commits since this date
             until_date: Extract commits until this date
             branch: Branch to extract from (defaults to current branch)
+            since_commit: Extract commits since this commit hash (incremental mode)
 
         Yields:
             Commit: Validated commit objects
 
         Raises:
-            ValueError: If repository is not valid
+            ValueError: If repository is not valid or since_commit is invalid
             GitCommandError: If git operations fail
         """
         if not self.validate_repository():
@@ -188,14 +190,32 @@ class GitHistoryMiner:
             # Build commit iteration parameters
             kwargs: dict[str, Any] = {"max_count": max_commits}
 
+            # Handle incremental mode with since_commit
+            if since_commit:
+                # Validate commit hash exists in repository
+                if not self._validate_commit_hash(since_commit):
+                    raise ValueError(
+                        f"Invalid or non-existent commit hash: {since_commit}"
+                    )
+
+                # Use git revision range syntax: since_commit..HEAD
+                # This excludes the since_commit itself (we already processed it)
+                if branch:
+                    kwargs["rev"] = f"{since_commit}..{branch}"
+                else:
+                    kwargs["rev"] = f"{since_commit}..HEAD"
+
+                # Remove date filters when using since_commit (git handles ordering)
+                since_date = None
+                until_date = None
+            elif branch:
+                kwargs["rev"] = branch
+
             if since_date:
                 kwargs["since"] = since_date
 
             if until_date:
                 kwargs["until"] = until_date
-
-            if branch:
-                kwargs["rev"] = branch
 
             logger.info(
                 "Starting commit history extraction",
@@ -203,6 +223,7 @@ class GitHistoryMiner:
                 since_date=since_date,
                 until_date=until_date,
                 branch=branch,
+                since_commit=since_commit,
             )
 
             commit_count = 0
@@ -369,6 +390,37 @@ class GitHistoryMiner:
                 error=str(e),
             )
             return None
+
+    def _validate_commit_hash(self, commit_hash: str) -> bool:
+        """Validate that a commit hash exists in the repository.
+
+        Args:
+            commit_hash: The commit hash to validate
+
+        Returns:
+            True if commit exists and is valid, False otherwise
+        """
+        try:
+            if not self.repo:
+                return False
+
+            # Validate hash format (SHA-1: 40 chars, SHA-256: 64 chars, or partial)
+            if not isinstance(commit_hash, str) or len(commit_hash.strip()) < 4:
+                return False
+
+            commit_hash = commit_hash.strip()
+            if not all(c in "0123456789abcdefABCDEF" for c in commit_hash):
+                return False
+
+            # Try to resolve the commit
+            self.repo.commit(commit_hash)
+            return True
+
+        except Exception as e:
+            logger.debug(
+                "Commit hash validation failed", commit_hash=commit_hash, error=str(e)
+            )
+            return False
 
     def get_repository_stats(self) -> dict[str, Any]:
         """Get basic repository statistics with security controls.

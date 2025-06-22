@@ -368,14 +368,18 @@ class CognitiveConfig:
         # Primary: Use explicit source_type from metadata
         if hasattr(memory, "metadata") and memory.metadata:
             source_type = memory.metadata.get("source_type")
-            if source_type and source_type in self.decay_profiles:
-                return source_type
+            if (
+                source_type
+                and isinstance(source_type, str)
+                and source_type in self.decay_profiles
+            ):
+                return str(source_type)  # Explicit cast to satisfy mypy
 
         # Fallback: Use hierarchy level if source_type missing
         if hasattr(memory, "hierarchy_level"):
             hierarchy_level = memory.hierarchy_level
             # Only use valid hierarchy levels (0, 1, 2)
-            if 0 <= hierarchy_level <= 2:
+            if isinstance(hierarchy_level, int) and 0 <= hierarchy_level <= 2:
                 level_key = f"L{hierarchy_level}_{['concept', 'context', 'episode'][hierarchy_level]}"
                 return level_key if level_key in self.decay_profiles else "manual_entry"
 

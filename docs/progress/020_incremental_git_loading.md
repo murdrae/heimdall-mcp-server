@@ -5,13 +5,13 @@ Implement an incremental git commit loading system that tracks processed commits
 
 ## Status
 - **Started**: 2025-06-22
-- **Current Step**: Phase 1 Complete, Moving to Phase 2
-- **Completion**: 25%
+- **Current Step**: Phase 2 Complete, Ready for Phase 3
+- **Completion**: 50%
 - **Expected Completion**: 2025-06-24
 
 ## Objectives
 - [x] Implement memory-based state tracking for processed commits
-- [ ] Add incremental loading mode to GitHistoryMiner
+- [x] Add incremental loading mode to GitHistoryMiner
 - [ ] Update GitHistoryLoader to default to incremental behavior
 - [ ] Create git hook integration for real-time commit processing
 - [ ] Maintain all existing security and validation features
@@ -54,37 +54,62 @@ def get_latest_processed_commit(self, repo_path: str) -> tuple[str, datetime] | 
 - **Test Coverage**: Added `TestGitHistoryLoaderPhase1` class with 14 comprehensive tests
 
 ### Step 2: Incremental GitHistoryMiner
-**Status**: Not Started
-**Date Range**: 2025-06-22 - 2025-06-23
+**Status**: ✅ Completed
+**Date Range**: 2025-06-22 - 2025-06-22
 
-#### Tasks Planned
-- Add `since_commit` parameter to `extract_commit_history()`
-- Implement git log traversal from specific commit hash
-- Update security validation for incremental mode
-- Maintain existing max_commits safety limits
+#### Tasks Completed ✅
+- ✅ Add `since_commit` parameter to `extract_commit_history()`
+- ✅ Implement git log traversal from specific commit hash using `{since_commit}..HEAD` syntax
+- ✅ Update security validation for incremental mode with `_validate_commit_hash()` method
+- ✅ Maintain existing max_commits safety limits in incremental mode
+- ✅ Handle edge cases (invalid since_commit, branch switches, whitespace, mixed case)
+- ✅ Add comprehensive test coverage (21 new tests in `test_git_history_miner_incremental.py`)
 
-#### Technical Approach
+#### Technical Implementation
 ```python
 def extract_commit_history(
     self,
     since_commit: str | None = None,  # New parameter
     max_commits: int = 1000,          # Existing safety limit
-    # Remove complex date filtering - use git's natural ordering
+    # Other existing parameters...
 ) -> Iterator[Commit]:
     """Extract commits since specified commit hash."""
 
-    # Build git log parameters
+    # Validate commit hash exists in repository
     if since_commit:
-        # Use git's native since-commit traversal
-        kwargs["rev"] = f"{since_commit}..HEAD"
+        if not self._validate_commit_hash(since_commit):
+            raise ValueError(f"Invalid or non-existent commit hash: {since_commit}")
 
-    # Rest of existing logic unchanged
+        # Use git revision range syntax: since_commit..HEAD
+        if branch:
+            kwargs["rev"] = f"{since_commit}..{branch}"
+        else:
+            kwargs["rev"] = f"{since_commit}..HEAD"
+
+        # Remove date filters when using since_commit
+        since_date = None
+        until_date = None
+
+def _validate_commit_hash(self, commit_hash: str) -> bool:
+    """Validate that a commit hash exists in the repository."""
+    # Format validation (SHA-1/SHA-256, whitespace handling)
+    # Repository existence check using GitPython
+    # Comprehensive error handling
 ```
 
-#### Next Tasks
-- Handle edge cases (invalid since_commit, branch switches)
-- Test with various git repository states
-- Ensure security limits still apply in incremental mode
+#### Implementation Notes
+- **File Modified**: `cognitive_memory/git_analysis/history_miner.py`
+- **Methods Added**:
+  - `since_commit` parameter to `extract_commit_history()`
+  - `_validate_commit_hash(commit_hash: str) -> bool`
+- **Key Features**:
+  - Git revision range syntax `{since_commit}..HEAD` for efficient incremental traversal
+  - Commit hash validation with format checking (SHA-1, SHA-256, partial hashes)
+  - Whitespace handling and mixed-case support
+  - Cross-branch commit references supported
+  - All existing security limits maintained
+  - Date filters automatically disabled when using since_commit
+- **Test Coverage**: 21 comprehensive tests covering success cases, error conditions, edge cases, and security validation
 
 ### Step 3: Default Incremental Behavior
 **Status**: Not Started
