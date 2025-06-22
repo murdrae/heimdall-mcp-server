@@ -311,7 +311,12 @@ cleanup_project() {
 
     if [ "$data_confirmation" = "yes" ]; then
         log_info "Removing data directory: $project_path/.heimdall-mcp"
-        rm -rf "$project_path/.heimdall-mcp"
+        # Use Docker to remove root-owned files (standard Docker solution)
+        if command -v docker &> /dev/null && [ -d "$project_path/.heimdall-mcp" ]; then
+            docker run --rm -v "$project_path/.heimdall-mcp:/cleanup" alpine:latest rm -rf /cleanup/* /cleanup/.[!.]*
+        fi
+        # Remove the empty directory
+        rmdir "$project_path/.heimdall-mcp" 2>/dev/null || rm -rf "$project_path/.heimdall-mcp"
     fi
 
     log_success "Project cleanup completed"
