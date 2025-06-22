@@ -317,6 +317,25 @@ File System Changes → FileChangeEvent → FileSyncHandler → LoaderRegistry �
 Container Health Check ← Service Status ← Error Recovery ← Statistics Tracking
 ```
 
+### File Change Detection Behavior
+
+**Initial Scan Behavior**: When the monitoring service starts, it performs an initial directory scan to populate its internal file state tracking (`_file_states` dictionary) but **does NOT generate ADDED events for pre-existing files**. This means:
+
+- ✅ **Existing files are tracked** for future change detection (modifications/deletions)
+- ❌ **Existing files are NOT processed** into memory during container startup
+- ✅ **New files created after startup** will trigger ADDED events and be processed
+- ✅ **Modified files** will trigger MODIFIED events and be reprocessed (delete + reload)
+- ✅ **Deleted files** will trigger DELETED events and have their memories removed
+
+**File State Persistence**: File states are stored only in memory and are **not persisted** across container restarts. Each container restart requires a fresh initial scan.
+
+**Memory Awareness**: The monitoring system is **purely file-based** and has no awareness of existing memories in the cognitive system. It only tracks file system state (mtime, size, existence) and does not query or consider what memories may already exist for tracked files.
+
+**Implications for Container Restarts**:
+- Pre-existing markdown files will be tracked but not reprocessed after container restart
+- Only files that change after the container starts will trigger memory synchronization
+- To ensure all markdown files are loaded into memory, use manual loading commands before enabling monitoring
+
 ### Component Interaction
 
 The monitoring system uses a three-layer architecture:
