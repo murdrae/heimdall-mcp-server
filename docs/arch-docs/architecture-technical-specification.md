@@ -127,7 +127,7 @@ graph TB
 
 #### Dimension Extraction Strategy
 - **Emotional Dimensions**: VADER sentiment analysis + pattern recognition
-- **Temporal Dimensions**: Regex patterns for urgency and deadline detection  
+- **Temporal Dimensions**: Regex patterns for urgency and deadline detection
 - **Contextual Dimensions**: Rule-based classification of content types
 - **Social Dimensions**: Interaction pattern detection
 
@@ -236,7 +236,7 @@ CREATE INDEX idx_bridge_cache_query ON bridge_cache(query_hash);
 All critical components are wrapped in abstract interfaces to enable easy swapping and scaling:
 
 - **EmbeddingProvider**: Abstract interface supporting ONNX, PyTorch, or cloud providers
-- **VectorStorage**: Qdrant, Chroma, or custom vector database backends  
+- **VectorStorage**: Qdrant, Chroma, or custom vector database backends
 - **ActivationEngine**: Pluggable memory activation algorithms
 - **BridgeDiscovery**: Swappable serendipity algorithms
 - **MemoryLoader**: Content ingestion from markdown, PDFs, code repositories
@@ -593,7 +593,7 @@ Experience Input → Multi-dimensional Encoding → Vector Storage (Qdrant)
 ```
 heimdall-mcp-server/
 ├── .env                      # Environment configuration
-├── .pre-commit-config.yaml   # Git hook configuration  
+├── .pre-commit-config.yaml   # Git hook configuration
 ├── pyproject.toml           # Python project settings
 ├── requirements.txt         # Production dependencies
 ├── requirements-dev.txt     # Development dependencies

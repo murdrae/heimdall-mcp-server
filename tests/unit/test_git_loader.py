@@ -6,6 +6,7 @@ for storing git commits as cognitive memories.
 """
 
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -537,3 +538,247 @@ class TestGitHistoryLoaderIntegration:
         for m1, m2 in zip(memories1, memories2, strict=False):
             assert m1.id == m2.id
             assert m1.metadata["commit_hash"] == m2.metadata["commit_hash"]
+
+
+class TestGitHistoryLoaderPhase1:
+    """Test Phase 1 incremental git loading functionality."""
+
+    @pytest.fixture
+    def config(self):
+        """Create test configuration."""
+        return CognitiveConfig()
+
+    @pytest.fixture
+    def mock_storage_with_git_memories(self):
+        """Create mock storage with git commit memories."""
+        import time
+
+        mock_storage = MagicMock()
+        mock_db_manager = MagicMock()
+        mock_storage.db_manager = mock_db_manager
+
+        # Mock connection context manager
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        # Mock the most recent git commit memory
+        mock_row = {
+            "id": "git::commit::7268827abcdef123456789012345678901234567",
+            "created_at": time.time(),
+            "timestamp": time.time(),
+        }
+        mock_cursor.fetchone.return_value = mock_row
+
+        mock_db_manager.get_connection.return_value.__enter__.return_value = mock_conn
+        mock_db_manager.get_connection.return_value.__exit__.return_value = None
+
+        return mock_storage
+
+    @pytest.fixture
+    def mock_storage_empty(self):
+        """Create mock storage with no git memories."""
+        mock_storage = MagicMock()
+        mock_db_manager = MagicMock()
+        mock_storage.db_manager = mock_db_manager
+
+        # Mock connection context manager
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        # No memories found
+        mock_cursor.fetchone.return_value = None
+
+        mock_db_manager.get_connection.return_value.__enter__.return_value = mock_conn
+        mock_db_manager.get_connection.return_value.__exit__.return_value = None
+
+        return mock_storage
+
+    @pytest.fixture
+    def mock_cognitive_system_with_storage(self, mock_storage_with_git_memories):
+        """Create mock cognitive system with storage."""
+        mock_system = MagicMock()
+        mock_system.storage = mock_storage_with_git_memories
+        return mock_system
+
+    @pytest.fixture
+    def mock_cognitive_system_empty(self, mock_storage_empty):
+        """Create mock cognitive system with empty storage."""
+        mock_system = MagicMock()
+        mock_system.storage = mock_storage_empty
+        return mock_system
+
+    @pytest.fixture
+    def temp_git_repo(self):
+        """Create a temporary git repository for testing."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir) / "test_repo"
+            repo_path.mkdir()
+
+            repo = Repo.init(str(repo_path))
+            test_file = repo_path / "test.txt"
+            test_file.write_text("Hello, world!")
+
+            repo.index.add([str(test_file)])
+            author = Actor("Test User", "test@example.com")
+            repo.index.commit("Initial commit", author=author, committer=author)
+
+            yield str(repo_path)
+
+    def test_get_latest_processed_commit_no_cognitive_system(
+        self, config, temp_git_repo
+    ):
+        """Test get_latest_processed_commit with no cognitive system."""
+        loader = GitHistoryLoader(config, None)
+
+        result = loader.get_latest_processed_commit(temp_git_repo)
+
+        assert result is None
+
+    def test_get_latest_processed_commit_empty_storage(
+        self, config, mock_cognitive_system_empty, temp_git_repo
+    ):
+        """Test get_latest_processed_commit with empty storage."""
+        loader = GitHistoryLoader(config, mock_cognitive_system_empty)
+
+        result = loader.get_latest_processed_commit(temp_git_repo)
+
+        assert result is None
+
+    def test_get_latest_processed_commit_with_existing_memories(
+        self, config, mock_cognitive_system_with_storage, temp_git_repo
+    ):
+        """Test get_latest_processed_commit with existing git memories."""
+        loader = GitHistoryLoader(config, mock_cognitive_system_with_storage)
+
+        result = loader.get_latest_processed_commit(temp_git_repo)
+
+        assert result is not None
+        commit_hash, timestamp = result
+        assert commit_hash == "7268827abcdef123456789012345678901234567"
+        assert isinstance(timestamp, datetime)
+
+    def test_get_latest_processed_commit_invalid_repository(
+        self, config, mock_cognitive_system_with_storage
+    ):
+        """Test get_latest_processed_commit with invalid repository path."""
+        loader = GitHistoryLoader(config, mock_cognitive_system_with_storage)
+
+        result = loader.get_latest_processed_commit("/nonexistent/path")
+
+        assert result is None
+
+    def test_get_latest_processed_commit_validates_repository_path(
+        self, config, mock_cognitive_system_with_storage, temp_git_repo
+    ):
+        """Test that get_latest_processed_commit validates repository path."""
+        loader = GitHistoryLoader(config, mock_cognitive_system_with_storage)
+
+        with patch.object(
+            loader, "validate_source", return_value=False
+        ) as mock_validate:
+            result = loader.get_latest_processed_commit(temp_git_repo)
+
+            assert result is None
+            mock_validate.assert_called_once()
+
+    def test_get_latest_processed_commit_no_storage_in_cognitive_system(
+        self, config, temp_git_repo
+    ):
+        """Test get_latest_processed_commit when cognitive system has no storage."""
+        mock_system = MagicMock()
+        mock_system.storage = None
+        loader = GitHistoryLoader(config, mock_system)
+
+        result = loader.get_latest_processed_commit(temp_git_repo)
+
+        assert result is None
+
+    def test_get_latest_processed_commit_no_db_manager(self, config, temp_git_repo):
+        """Test get_latest_processed_commit when storage has no db_manager."""
+        mock_system = MagicMock()
+        mock_storage = MagicMock()
+        mock_storage.db_manager = None
+        mock_system.storage = mock_storage
+        loader = GitHistoryLoader(config, mock_system)
+
+        result = loader.get_latest_processed_commit(temp_git_repo)
+
+        assert result is None
+
+    def test_extract_commit_hash_from_memory_id_valid(self, config):
+        """Test _extract_commit_hash_from_memory_id with valid memory ID."""
+        loader = GitHistoryLoader(config, None)
+
+        # Test valid 40-character SHA-1 hash
+        valid_id = "git::commit::7268827abcdef123456789012345678901234567"
+        result = loader._extract_commit_hash_from_memory_id(valid_id)
+
+        assert result == "7268827abcdef123456789012345678901234567"
+
+    def test_extract_commit_hash_from_memory_id_valid_sha256(self, config):
+        """Test _extract_commit_hash_from_memory_id with valid SHA-256 hash."""
+        loader = GitHistoryLoader(config, None)
+
+        # Test valid 64-character SHA-256 hash
+        sha256_hash = "a" * 64  # 64 character hex string
+        valid_id = f"git::commit::{sha256_hash}"
+        result = loader._extract_commit_hash_from_memory_id(valid_id)
+
+        assert result == sha256_hash
+
+    def test_extract_commit_hash_from_memory_id_invalid_format(self, config):
+        """Test _extract_commit_hash_from_memory_id with invalid memory ID format."""
+        loader = GitHistoryLoader(config, None)
+
+        # Test invalid prefix
+        invalid_id = "not::git::commit::7268827abcdef123456789012345678901234567"
+        result = loader._extract_commit_hash_from_memory_id(invalid_id)
+
+        assert result is None
+
+    def test_extract_commit_hash_from_memory_id_wrong_length(self, config):
+        """Test _extract_commit_hash_from_memory_id with wrong hash length."""
+        loader = GitHistoryLoader(config, None)
+
+        # Test too short hash
+        short_id = "git::commit::7268827abc"
+        result = loader._extract_commit_hash_from_memory_id(short_id)
+
+        assert result is None
+
+        # Test too long hash (but not SHA-256)
+        long_id = "git::commit::7268827abcdef123456789012345678901234567890123456789"
+        result = loader._extract_commit_hash_from_memory_id(long_id)
+
+        assert result is None
+
+    def test_extract_commit_hash_from_memory_id_non_hex(self, config):
+        """Test _extract_commit_hash_from_memory_id with non-hexadecimal characters."""
+        loader = GitHistoryLoader(config, None)
+
+        # Test invalid characters
+        invalid_id = "git::commit::7268827abcdefGHIJKL789012345678901234567"
+        result = loader._extract_commit_hash_from_memory_id(invalid_id)
+
+        assert result is None
+
+    def test_extract_commit_hash_from_memory_id_empty_hash(self, config):
+        """Test _extract_commit_hash_from_memory_id with empty hash."""
+        loader = GitHistoryLoader(config, None)
+
+        # Test empty hash
+        empty_id = "git::commit::"
+        result = loader._extract_commit_hash_from_memory_id(empty_id)
+
+        assert result is None
+
+    def test_extract_commit_hash_from_memory_id_exception_handling(self, config):
+        """Test _extract_commit_hash_from_memory_id handles exceptions gracefully."""
+        loader = GitHistoryLoader(config, None)
+
+        # Test with None input
+        result = loader._extract_commit_hash_from_memory_id(None)
+
+        assert result is None

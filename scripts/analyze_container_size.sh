@@ -50,7 +50,7 @@ if [ -d "$DATA_DIR" ]; then
     TOTAL_SIZE=$(du -s "$DATA_DIR" 2>/dev/null | awk '{print $1*1024}')
     TOTAL_SIZE_HUMAN=$(human_readable $TOTAL_SIZE)
     DATA_EXISTS=true
-    
+
     # Get memory count
     if [ -f "$DATA_DIR/heimdall/cognitive_memory.db" ] && command -v sqlite3 &> /dev/null; then
         MEMORY_COUNT=$(sqlite3 "$DATA_DIR/heimdall/cognitive_memory.db" "SELECT COUNT(*) FROM memories;" 2>/dev/null || echo "N/A")
@@ -97,7 +97,7 @@ if [ "$DATA_EXISTS" = true ]; then
     echo -e "\n${BLUE}📦 Storage Breakdown${NC}"
     echo "-------------------"
     echo -e "Data Directory: ${CYAN}$TOTAL_SIZE_HUMAN${NC}"
-    
+
     # Clean directory listing
     du -sh "$DATA_DIR"/* 2>/dev/null | sort -hr | while read size dir; do
         dir_name=$(basename "$dir")
@@ -116,7 +116,7 @@ if [ "$IMAGE_EXISTS" = true ]; then
     echo "---------------"
     echo -e "Image: ${GREEN}$IMAGE_NAME${NC}"
     echo -e "Size: ${YELLOW}$IMAGE_SIZE_HUMAN${NC}"
-    
+
     # Base image comparison
     BASE_SIZE=$(docker image inspect python:3.13-slim --format='{{.Size}}' 2>/dev/null || echo 0)
     if [[ $BASE_SIZE -gt 0 ]]; then
@@ -146,7 +146,7 @@ done
 
 if [ "$FOUND_CONTAINERS" = false ]; then
     echo -e "${YELLOW}No containers for this project${NC}"
-    
+
     # Check for other Heimdall projects
     OTHER_HEIMDALL=$(docker ps --format "{{.Names}}" | grep -E "^(heimdall|qdrant)-.*-[a-f0-9]{8}$" | wc -l)
     if [ "$OTHER_HEIMDALL" -gt 0 ]; then

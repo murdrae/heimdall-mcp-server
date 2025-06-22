@@ -6,6 +6,8 @@ commits as memories with metadata for retrieval and connection analysis.
 Each commit becomes a cognitive memory with full context and file changes.
 """
 
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -96,3 +98,132 @@ class GitHistoryLoader(MemoryLoader):
             Empty list since git repositories are identified by .git directory
         """
         return self.commit_loader.get_supported_extensions()
+
+    def get_latest_processed_commit(
+        self, repo_path: str
+    ) -> tuple[str, datetime] | None:
+        """
+        Query SQLite to find most recent git commit memory for this repository.
+
+        This method enables incremental git loading by tracking what commits
+        have already been processed and stored as memories.
+
+        Args:
+            repo_path: Path to the git repository
+
+        Returns:
+            Tuple of (commit_hash, timestamp) for the latest processed commit,
+            or None if no git commits have been processed yet
+        """
+        if not self.cognitive_system:
+            logger.warning("No cognitive system available for state tracking")
+            return None
+
+        # Validate repository path for state isolation
+        try:
+            repo_path_abs = str(Path(repo_path).resolve())
+            if not self.validate_source(repo_path_abs):
+                logger.error(f"Invalid git repository for state tracking: {repo_path}")
+                return None
+        except Exception as e:
+            logger.error(f"Failed to validate repository path: {e}")
+            return None
+
+        try:
+            # Access the SQLite storage through the cognitive system
+            storage = getattr(self.cognitive_system, "storage", None)
+            if not storage:
+                logger.warning("No storage available in cognitive system")
+                return None
+
+            # Query for git commit memories - use the database manager directly
+            db_manager = getattr(storage, "db_manager", None)
+            if not db_manager:
+                logger.warning("No database manager available in storage")
+                return None
+
+            with db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Query for the most recent git commit memory
+                cursor.execute("""
+                    SELECT id, created_at, timestamp
+                    FROM memories
+                    WHERE id LIKE 'git::commit::%'
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """)
+
+                row = cursor.fetchone()
+                if not row:
+                    logger.debug("No existing git commit memories found")
+                    return None
+
+                # Extract commit hash from memory ID format: git::commit::<hash>
+                memory_id = row["id"]
+                commit_hash = self._extract_commit_hash_from_memory_id(memory_id)
+
+                if not commit_hash:
+                    logger.warning(
+                        f"Failed to extract commit hash from memory ID: {memory_id}"
+                    )
+                    return None
+
+                # Use the memory's original timestamp, fallback to created_at
+                timestamp_val = (
+                    row["timestamp"] if row["timestamp"] else row["created_at"]
+                )
+
+                # Convert timestamp to datetime
+                if isinstance(timestamp_val, int | float):
+                    memory_timestamp = datetime.fromtimestamp(timestamp_val)
+                else:
+                    # Assume it's already a datetime or Julian day
+                    memory_timestamp = datetime.now()  # Fallback
+
+                logger.debug(
+                    f"Found latest processed commit: {commit_hash} at {memory_timestamp}",
+                    repo_path=repo_path_abs,
+                )
+
+                return (commit_hash, memory_timestamp)
+
+        except Exception as e:
+            logger.error(f"Failed to query latest processed commit: {e}")
+            return None
+
+    def _extract_commit_hash_from_memory_id(self, memory_id: str) -> str | None:
+        """
+        Extract commit hash from deterministic memory ID format.
+
+        Args:
+            memory_id: Memory ID in format 'git::commit::<hash>'
+
+        Returns:
+            Commit hash string or None if extraction fails
+        """
+        try:
+            # Expected format: git::commit::<hash>
+            if not memory_id.startswith("git::commit::"):
+                return None
+
+            commit_hash = memory_id[len("git::commit::") :]
+
+            # Basic validation: git commit hashes are typically 40 characters (SHA-1)
+            # or 64 characters (SHA-256), hexadecimal
+            if len(commit_hash) not in [40, 64]:
+                logger.warning(f"Unexpected commit hash length: {len(commit_hash)}")
+                return None
+
+            # Validate hexadecimal characters
+            try:
+                int(commit_hash, 16)
+            except ValueError:
+                logger.warning(f"Invalid hexadecimal commit hash: {commit_hash}")
+                return None
+
+            return commit_hash
+
+        except Exception as e:
+            logger.error(f"Failed to extract commit hash from memory ID: {e}")
+            return None
