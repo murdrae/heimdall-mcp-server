@@ -166,9 +166,9 @@ class GitHistoryLoader(MemoryLoader):
 
         try:
             # Access the SQLite storage through the cognitive system
-            storage = getattr(self.cognitive_system, "storage", None)
+            storage = getattr(self.cognitive_system, "memory_storage", None)
             if not storage:
-                logger.warning("No storage available in cognitive system")
+                logger.warning("No memory_storage available in cognitive system")
                 return None
 
             # Query for git commit memories - use the database manager directly
