@@ -52,10 +52,15 @@ This command deploys project-isolated Docker containers for the Heimdall server 
 # /path/to/heimdall-mcp-server/scripts/setup_project_memory.sh
 # This will put the MCP server docker up, you will then need to configure the Coding Assistant you are using.
 ```
+**Note: this creates a `.heimdall-mcp` directory in your project - DON'T COMMIT IT! I highly recommend adding it to .gitignore**
 
 ### 4. Load Project Knowledge
 
-Populate the `.heimdall-mcp/` directory (created by the above scripts) with your project's documentation (e.g., Markdown files). You can also create symbolic links to an existing docs folder. Then, run the loading script.
+Populate the `.heimdall-mcp/` directory (created by the above scripts) with your project's documentation (e.g., Markdown files).
+
+You can create inner directories or create symbolic links to an existing docs folder (ln -r -s).
+
+When you have populated the directory with docs, run the loading script. (it can take some time...)
 
 ```Bash
 # Example: Symlink your existing architecture docs
@@ -66,6 +71,38 @@ Populate the `.heimdall-mcp/` directory (created by the above scripts) with your
 ```
 
 Your project's memory is now active and ready for your LLM.
+
+#### Automatic File Change detection
+
+After this point, if you add/change/remove md files on that directory the system will automatically detect and update memories.
+
+### 5. Real-time Git Integration
+
+`load_project_content.sh` loads git history, but Heimdall also supports automatically updates to memories when you make commits via git hooks
+
+#### Automatic Git Hook (Recommended)
+
+```bash
+# Install the post-commit hook (run from your project directory)
+/path/to/heimdall-mcp-server/scripts/git-hook-installer.sh --install
+```
+
+**Note**: If you have other post-commit git-hook configured, it will be saved as backup and still be executed before Heimdall MCP hook.
+
+With post-commit git hooks configured, new memories are recovered from commits automatically. To remove:
+
+```bash
+/path/to/heimdall-mcp-server/scripts/git-hook-installer.sh --uninstall
+```
+
+#### Manual Updates
+
+If you prefer to not have automatic updates using git hooks, you still can periodically use:
+
+```bash
+# Load only new commits since last update
+/path/to/heimdall-mcp-server/scripts/load_project_content.sh --git-only
+```
 
 ## 🧹 Cleanup
 
@@ -184,38 +221,11 @@ To maximize the effectiveness of Heimdall:
 - Semantic analysis: spaCy
 - Integration: Model Context Protocol (MCP)
 
-## 🔄 Real-time Git Integration
-
-Heimdall supports automatically updates to memories when you make commits via git hooks
-
-### Automatic Git Hook (Recommended)
-
-```bash
-# Install the post-commit hook (run from your project directory)
-/path/to/heimdall-mcp-server/scripts/git-hook-installer.sh --install
-```
-
-**Note**: If you have other post-commit git-hook configured, it will be saved as backup and still executed before Heimdall MCP.
-
-With post-commit git hooks configured, new memories are recovered from commits automatically. To remove:
-
-```bash
-/path/to/heimdall-mcp-server/scripts/git-hook-installer.sh --uninstall
-```
-
-### Manual Updates
-
-If you prefer to now have automatic updates using git hooks, you still can periodically use:
-
-```bash
-# Load only new commits since last update
-/path/to/heimdall-mcp-server/scripts/load_project_content.sh
-```
-
 ## 🗺️Short Term Roadmap
 
   * [x] ~~Git `post-commit` hook for automatic, real-time memory updates~~ ✅ **Completed**
-  * [ ] Watcher to auto-detect and load new documents in the `.heimdall-mcp` directory.
+  * [x] ~~Watcher to auto-detect and load new documents in the `.heimdall-mcp` directory.~~ ✅ **Completed**
+  * [x] ~~Release v0.1.0 publicly~~ ✅ **Completed**
 
 ## License
 
