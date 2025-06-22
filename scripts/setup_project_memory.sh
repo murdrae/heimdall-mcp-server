@@ -96,6 +96,19 @@ create_compose_file() {
     # Create heimdall directory structure (mounted as /app/data in container)
     mkdir -p "$PROJECT_DATA_DIR"/heimdall/{logs,backups,qdrant,models}
 
+    # Copy ONNX models from main repo if they exist and aren't already present
+    if [ ! -f "$PROJECT_DATA_DIR/heimdall/models/model_config.json" ]; then
+        if [ -f "$REPO_ROOT/data/models/model_config.json" ]; then
+            log_info "Provisioning ONNX models from main repository..."
+            cp -r "$REPO_ROOT/data/models"/* "$PROJECT_DATA_DIR/heimdall/models/"
+            log_success "ONNX models provisioned successfully"
+        else
+            log_warning "ONNX models not found in main repo - run 'python scripts/convert_model_to_onnx.py' first"
+        fi
+    else
+        log_info "ONNX models already exist in project"
+    fi
+
     # Only set permissions on new/empty directories to avoid conflicts with running containers
     if [ ! -f "$PROJECT_DATA_DIR/cognitive/cognitive_memory.db" ]; then
         chmod -R 755 "$PROJECT_DATA_DIR/cognitive" 2>/dev/null || true

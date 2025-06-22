@@ -643,6 +643,7 @@ class CognitiveMemorySystem(CognitiveSystem):
 
             if stored_count > 0:
                 try:
+                    logger.info("Parsing connections between memories...")
                     connections = loader.extract_connections(memories)
                     logger.info(f"Extracted {len(connections)} potential connections")
 

@@ -53,6 +53,13 @@ if ! mkdir -p /app/data/models; then
     exit 1
 fi
 
+# Verify ONNX models exist (should be provisioned by setup script)
+if [ -f /app/data/models/model_config.json ]; then
+    echo "✅ ONNX models found in project data directory"
+else
+    echo "⚠️  ONNX models missing - may need to run setup script again"
+fi
+
 # Create compatibility symlinks for health check
 cd /app
 if [ ! -L "data" ]; then
