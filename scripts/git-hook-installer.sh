@@ -63,13 +63,13 @@ EOF
 # Validate git repository
 validate_git_repo() {
     local repo_path="$1"
-    
+
     if [[ ! -d "$repo_path/.git" ]]; then
         log_error "Not a git repository: $repo_path"
         log_error "Please run this script from within a git repository or specify a valid path."
         return 1
     fi
-    
+
     return 0
 }
 
@@ -80,13 +80,13 @@ validate_hook_script() {
         log_error "Please ensure Heimdall MCP Server is properly installed."
         return 1
     fi
-    
+
     if [[ ! -x "$HOOK_SCRIPT" ]]; then
         log_error "Hook script is not executable: $HOOK_SCRIPT"
         log_error "Run: chmod +x $HOOK_SCRIPT"
         return 1
     fi
-    
+
     return 0
 }
 
@@ -94,12 +94,12 @@ validate_hook_script() {
 get_hook_status() {
     local repo_path="$1"
     local hook_file="$repo_path/.git/hooks/post-commit"
-    
+
     if [[ ! -f "$hook_file" ]]; then
         echo "NO_HOOK"
         return 0
     fi
-    
+
     if grep -q "Heimdall MCP Server" "$hook_file" 2>/dev/null; then
         if [[ -x "$hook_file" ]]; then
             echo "HEIMDALL_INSTALLED"
@@ -108,7 +108,7 @@ get_hook_status() {
         fi
         return 0
     fi
-    
+
     echo "OTHER_HOOK_EXISTS"
     return 0
 }
@@ -118,12 +118,12 @@ show_status() {
     local repo_path="$1"
     local hook_file="$repo_path/.git/hooks/post-commit"
     local status
-    
+
     status=$(get_hook_status "$repo_path")
-    
+
     log_info "Repository: $repo_path"
     log_info "Hook file: $hook_file"
-    
+
     case "$status" in
         "NO_HOOK")
             log_info "Status: No post-commit hook installed"
@@ -153,11 +153,11 @@ create_chained_hook() {
     local hook_file="$repo_path/.git/hooks/post-commit"
     local backup_file="$hook_file.heimdall-backup"
     local temp_file="$hook_file.tmp"
-    
+
     # Create backup of existing hook
     cp "$hook_file" "$backup_file"
     log_info "Backed up existing hook to: $backup_file"
-    
+
     # Create new chained hook
     cat > "$temp_file" << EOF
 #!/bin/bash
@@ -171,7 +171,7 @@ if [[ -f "$backup_file" ]] && [[ -x "$backup_file" ]]; then
     echo "Executing original post-commit hook..."
     "$backup_file" "\$@"
     original_exit_code=\$?
-    
+
     if [[ \$original_exit_code -ne 0 ]]; then
         echo "Warning: Original hook exited with code \$original_exit_code"
         # Continue with Heimdall hook even if original fails
@@ -188,11 +188,11 @@ fi
 
 exit 0
 EOF
-    
+
     # Make executable and replace
     chmod +x "$temp_file"
     mv "$temp_file" "$hook_file"
-    
+
     log_success "Created chained hook preserving original functionality"
 }
 
@@ -201,13 +201,13 @@ install_hook() {
     local repo_path="$1"
     local force="$2"
     local dry_run="$3"
-    
+
     local hook_file="$repo_path/.git/hooks/post-commit"
     local hooks_dir="$repo_path/.git/hooks"
     local status
-    
+
     status=$(get_hook_status "$repo_path")
-    
+
     # Create hooks directory if it doesn't exist
     if [[ ! -d "$hooks_dir" ]]; then
         if [[ "$dry_run" == "true" ]]; then
@@ -217,7 +217,7 @@ install_hook() {
             log_info "Created hooks directory: $hooks_dir"
         fi
     fi
-    
+
     case "$status" in
         "NO_HOOK")
             if [[ "$dry_run" == "true" ]]; then
@@ -229,7 +229,7 @@ install_hook() {
                 log_success "Installed Heimdall post-commit hook"
             fi
             ;;
-            
+
         "HEIMDALL_INSTALLED")
             if [[ "$force" == "true" ]]; then
                 if [[ "$dry_run" == "true" ]]; then
@@ -243,7 +243,7 @@ install_hook() {
                 return 0
             fi
             ;;
-            
+
         "HEIMDALL_NOT_EXECUTABLE")
             if [[ "$dry_run" == "true" ]]; then
                 log_info "[DRY RUN] Would fix hook permissions"
@@ -252,7 +252,7 @@ install_hook() {
                 log_success "Fixed Heimdall hook permissions"
             fi
             ;;
-            
+
         "OTHER_HOOK_EXISTS")
             if [[ "$force" == "true" ]]; then
                 if [[ "$dry_run" == "true" ]]; then
@@ -269,7 +269,7 @@ install_hook() {
             fi
             ;;
     esac
-    
+
     if [[ "$dry_run" != "true" ]]; then
         log_success "Hook installation completed successfully"
         log_info "The hook will automatically process new commits for memory storage"
@@ -281,19 +281,19 @@ install_hook() {
 uninstall_hook() {
     local repo_path="$1"
     local dry_run="$2"
-    
+
     local hook_file="$repo_path/.git/hooks/post-commit"
     local backup_file="$hook_file.heimdall-backup"
     local status
-    
+
     status=$(get_hook_status "$repo_path")
-    
+
     case "$status" in
         "NO_HOOK")
             log_info "No post-commit hook to uninstall"
             return 0
             ;;
-            
+
         "HEIMDALL_INSTALLED")
             # Check if this is a chained hook with backup
             if [[ -f "$backup_file" ]]; then
@@ -313,7 +313,7 @@ uninstall_hook() {
                 fi
             fi
             ;;
-            
+
         "HEIMDALL_NOT_EXECUTABLE")
             if [[ "$dry_run" == "true" ]]; then
                 log_info "[DRY RUN] Would remove non-executable Heimdall hook"
@@ -322,7 +322,7 @@ uninstall_hook() {
                 log_success "Removed non-executable Heimdall hook"
             fi
             ;;
-            
+
         "OTHER_HOOK_EXISTS")
             # Check if it's a chained hook with backup
             if [[ -f "$backup_file" ]]; then
@@ -349,7 +349,7 @@ main() {
     local repo_path="."
     local force="false"
     local dry_run="false"
-    
+
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -388,14 +388,14 @@ main() {
                 ;;
         esac
     done
-    
+
     # Convert to absolute path
     repo_path="$(cd "$repo_path" && pwd)"
-    
+
     # Validate inputs
     validate_git_repo "$repo_path" || exit 1
     validate_hook_script || exit 1
-    
+
     # Execute action
     case "$action" in
         "install")

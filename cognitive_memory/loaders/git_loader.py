@@ -62,36 +62,36 @@ class GitHistoryLoader(MemoryLoader):
         """
         # Always check for existing state first (unless explicitly disabled)
         force_full_load = kwargs.get("force_full_load", False)
-        
+
         if not force_full_load:
             try:
                 last_processed = self.get_latest_processed_commit(source_path)
-                
+
                 if last_processed:
                     commit_hash, last_timestamp = last_processed
                     logger.info(
                         f"Found existing git state, loading incrementally since commit {commit_hash[:8]}",
                         repo_path=source_path,
                         last_commit=commit_hash,
-                        last_timestamp=last_timestamp
+                        last_timestamp=last_timestamp,
                     )
-                    
+
                     # Set since_commit for incremental loading
                     kwargs["since_commit"] = commit_hash
                 else:
                     logger.info(
-                        f"No existing git state found, performing full history load",
-                        repo_path=source_path
+                        "No existing git state found, performing full history load",
+                        repo_path=source_path,
                     )
             except Exception as e:
                 logger.warning(
                     f"Failed to check existing git state, falling back to full load: {e}",
-                    repo_path=source_path
+                    repo_path=source_path,
                 )
         else:
             logger.info(
-                f"Force full load requested, skipping incremental check",
-                repo_path=source_path
+                "Force full load requested, skipping incremental check",
+                repo_path=source_path,
             )
 
         return self.commit_loader.load_from_source(source_path, **kwargs)

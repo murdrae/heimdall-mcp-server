@@ -97,7 +97,7 @@ class CommitLoader(MemoryLoader):
                             f"Incremental loading failed due to invalid commit {since_commit[:8]}: {ve}"
                         )
                         logger.info("Falling back to full history load")
-                        
+
                         # Retry without since_commit (full load)
                         commits = list(
                             history_miner.extract_commit_history(
@@ -108,18 +108,18 @@ class CommitLoader(MemoryLoader):
                                 since_commit=None,
                             )
                         )
-                        logger.info(f"Fallback extracted {len(commits)} commits from git history")
+                        logger.info(
+                            f"Fallback extracted {len(commits)} commits from git history"
+                        )
                     else:
                         # Re-raise other ValueError types
                         raise
                 except Exception as e:
                     # Handle other git extraction errors
                     if since_commit:
-                        logger.warning(
-                            f"Incremental git extraction failed: {e}"
-                        )
+                        logger.warning(f"Incremental git extraction failed: {e}")
                         logger.info("Attempting fallback to full history load")
-                        
+
                         try:
                             # Retry without since_commit (full load)
                             commits = list(
@@ -131,9 +131,13 @@ class CommitLoader(MemoryLoader):
                                     since_commit=None,
                                 )
                             )
-                            logger.info(f"Fallback extracted {len(commits)} commits from git history")
+                            logger.info(
+                                f"Fallback extracted {len(commits)} commits from git history"
+                            )
                         except Exception as fallback_error:
-                            logger.error(f"Fallback git extraction also failed: {fallback_error}")
+                            logger.error(
+                                f"Fallback git extraction also failed: {fallback_error}"
+                            )
                             raise fallback_error
                     else:
                         # Re-raise if not in incremental mode
@@ -145,17 +149,23 @@ class CommitLoader(MemoryLoader):
                         filtered_commits = []
                         skipped_count = 0
                         for commit in commits:
-                            if not self._is_commit_already_processed(commit.hash, source_path):
+                            if not self._is_commit_already_processed(
+                                commit.hash, source_path
+                            ):
                                 filtered_commits.append(commit)
                             else:
                                 skipped_count += 1
-                        
+
                         commits = filtered_commits
                         if skipped_count > 0:
-                            logger.info(f"Skipped {skipped_count} already processed commits")
+                            logger.info(
+                                f"Skipped {skipped_count} already processed commits"
+                            )
                     except Exception as filter_error:
                         logger.warning(f"Commit filtering failed: {filter_error}")
-                        logger.info("Proceeding with all commits (may include duplicates)")
+                        logger.info(
+                            "Proceeding with all commits (may include duplicates)"
+                        )
                         # Continue with unfiltered commits
 
                 logger.info(f"Processing {len(commits)} new commits")
@@ -167,7 +177,9 @@ class CommitLoader(MemoryLoader):
                         memory = self._create_commit_memory(commit, source_path)
                         memories.append(memory)
                     except Exception as memory_error:
-                        logger.warning(f"Failed to create memory for commit {commit.hash[:8]}: {memory_error}")
+                        logger.warning(
+                            f"Failed to create memory for commit {commit.hash[:8]}: {memory_error}"
+                        )
                         # Continue processing other commits
 
                 logger.info(
@@ -405,18 +417,18 @@ class CommitLoader(MemoryLoader):
     def _is_commit_already_processed(self, commit_hash: str, source_path: str) -> bool:
         """
         Check if a commit has already been processed and stored as a memory.
-        
+
         Args:
             commit_hash: Git commit hash to check
             source_path: Path to the git repository (for generating correct memory ID)
-            
+
         Returns:
             True if commit has already been processed, False otherwise
         """
         if not self.cognitive_system:
             logger.debug("No cognitive system available for duplicate detection")
             return False
-            
+
         try:
             # Access the SQLite storage through the cognitive system
             storage = getattr(self.cognitive_system, "storage", None)
@@ -435,25 +447,33 @@ class CommitLoader(MemoryLoader):
 
                 # Generate the expected memory ID using the same logic as memory creation
                 from pathlib import Path
+
                 repo_name = Path(source_path).name
                 expected_memory_id = self._generate_commit_id(repo_name, commit_hash)
-                
-                cursor.execute("""
+
+                cursor.execute(
+                    """
                     SELECT COUNT(*) as count
                     FROM memories
                     WHERE id = ?
-                """, (expected_memory_id,))
+                """,
+                    (expected_memory_id,),
+                )
 
                 row = cursor.fetchone()
                 exists = row["count"] > 0 if row else False
-                
+
                 if exists:
-                    logger.debug(f"Commit {commit_hash[:8]} already processed, skipping")
-                    
+                    logger.debug(
+                        f"Commit {commit_hash[:8]} already processed, skipping"
+                    )
+
                 return exists
 
         except Exception as e:
-            logger.warning(f"Failed to check if commit {commit_hash[:8]} is processed: {e}")
+            logger.warning(
+                f"Failed to check if commit {commit_hash[:8]} is processed: {e}"
+            )
             # Err on the side of caution - assume not processed to avoid missing commits
             return False
 

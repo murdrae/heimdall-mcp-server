@@ -303,7 +303,7 @@ def load_git_incremental(
 ) -> None:
     """Load git commits incrementally (only new commits since last run)."""
     console.print("📚 Loading git commits incrementally...", style="bold blue")
-    
+
     try:
         # Initialize cognitive system
         if config:
@@ -318,16 +318,16 @@ def load_git_incremental(
 
         # Load git history with incremental mode
         success = cli.load_memories(
-            source_path=source_path, 
-            loader_type="git", 
+            source_path=source_path,
+            loader_type="git",
             dry_run=dry_run,
             max_commits=max_commits,
-            force_full_load=force_full_load
+            force_full_load=force_full_load,
         )
 
         if not success:
             raise typer.Exit(1)
-            
+
         console.print("✅ Git incremental loading completed", style="bold green")
 
     except InitializationError as e:
