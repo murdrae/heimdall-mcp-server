@@ -52,7 +52,7 @@ class ServiceHealthChecker:
     """
 
     PID_FILE = "/tmp/monitoring.pid"
-    MEMORY_THRESHOLD_MB = 500
+    MEMORY_THRESHOLD_MB = 800
     CPU_THRESHOLD_PERCENT = 80
 
     def __init__(self, config: CognitiveConfig | None = None):

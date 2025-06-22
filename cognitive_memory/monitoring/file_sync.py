@@ -205,7 +205,7 @@ class FileSyncHandler:
             result = self.cognitive_system.delete_memories_by_source_path(source_path)
 
             if result:
-                deleted_count = result.get("deleted_memories", 0)
+                deleted_count = result.get("deleted_count", 0)
                 logger.info(f"Deleted {deleted_count} memories for file: {source_path}")
                 return True
             else:
@@ -244,7 +244,7 @@ class FileSyncHandler:
                 result = self.cognitive_system.delete_memories_by_source_path(
                     source_path
                 )
-                deleted_count = result.get("deleted_memories", 0) if result else 0
+                deleted_count = result.get("deleted_count", 0) if result else 0
                 logger.info(f"Deleted {deleted_count} old memories from: {file_path}")
                 return True
 
@@ -254,7 +254,7 @@ class FileSyncHandler:
                 source_path
             )
             deleted_count = (
-                delete_result.get("deleted_memories", 0) if delete_result else 0
+                delete_result.get("deleted_count", 0) if delete_result else 0
             )
 
             # Step 3: Store new memories
@@ -307,7 +307,7 @@ class FileSyncHandler:
                 source_path
             )
             deleted_count = (
-                delete_result.get("deleted_memories", 0) if delete_result else 0
+                delete_result.get("deleted_count", 0) if delete_result else 0
             )
 
             # Load and store new memories

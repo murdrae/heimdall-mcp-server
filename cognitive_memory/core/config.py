@@ -18,6 +18,27 @@ if TYPE_CHECKING:
     from .memory import CognitiveMemory
 
 
+def detect_container_environment() -> bool:
+    """
+    Detect if running inside a container environment.
+
+    Checks for common container indicators:
+    - Docker environment file (/.dockerenv)
+    - Docker cgroup indicators
+    - Container environment variables
+
+    Returns:
+        bool: True if running in a container, False otherwise
+    """
+    container_indicators = [
+        os.path.exists("/.dockerenv"),
+        os.path.exists("/proc/1/cgroup") and "docker" in open("/proc/1/cgroup").read(),
+        os.environ.get("CONTAINER") is not None,
+        os.environ.get("PROJECT_ID") is not None,  # Our container sets this
+    ]
+    return any(container_indicators)
+
+
 def detect_project_config() -> dict[str, str] | None:
     """
     Detect project-specific configuration from Docker Compose file.

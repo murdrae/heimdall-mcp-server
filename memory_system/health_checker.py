@@ -448,7 +448,15 @@ class HealthChecker:
                         name="Qdrant Service",
                         status=HealthResult.WARNING,
                         message=f"Qdrant is running but unhealthy on port {status.port}",
-                        details={"status": status.__dict__},
+                        details={
+                            "status": status.status.value,
+                            "port": status.port,
+                            "pid": status.pid,
+                            "container_id": status.container_id,
+                            "uptime_seconds": status.uptime_seconds,
+                            "health_status": status.health_status,
+                            "error": status.error,
+                        },
                     )
 
             elif status.status == ServiceStatus.STOPPED:
@@ -501,7 +509,15 @@ class HealthChecker:
                     name="Qdrant Service",
                     status=HealthResult.CRITICAL,
                     message=f"Qdrant service status unknown: {status.error or 'unknown error'}",
-                    details={"status": status.__dict__},
+                    details={
+                        "status": status.status.value,
+                        "port": status.port,
+                        "pid": status.pid,
+                        "container_id": status.container_id,
+                        "uptime_seconds": status.uptime_seconds,
+                        "health_status": status.health_status,
+                        "error": status.error,
+                    },
                 )
 
         except Exception as e:

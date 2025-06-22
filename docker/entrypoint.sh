@@ -78,6 +78,37 @@ if ! memory_system doctor --json > /dev/null 2>&1; then
     echo "⚠️  System health check failed, but continuing..."
 fi
 
+# Start monitoring service if enabled
+if [ "${MONITORING_ENABLED:-false}" = "true" ]; then
+    echo "🔍 Starting file monitoring service..."
+
+    # Validate monitoring configuration
+    if [ -z "$MONITORING_TARGET_PATH" ]; then
+        echo "❌ MONITORING_TARGET_PATH not set, disabling monitoring"
+        export MONITORING_ENABLED=false
+    elif [ ! -d "$MONITORING_TARGET_PATH" ]; then
+        echo "❌ MONITORING_TARGET_PATH directory does not exist: $MONITORING_TARGET_PATH"
+        export MONITORING_ENABLED=false
+    else
+        # Start monitoring service in background
+        python -m memory_system.monitoring_service --start --daemon &
+        MONITORING_PID=$!
+
+        # Give it a moment to start
+        sleep 2
+
+        # Check if it started successfully
+        if python -m memory_system.monitoring_service --health > /dev/null 2>&1; then
+            echo "✅ File monitoring service started successfully (PID: $MONITORING_PID)"
+            echo "   Monitoring path: $MONITORING_TARGET_PATH"
+        else
+            echo "⚠️  File monitoring service failed to start properly"
+        fi
+    fi
+else
+    echo "🔍 File monitoring disabled (MONITORING_ENABLED=false)"
+fi
+
 # Log startup completion
 echo "✅ Cognitive Memory MCP Server initialized successfully"
 echo "🚀 Starting MCP server..."
