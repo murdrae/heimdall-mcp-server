@@ -9,7 +9,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -373,13 +373,13 @@ class CognitiveConfig:
                 and isinstance(source_type, str)
                 and source_type in self.decay_profiles
             ):
-                return str(source_type)  # Explicit cast to satisfy mypy
+                return cast(str, source_type)
 
         # Fallback: Use hierarchy level if source_type missing
         if hasattr(memory, "hierarchy_level"):
             hierarchy_level = memory.hierarchy_level
             # Only use valid hierarchy levels (0, 1, 2)
-            if isinstance(hierarchy_level, int) and 0 <= hierarchy_level <= 2:
+            if 0 <= hierarchy_level <= 2:
                 level_key = f"L{hierarchy_level}_{['concept', 'context', 'episode'][hierarchy_level]}"
                 return level_key if level_key in self.decay_profiles else "manual_entry"
 

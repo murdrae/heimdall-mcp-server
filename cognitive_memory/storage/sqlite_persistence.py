@@ -408,6 +408,106 @@ class MemoryMetadataStore(MemoryStorage):
             )
             return []
 
+    def get_memories_by_source_path(self, source_path: str) -> list[CognitiveMemory]:
+        """Get memories by source file path from metadata."""
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Use JSON_EXTRACT to query source_path from context_metadata
+                cursor.execute(
+                    """
+                    SELECT * FROM memories
+                    WHERE JSON_EXTRACT(context_metadata, '$.source_path') = ?
+                    ORDER BY strength DESC, access_count DESC
+                """,
+                    (source_path,),
+                )
+
+                rows = cursor.fetchall()
+                memories = [self._row_to_memory(row) for row in rows]
+
+                logger.debug(
+                    "Retrieved memories by source path",
+                    source_path=source_path,
+                    count=len(memories),
+                )
+
+                return memories
+
+        except Exception as e:
+            logger.error(
+                "Failed to get memories by source path",
+                source_path=source_path,
+                error=str(e),
+            )
+            return []
+
+    def delete_memories_by_source_path(self, source_path: str) -> int:
+        """
+        Delete all memories associated with a source file path.
+
+        Note: This method only handles SQLite metadata deletion.
+        For complete cleanup including vector storage, use CognitiveSystem.delete_memories_by_source_path()
+
+        Args:
+            source_path: File path to match against memory metadata
+
+        Returns:
+            Number of memories deleted
+        """
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # First, get the memory IDs to be deleted for logging
+                cursor.execute(
+                    """
+                    SELECT id FROM memories
+                    WHERE JSON_EXTRACT(context_metadata, '$.source_path') = ?
+                """,
+                    (source_path,),
+                )
+
+                memory_ids = [row["id"] for row in cursor.fetchall()]
+
+                if not memory_ids:
+                    logger.debug(
+                        "No memories found for source path", source_path=source_path
+                    )
+                    return 0
+
+                # Delete the memories
+                cursor.execute(
+                    """
+                    DELETE FROM memories
+                    WHERE JSON_EXTRACT(context_metadata, '$.source_path') = ?
+                """,
+                    (source_path,),
+                )
+
+                deleted_count = cursor.rowcount
+                conn.commit()
+
+                logger.info(
+                    "Deleted memories by source path",
+                    source_path=source_path,
+                    deleted_count=deleted_count,
+                    memory_ids=memory_ids[:5]
+                    if len(memory_ids) > 5
+                    else memory_ids,  # Log first 5 IDs
+                )
+
+                return deleted_count
+
+        except Exception as e:
+            logger.error(
+                "Failed to delete memories by source path",
+                source_path=source_path,
+                error=str(e),
+            )
+            return 0
+
     def _row_to_memory(self, row: sqlite3.Row) -> CognitiveMemory:
         """Convert database row to CognitiveMemory object."""
         dimensions = json.loads(row["dimensions"]) if row["dimensions"] else {}

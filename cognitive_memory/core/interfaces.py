@@ -116,6 +116,16 @@ class MemoryStorage(ABC):
         """Get all memories at a specific hierarchy level."""
         pass
 
+    @abstractmethod
+    def get_memories_by_source_path(self, source_path: str) -> list[CognitiveMemory]:
+        """Get memories by source file path from metadata."""
+        pass
+
+    @abstractmethod
+    def delete_memories_by_source_path(self, source_path: str) -> int:
+        """Delete all memories associated with a source file path. Returns count of deleted memories."""
+        pass
+
 
 class ConnectionGraph(ABC):
     """Abstract interface for memory connection tracking."""

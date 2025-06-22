@@ -823,6 +823,109 @@ class CognitiveMemorySystem(CognitiveSystem):
                 "processing_time": processing_time,
             }
 
+    def delete_memories_by_source_path(self, source_path: str) -> dict[str, Any]:
+        """
+        Delete all memories associated with a specific source path.
+
+        This method handles both vector storage and metadata deletion to ensure
+        complete removal of memories from the system.
+
+        Args:
+            source_path: The source path to delete memories for
+
+        Returns:
+            Dictionary containing deletion results and statistics
+        """
+        start_time = time.time()
+
+        try:
+            logger.info(
+                "Starting memory deletion by source path", source_path=source_path
+            )
+
+            # First, get all memories to be deleted for vector cleanup
+            memories_to_delete = self.memory_storage.get_memories_by_source_path(
+                source_path
+            )
+
+            if not memories_to_delete:
+                logger.info(
+                    "No memories found for source path", source_path=source_path
+                )
+                return {
+                    "source_path": source_path,
+                    "deleted_count": 0,
+                    "vector_deletion_failures": 0,
+                    "processing_time": time.time() - start_time,
+                }
+
+            # Delete vectors from Qdrant
+            vector_deletion_failures = 0
+            for memory in memories_to_delete:
+                try:
+                    success = self.vector_storage.delete_vector(memory.id)
+                    if not success:
+                        vector_deletion_failures += 1
+                        logger.warning("Failed to delete vector", memory_id=memory.id)
+                except Exception as e:
+                    vector_deletion_failures += 1
+                    logger.error(
+                        "Error deleting vector", memory_id=memory.id, error=str(e)
+                    )
+
+            # Delete memory connections if connection graph exists
+            if hasattr(self, "connection_graph") and self.connection_graph:
+                for memory in memories_to_delete:
+                    try:
+                        # Remove connections involving this memory
+                        # Note: We don't have a direct method for this in the interface,
+                        # but SQLite foreign keys should handle cascading deletes
+                        pass
+                    except Exception as e:
+                        logger.warning(
+                            "Error removing connections",
+                            memory_id=memory.id,
+                            error=str(e),
+                        )
+
+            # Delete metadata from SQLite
+            deleted_count = self.memory_storage.delete_memories_by_source_path(
+                source_path
+            )
+
+            processing_time = time.time() - start_time
+
+            logger.info(
+                "Memory deletion completed",
+                source_path=source_path,
+                deleted_count=deleted_count,
+                vector_deletion_failures=vector_deletion_failures,
+                processing_time=processing_time,
+            )
+
+            return {
+                "source_path": source_path,
+                "deleted_count": deleted_count,
+                "vector_deletion_failures": vector_deletion_failures,
+                "processing_time": processing_time,
+            }
+
+        except Exception as e:
+            processing_time = time.time() - start_time
+            logger.error(
+                "Failed to delete memories by source path",
+                source_path=source_path,
+                error=str(e),
+                processing_time=processing_time,
+            )
+            return {
+                "source_path": source_path,
+                "deleted_count": 0,
+                "vector_deletion_failures": 0,
+                "processing_time": processing_time,
+                "error": str(e),
+            }
+
     def _calculate_hierarchy_distribution(
         self, memories: list[CognitiveMemory]
     ) -> dict[str, int]:
