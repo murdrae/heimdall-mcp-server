@@ -255,10 +255,10 @@ New Experience → Episodic Storage → Access Tracking → Consolidation Decisi
 
 Memory decay parameters are defined in:
 
-- **Decay Rates**: `cognitive_memory/storage/dual_memory.py` (EpisodicMemoryStore, SemanticMemoryStore classes)
-- **Cleanup Intervals**: `cognitive_memory/core/config.py` (SystemConfig.cleanup_interval_hours)
-- **Consolidation Criteria**: `cognitive_memory/core/cognitive_system.py` (consolidate_memories method)
-- **Retention Limits**: `cognitive_memory/storage/dual_memory.py` (max_retention_days)
+- **Decay Rates**: `cognitive_memory/storage/dual_memory.py` (DualMemorySystem class)
+- **Cleanup Intervals**: `cognitive_memory/core/config.py` (CognitiveConfig.cleanup_interval_hours)
+- **Consolidation Criteria**: `cognitive_memory/core/cognitive_system.py` (CognitiveSystem.consolidate_memories)
+- **Retention Limits**: `cognitive_memory/storage/dual_memory.py` (episodic/semantic retention policies)
 
 ### Consolidation Process
 
@@ -280,10 +280,11 @@ cognitive> cleanup
 
 ### Key Implementation Files
 
-- `cognitive_memory/storage/dual_memory.py` - Core decay algorithms and cleanup logic
-- `cognitive_memory/core/cognitive_system.py` - Consolidation orchestration
-- `cognitive_memory/core/config.py` - Configurable parameters and thresholds
-- `memory_system/cli.py` - Manual cleanup trigger interfaces
+- `cognitive_memory/storage/dual_memory.py` - DualMemorySystem with episodic/semantic storage
+- `cognitive_memory/core/cognitive_system.py` - Main CognitiveSystem orchestrator
+- `cognitive_memory/core/config.py` - CognitiveConfig with system parameters
+- `memory_system/cli.py` - Service management CLI with cleanup commands
+- `memory_system/interactive_shell.py` - Interactive shell for manual operations
 
 **Note**: Cleanup is currently manual rather than automated. The system tracks when cleanup should occur but requires explicit triggering through CLI or API calls.
 

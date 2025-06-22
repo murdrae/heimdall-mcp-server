@@ -11,8 +11,8 @@ This document extends the high-level architecture plan with concrete technical d
 | Component | Technology Choice | Rationale | Alternative Considered |
 |-----------|------------------|-----------|----------------------|
 | **Vector Database** | Qdrant | Production-ready, hierarchical collections, Python 3.13 compatible | Chroma, Weaviate, Custom NetworkX |
-| **ML Framework** | PyTorch | Research flexibility, transformers ecosystem, dynamic graphs | JAX, TensorFlow |
-| **Base Embeddings** | Sentence-BERT (all-MiniLM-L6-v2) | Fast local inference, fine-tunable, 384D vectors | OpenAI embeddings, BGE-M3, CodeBERT |
+| **ML Framework** | ONNX Runtime + NumPy | Production deployment, 920MB smaller images, CPU-optimized | PyTorch, JAX, TensorFlow |
+| **Base Embeddings** | ONNX all-MiniLM-L6-v2 | Fast local inference, ONNX-optimized, 384D vectors | Sentence-BERT, OpenAI embeddings, BGE-M3 |
 | **Memory Persistence** | SQLite + JSON | Zero-setup, ACID transactions, flexible schema evolution | PostgreSQL, File-based |
 | **Programming Language** | Python 3.13 | Latest features, async support, type hints | - |
 
@@ -41,10 +41,11 @@ This document extends the high-level architecture plan with concrete technical d
 ```mermaid
 graph TB
     subgraph "Technology Layer"
-        TORCH[PyTorch]
+        ONNX[ONNX Runtime]
+        NUMPY[NumPy]
         QDRANT[Qdrant Vector DB]
         SQLITE[SQLite + JSON]
-        SBERT[Sentence-BERT]
+        ONNXMODEL[ONNX all-MiniLM-L6-v2]
     end
 
     subgraph "Input Processing"
@@ -108,14 +109,16 @@ graph TB
     SQLITE --> CONN
     SQLITE --> STATS
 
-    SBERT --> MDE
-    TORCH --> MDE
+    ONNXMODEL --> MDE
+    ONNX --> MDE
+    NUMPY --> MDE
     QDRANT --> HMS
 
-    style TORCH fill:#ff6b35
+    style ONNX fill:#ff6b35
+    style NUMPY fill:#ff9500
     style QDRANT fill:#4a90e2
     style SQLITE fill:#5ac8fa
-    style SBERT fill:#34c759
+    style ONNXMODEL fill:#34c759
 ```
 
 ## Technical Implementation Details
@@ -123,252 +126,38 @@ graph TB
 ### Multi-Dimensional Encoding Implementation
 
 #### Dimension Extraction Strategy
-```python
-class DimensionExtractor:
-    """Hybrid rule-based + ML approach for multi-modal dimension extraction"""
-
-    def __init__(self):
-        self.emotional_analyzer = SentimentPipeline("distilbert-base-uncased-finetuned-sst-2-english")
-        self.temporal_patterns = self._load_temporal_regex_patterns()
-        self.context_classifier = self._initialize_context_classifier()
-
-    def extract_dimensions(self, text: str) -> Dict[str, torch.Tensor]:
-        """Extract emotional, temporal, contextual, social dimensions from text"""
-        return {
-            'emotional': self._extract_emotional_dimension(text),
-            'temporal': self._extract_temporal_dimension(text),
-            'contextual': self._extract_contextual_dimension(text),
-            'social': self._extract_social_dimension(text)
-        }
-
-    def _extract_emotional_dimension(self, text: str) -> torch.Tensor:
-        """Extract frustration, satisfaction, curiosity, stress indicators"""
-        # Sentiment analysis + frustration patterns + satisfaction indicators
-        sentiment = self.emotional_analyzer(text)
-        frustration_score = self._detect_frustration_patterns(text)
-        satisfaction_score = self._detect_satisfaction_patterns(text)
-        curiosity_score = self._detect_curiosity_patterns(text)
-        stress_score = self._detect_stress_indicators(text)
-
-        return torch.tensor([frustration_score, satisfaction_score,
-                           curiosity_score, stress_score])
-
-    def _extract_temporal_dimension(self, text: str) -> torch.Tensor:
-        """Extract urgency, deadline pressure, time context"""
-        urgency_score = self._detect_urgency_patterns(text)
-        deadline_score = self._detect_deadline_patterns(text)
-        time_context = self._extract_time_references(text)
-
-        return torch.tensor([urgency_score, deadline_score, time_context])
-```
+- **Emotional Dimensions**: VADER sentiment analysis + pattern recognition
+- **Temporal Dimensions**: Regex patterns for urgency and deadline detection  
+- **Contextual Dimensions**: Rule-based classification of content types
+- **Social Dimensions**: Interaction pattern detection
 
 #### Base Embedding Integration
-```python
-class CognitiveEncoder(nn.Module):
-    """Combines Sentence-BERT with multi-dimensional extraction"""
-
-    def __init__(self, base_model_name: str = "all-MiniLM-L6-v2"):
-        super().__init__()
-        self.sentence_bert = SentenceTransformer(base_model_name)
-        self.dimension_extractor = DimensionExtractor()
-
-        # Dimension fusion layers
-        self.semantic_dim = 384  # Sentence-BERT output dimension
-        self.emotional_dim = 4
-        self.temporal_dim = 3
-        self.contextual_dim = 6
-        self.social_dim = 3
-
-        # Learned fusion weights
-        self.fusion_layer = nn.Linear(
-            self.semantic_dim + self.emotional_dim + self.temporal_dim +
-            self.contextual_dim + self.social_dim,
-            512  # Final cognitive embedding dimension
-        )
-
-    def encode_memory(self, experience_text: str) -> torch.Tensor:
-        """Encode experience into multi-dimensional cognitive vector"""
-        # Semantic embedding from Sentence-BERT
-        semantic_embedding = torch.tensor(
-            self.sentence_bert.encode(experience_text)
-        )
-
-        # Multi-dimensional extraction
-        dimensions = self.dimension_extractor.extract_dimensions(experience_text)
-
-        # Concatenate all dimensions
-        multi_dim_vector = torch.cat([
-            semantic_embedding,
-            dimensions['emotional'],
-            dimensions['temporal'],
-            dimensions['contextual'],
-            dimensions['social']
-        ])
-
-        # Learned fusion
-        cognitive_embedding = self.fusion_layer(multi_dim_vector)
-
-        return cognitive_embedding
-```
+- **ONNX Model Loading**: Direct ONNX Runtime inference for all-MiniLM-L6-v2
+- **Dimension Fusion**: NumPy-based concatenation of semantic + dimensional vectors
+- **Vector Dimensions**: 384D semantic + 16D multi-dimensional = 400D final embeddings
+- **Performance**: CPU-optimized inference, 2-3x faster than PyTorch equivalent
 
 ### Hierarchical Memory Storage with Qdrant
 
 #### Collection Architecture
-```python
-class HierarchicalMemoryStorage:
-    """3-tier hierarchy using Qdrant collections"""
-
-    def __init__(self, qdrant_client: QdrantClient):
-        self.client = qdrant_client
-        self.collections = {
-            'concepts_l0': 'cognitive_concepts',
-            'contexts_l1': 'cognitive_contexts',
-            'episodes_l2': 'cognitive_episodes'
-        }
-        self._initialize_collections()
-
-    def _initialize_collections(self):
-        """Initialize Qdrant collections for hierarchical storage"""
-        for level, collection_name in self.collections.items():
-            self.client.create_collection(
-                collection_name=collection_name,
-                vectors_config=VectorParams(
-                    size=512,  # Cognitive embedding dimension
-                    distance=Distance.COSINE
-                ),
-                optimizers_config=OptimizersConfig(
-                    default_segment_number=2,
-                    memmap_threshold=20000
-                )
-            )
-
-    def store_memory(self, memory: CognitiveMemory, level: int):
-        """Store memory at appropriate hierarchy level"""
-        collection_name = list(self.collections.values())[level]
-
-        self.client.upsert(
-            collection_name=collection_name,
-            points=[PointStruct(
-                id=memory.id,
-                vector=memory.cognitive_embedding.tolist(),
-                payload={
-                    'content': memory.content,
-                    'dimensions': memory.dimensions,
-                    'timestamp': memory.timestamp.isoformat(),
-                    'level': level,
-                    'parent_id': memory.parent_id,
-                    'access_count': memory.access_count,
-                    'importance_score': memory.importance_score
-                }
-            )]
-        )
-```
+- **3-Tier Collections**: `cognitive_concepts` (L0), `cognitive_contexts` (L1), `cognitive_episodes` (L2)
+- **Vector Configuration**: 400D embeddings with cosine distance
+- **Optimization**: Memory-mapped storage for large datasets
+- **Payload Storage**: Rich metadata including hierarchy level, importance scores, timestamps
 
 #### Activation Spreading with BFS
-```python
-class ActivationEngine:
-    """Context-driven activation using Qdrant + BFS traversal"""
-
-    def __init__(self, memory_storage: HierarchicalMemoryStorage,
-                 connection_graph: ConnectionGraph):
-        self.storage = memory_storage
-        self.connections = connection_graph
-
-    def activate_memories(self, context_vector: torch.Tensor,
-                         activation_threshold: float = 0.7,
-                         max_activations: int = 50) -> ActivationResult:
-        """Hierarchical activation spreading through memory levels"""
-
-        # Phase 1: Activate L0 concepts
-        l0_matches = self.storage.search_level(
-            level=0,
-            query_vector=context_vector,
-            limit=10,
-            score_threshold=activation_threshold
-        )
-
-        activated_memories = set()
-        activation_queue = deque(l0_matches)
-
-        # Phase 2: BFS through hierarchy
-        while activation_queue and len(activated_memories) < max_activations:
-            current_memory = activation_queue.popleft()
-
-            if current_memory.id in activated_memories:
-                continue
-
-            activated_memories.add(current_memory.id)
-
-            # Find connected memories
-            connected = self.connections.get_connections(
-                current_memory.id,
-                min_strength=activation_threshold
-            )
-
-            # Add to queue for further activation
-            for connected_memory in connected:
-                if connected_memory.id not in activated_memories:
-                    activation_queue.append(connected_memory)
-
-        return ActivationResult(
-            core_memories=l0_matches[:5],
-            peripheral_memories=list(activated_memories)[5:],
-            activation_strength=self._compute_activation_strengths(activated_memories)
-        )
-```
+- **Two-Phase Process**: Initial L0 concept activation, then BFS through connection graph
+- **Configurable Thresholds**: Activation threshold (0.7) and maximum activations (50)
+- **Connection Graph**: SQLite-based memory relationships with strength scoring
+- **Result Classification**: Core memories (highest activation) vs peripheral memories
 
 ### Bridge Discovery Implementation
 
-#### Simple Distance Inversion Algorithm
-```python
-class BridgeDiscovery:
-    """Simple distance inversion for serendipitous connections"""
-
-    def __init__(self, memory_storage: HierarchicalMemoryStorage):
-        self.storage = memory_storage
-
-    def discover_bridges(self, query_context: torch.Tensor,
-                        activated_memories: List[CognitiveMemory],
-                        k: int = 5) -> List[BridgeMemory]:
-        """Find distant but potentially connected memories"""
-
-        # Get all non-activated memories
-        all_memories = self.storage.get_all_memories()
-        activated_ids = {m.id for m in activated_memories}
-        candidates = [m for m in all_memories if m.id not in activated_ids]
-
-        bridge_scores = []
-
-        for candidate in candidates:
-            # Compute novelty (inverse similarity to query)
-            direct_similarity = torch.cosine_similarity(
-                query_context, candidate.cognitive_embedding, dim=0
-            )
-            novelty_score = 1.0 - direct_similarity.item()
-
-            # Compute connection potential to activated memories
-            connection_potential = 0.0
-            for activated_memory in activated_memories:
-                similarity = torch.cosine_similarity(
-                    candidate.cognitive_embedding,
-                    activated_memory.cognitive_embedding,
-                    dim=0
-                )
-                connection_potential = max(connection_potential, similarity.item())
-
-            # Combined bridge score
-            bridge_score = (novelty_score * 0.6) + (connection_potential * 0.4)
-
-            bridge_scores.append(BridgeMemory(
-                memory=candidate,
-                novelty_score=novelty_score,
-                connection_potential=connection_potential,
-                bridge_score=bridge_score
-            ))
-
-        # Return top-k bridges
-        return sorted(bridge_scores, key=lambda x: x.bridge_score, reverse=True)[:k]
-```
+#### Distance Inversion Algorithm
+- **Novelty Scoring**: Inverse similarity to query (1.0 - cosine_similarity)
+- **Connection Potential**: Maximum similarity to any activated memory
+- **Bridge Score**: Weighted combination (60% novelty + 40% connection potential)
+- **Serendipitous Discovery**: Finds unexpected connections between distant concepts
 
 ### Memory Persistence with SQLite
 
@@ -437,101 +226,20 @@ CREATE INDEX idx_bridge_cache_query ON bridge_cache(query_hash);
 ```
 
 #### Dual Memory System Implementation
-```python
-class DualMemorySystem:
-    """Episodic and semantic memory with consolidation"""
-
-    def __init__(self, sqlite_conn: sqlite3.Connection):
-        self.db = sqlite_conn
-        self.episodic_decay_rate = 0.1  # Fast decay (days)
-        self.semantic_decay_rate = 0.01  # Slow decay (months)
-
-    def store_episodic_memory(self, memory: CognitiveMemory):
-        """Store new episodic memory with fast decay"""
-        self.db.execute("""
-            INSERT INTO memories (
-                id, level, content, dimensions_json, qdrant_id,
-                timestamp, last_accessed, memory_type, decay_rate
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'episodic', ?)
-        """, (
-            memory.id, memory.level, memory.content,
-            json.dumps(memory.dimensions), memory.qdrant_id,
-            memory.timestamp, memory.timestamp, self.episodic_decay_rate
-        ))
-
-    def consolidate_to_semantic(self, pattern_memories: List[CognitiveMemory]):
-        """Promote frequently accessed patterns to semantic memory"""
-        for memory in pattern_memories:
-            # Create semantic memory from pattern
-            semantic_memory = self._extract_semantic_pattern(memory)
-
-            # Store with slow decay
-            self.db.execute("""
-                INSERT INTO memories (
-                    id, level, content, dimensions_json, qdrant_id,
-                    timestamp, last_accessed, memory_type, decay_rate,
-                    importance_score
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'semantic', ?, ?)
-            """, (
-                semantic_memory.id, semantic_memory.level,
-                semantic_memory.content, json.dumps(semantic_memory.dimensions),
-                semantic_memory.qdrant_id, semantic_memory.timestamp,
-                semantic_memory.timestamp, self.semantic_decay_rate,
-                semantic_memory.importance_score
-            ))
-
-            # Compress original episodic memories
-            self._compress_episodic_sources(pattern_memories)
-```
+- **Episodic Storage**: Fast decay (0.1/day), temporary experiences, automatic cleanup
+- **Semantic Storage**: Slow decay (0.01/day), consolidated patterns, long-term retention
+- **Consolidation Process**: Promotes frequently accessed episodic memories to semantic
+- **SQLite Integration**: Unified schema with memory_type field and decay_rate tracking
 
 ## Interface Design for Extensibility
 
 All critical components are wrapped in abstract interfaces to enable easy swapping and scaling:
 
-```python
-from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
-
-class EmbeddingProvider(ABC):
-    """Abstract interface for embedding models"""
-
-    @abstractmethod
-    def encode(self, text: str) -> torch.Tensor:
-        pass
-
-    @abstractmethod
-    def encode_batch(self, texts: List[str]) -> torch.Tensor:
-        pass
-
-class VectorStorage(ABC):
-    """Abstract interface for vector databases"""
-
-    @abstractmethod
-    def store_vector(self, id: str, vector: torch.Tensor, metadata: Dict[str, Any]):
-        pass
-
-    @abstractmethod
-    def search_similar(self, query_vector: torch.Tensor, k: int,
-                      filters: Optional[Dict] = None) -> List[SearchResult]:
-        pass
-
-class ActivationEngine(ABC):
-    """Abstract interface for memory activation"""
-
-    @abstractmethod
-    def activate_memories(self, context: torch.Tensor,
-                         threshold: float) -> ActivationResult:
-        pass
-
-class BridgeDiscovery(ABC):
-    """Abstract interface for bridge discovery algorithms"""
-
-    @abstractmethod
-    def discover_bridges(self, context: torch.Tensor,
-                        activated: List[CognitiveMemory],
-                        k: int) -> List[BridgeMemory]:
-        pass
-```
+- **EmbeddingProvider**: Abstract interface supporting ONNX, PyTorch, or cloud providers
+- **VectorStorage**: Qdrant, Chroma, or custom vector database backends  
+- **ActivationEngine**: Pluggable memory activation algorithms
+- **BridgeDiscovery**: Swappable serendipity algorithms
+- **MemoryLoader**: Content ingestion from markdown, PDFs, code repositories
 
 ## Implementation Phasing with Technical Details
 
@@ -547,22 +255,54 @@ class BridgeDiscovery(ABC):
 ```
 cognitive_memory/
 ├── core/
-│   ├── interfaces.py          # Abstract interfaces
-│   ├── memory.py             # CognitiveMemory data structures
-│   └── config.py             # Configuration management
+│   ├── interfaces.py          # Abstract interfaces (EmbeddingProvider, etc.)
+│   ├── memory.py             # CognitiveMemory, BridgeMemory data structures
+│   ├── cognitive_system.py   # Main CognitiveSystem orchestrator
+│   └── config.py             # System configuration
 ├── encoding/
-│   ├── sentence_bert.py      # SentenceBERT implementation
-│   ├── dimensions.py         # Rule-based dimension extraction
-│   └── cognitive_encoder.py  # Multi-dimensional encoding
+│   ├── onnx_provider.py      # ONNX Runtime embedding provider
+│   ├── dimensions.py         # Multi-dimensional feature extraction
+│   └── cognitive_encoder.py  # Dimension fusion coordinator
 ├── storage/
-│   ├── qdrant_storage.py     # Qdrant vector storage
+│   ├── qdrant_storage.py     # Qdrant vector database operations
 │   ├── sqlite_persistence.py # SQLite metadata storage
-│   └── dual_memory.py        # Episodic/semantic system
+│   └── dual_memory.py        # Episodic/semantic memory system
 ├── retrieval/
-│   ├── basic_activation.py   # Simple activation spreading
-│   └── similarity_search.py  # Cosine similarity retrieval
+│   ├── contextual_retrieval.py # Main retrieval coordinator
+│   ├── basic_activation.py     # BFS activation spreading
+│   └── bridge_discovery.py     # Serendipitous connections
+├── git_analysis/
+│   ├── commit.py             # Git commit data structures
+│   ├── commit_loader.py      # Git history to memory conversion
+│   └── history_miner.py      # Git repository analysis
+├── loaders/
+│   ├── git_loader.py         # Git repository integration
+│   ├── markdown_loader.py    # Markdown processing coordinator
+│   └── markdown/            # Specialized markdown components
+│       ├── content_analyzer.py    # Linguistic analysis
+│       ├── document_parser.py     # Markdown parsing
+│       ├── memory_factory.py      # Memory creation
+│       ├── connection_extractor.py # Relationship analysis
+│       └── chunk_processor.py     # Document chunking
 └── tests/
-    └── integration/          # End-to-end testing
+    ├── unit/                 # Component-level tests
+    ├── integration/          # Cross-component tests
+    └── e2e/                  # End-to-end scenarios
+
+interfaces/
+├── cli.py                   # CognitiveCLI - main CLI interface
+├── mcp_server.py           # MCP protocol server
+└── mcp_tools/              # Individual MCP tool implementations
+
+memory_system/
+├── cli.py                  # Service management CLI (memory_system command)
+├── service_manager.py      # Docker/Qdrant service management
+└── interactive_shell.py    # Interactive memory shell
+
+scripts/
+├── setup_project_memory.sh    # Project isolation setup
+├── load_project_content.sh    # Content loading automation
+└── claude_mcp_wrapper.sh      # Claude Code MCP integration
 ```
 
 ### Phase 2: Cognitive Enhancement (Weeks 5-8)
@@ -851,30 +591,51 @@ Experience Input → Multi-dimensional Encoding → Vector Storage (Qdrant)
 
 **Project Structure**:
 ```
-cognitive-memory/
-├── .env                      # Configuration
-├── .pre-commit-config.yaml   # Git hook configuration
+heimdall-mcp-server/
+├── .env                      # Environment configuration
+├── .pre-commit-config.yaml   # Git hook configuration  
 ├── pyproject.toml           # Python project settings
-├── requirements.in/.txt     # Dependencies
-├── sonar-project.properties # SonarQube configuration
-├── cognitive_memory/        # Core system
-│   ├── core/               # Cognitive interfaces and models
-│   ├── encoding/           # Multi-dimensional encoding
-│   ├── storage/            # Memory persistence
-│   ├── retrieval/          # Activation and bridge discovery
-│   └── config.py           # Configuration management
-├── interfaces/             # API implementations
-│   ├── cli.py             # Command-line interface
-│   └── mcp_server.py      # MCP protocol server
-├── data/                  # Local data storage
-│   ├── cognitive_memory.db # SQLite database
-│   └── models/            # Downloaded models
-└── scripts/               # Development utilities
-    └── validate-architecture.py
+├── requirements.txt         # Production dependencies
+├── requirements-dev.txt     # Development dependencies
+├── CLAUDE.md               # Project instructions for AI assistants
+├── cognitive_memory/        # Core cognitive system
+│   ├── core/               # System interfaces and orchestration
+│   ├── encoding/           # ONNX-based embedding and dimension extraction
+│   ├── storage/            # Qdrant + SQLite persistence layer
+│   ├── retrieval/          # Memory activation and bridge discovery
+│   ├── git_analysis/       # Git commit processing and analysis
+│   └── loaders/            # Content ingestion (markdown, git)
+├── interfaces/             # External API implementations
+│   ├── cli.py             # CognitiveCLI for direct interaction
+│   ├── mcp_server.py      # MCP protocol server for Claude Code
+│   └── mcp_tools/         # Individual MCP tool implementations
+├── memory_system/          # Service management and deployment
+│   ├── cli.py             # Main memory_system command
+│   ├── service_manager.py  # Docker container orchestration
+│   └── interactive_shell.py # Interactive memory operations
+├── docker/                 # Container infrastructure
+│   ├── Dockerfile         # Cognitive memory container image
+│   ├── docker-compose.template.yml # Project-specific containers
+│   └── entrypoint.sh      # Container initialization
+├── scripts/               # Automation and setup utilities
+│   ├── setup_project_memory.sh    # Project isolation setup
+│   ├── setup_claude_code_mcp.sh   # Claude Code integration
+│   ├── load_project_content.sh    # Batch content loading
+│   └── claude_mcp_wrapper.sh      # MCP transport wrapper
+├── docs/                  # Architecture and usage documentation
+│   ├── arch-docs/         # Technical architecture specifications
+│   └── progress/          # Development progress tracking
+├── tests/                 # Comprehensive test suite
+│   ├── unit/              # Component-level tests
+│   ├── integration/       # Cross-component integration tests
+│   └── e2e/               # End-to-end system tests
+└── data/                  # Local data storage (created at runtime)
+    ├── cognitive_memory.db # SQLite metadata database
+    └── models/            # ONNX model files
 ```
 
 ## Conclusion
 
 This technical specification provides a concrete implementation path for the cognitive memory system, balancing ambitious cognitive capabilities with practical engineering constraints. The interface-driven architecture enables rapid iteration and component swapping, while the phased approach ensures deliverable milestones throughout development.
 
-The chosen technology stack (Qdrant + PyTorch + Sentence-BERT + SQLite) provides the optimal balance of cognitive fidelity, development speed, and operational simplicity for the initial implementation, with clear upgrade paths for scaling and enhancement.
+The chosen technology stack (Qdrant + ONNX Runtime + NumPy + SQLite) provides the optimal balance of cognitive fidelity, deployment efficiency, and operational simplicity. The ONNX migration achieved a 920MB Docker image reduction (56.8% smaller) while maintaining identical functionality and performance.
