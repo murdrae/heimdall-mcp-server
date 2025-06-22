@@ -115,7 +115,7 @@ The system provides 4 MCP tools for Claude Code integration:
 ### Setup for Claude Code
 ```bash
 # From any project directory
-/path/to/cognitive-memory/setup_claude_code_mcp.sh
+/path/to/heimdall-mcp-server/setup_claude_code_mcp.sh
 
 # This creates project-specific memory isolation
 # Each project gets its own Docker containers and memory space
@@ -141,7 +141,8 @@ The system provides 4 MCP tools for Claude Code integration:
 
 ### Project Isolation Strategy
 Each project directory gets isolated Docker containers:
-- Deterministic naming: `cognitive-memory-{project-hash}`
+- Human-readable naming: `heimdall-{repo-name}-{project-hash}`
+- Separate Qdrant containers: `qdrant-{repo-name}-{project-hash}`
 - Unique ports: `6333 + hash % 1000`
 - Isolated data volumes and networks
 - Project-specific Qdrant collections
@@ -149,13 +150,13 @@ Each project directory gets isolated Docker containers:
 ### Container Management
 ```bash
 # Setup project memory (from project directory)
-/path/to/cognitive-memory/scripts/setup_project_memory.sh
+/path/to/heimdall-mcp-server/scripts/setup_project_memory.sh
 
 # Cleanup project containers
-/path/to/cognitive-memory/scripts/setup_project_memory.sh --cleanup
+/path/to/heimdall-mcp-server/scripts/setup_project_memory.sh --cleanup
 
 # Rebuild containers
-/path/to/cognitive-memory/scripts/setup_project_memory.sh --rebuild
+/path/to/heimdall-mcp-server/scripts/setup_project_memory.sh --rebuild
 ```
 
 ## Testing Strategy
