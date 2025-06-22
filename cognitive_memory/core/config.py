@@ -174,6 +174,13 @@ class CognitiveConfig:
         default_factory=lambda: {".git", "node_modules", "__pycache__", ".pytest_cache"}
     )
 
+    # File synchronization parameters
+    sync_enabled: bool = True
+    sync_atomic_operations: bool = True
+    sync_continue_on_error: bool = True
+    sync_max_retry_attempts: int = 3
+    sync_retry_delay_seconds: float = 1.0
+
     # Date-based ranking parameters
     similarity_closeness_threshold: float = 0.05
     modification_date_weight: float = 0.3
@@ -326,6 +333,17 @@ class CognitiveConfig:
             ),
             monitoring_batch_size=int(
                 os.getenv("MONITORING_BATCH_SIZE", str(cls.monitoring_batch_size))
+            ),
+            sync_enabled=os.getenv("SYNC_ENABLED", "true").lower() == "true",
+            sync_atomic_operations=os.getenv("SYNC_ATOMIC_OPERATIONS", "true").lower()
+            == "true",
+            sync_continue_on_error=os.getenv("SYNC_CONTINUE_ON_ERROR", "true").lower()
+            == "true",
+            sync_max_retry_attempts=int(
+                os.getenv("SYNC_MAX_RETRY_ATTEMPTS", str(cls.sync_max_retry_attempts))
+            ),
+            sync_retry_delay_seconds=float(
+                os.getenv("SYNC_RETRY_DELAY_SECONDS", str(cls.sync_retry_delay_seconds))
             ),
         )
 

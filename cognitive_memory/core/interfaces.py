@@ -297,3 +297,16 @@ class CognitiveSystem(ABC):
             Dictionary containing upsert results and statistics
         """
         pass
+
+    @abstractmethod
+    def delete_memories_by_source_path(self, source_path: str) -> dict[str, Any]:
+        """
+        Delete all memories associated with a source file path.
+
+        Args:
+            source_path: Source file path to delete memories for
+
+        Returns:
+            Dictionary containing deletion results and statistics
+        """
+        pass

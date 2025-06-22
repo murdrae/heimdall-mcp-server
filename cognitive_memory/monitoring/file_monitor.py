@@ -34,7 +34,8 @@ class FileChangeEvent:
     timestamp: float
 
     def __str__(self) -> str:
-        return f"{self.change_type.value}: {self.path} at {self.timestamp}"
+        change_type_str = getattr(self.change_type, "value", str(self.change_type))
+        return f"{change_type_str}: {self.path} at {self.timestamp}"
 
 
 @dataclass
