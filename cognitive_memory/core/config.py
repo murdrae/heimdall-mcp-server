@@ -134,6 +134,18 @@ class CognitiveConfig:
     max_activations: int = 50
     consolidation_threshold: int = 100
 
+    # Activity tracking parameters for context-aware decay
+    activity_window_days: int = 30
+    max_commits_per_day: int = 3
+    max_accesses_per_day: int = 100
+    activity_commit_weight: float = 0.6
+    activity_access_weight: float = 0.4
+    high_activity_threshold: float = 0.7
+    low_activity_threshold: float = 0.2
+    high_activity_multiplier: float = 2.0
+    normal_activity_multiplier: float = 1.0
+    low_activity_multiplier: float = 0.1
+
     # Date-based ranking parameters
     similarity_closeness_threshold: float = 0.05
     modification_date_weight: float = 0.3
@@ -245,6 +257,38 @@ class CognitiveConfig:
                 os.getenv("STRUCTURAL_GAMMA", str(cls.structural_gamma))
             ),
             explicit_delta=float(os.getenv("EXPLICIT_DELTA", str(cls.explicit_delta))),
+            activity_window_days=int(
+                os.getenv("ACTIVITY_WINDOW_DAYS", str(cls.activity_window_days))
+            ),
+            max_commits_per_day=int(
+                os.getenv("MAX_COMMITS_PER_DAY", str(cls.max_commits_per_day))
+            ),
+            max_accesses_per_day=int(
+                os.getenv("MAX_ACCESSES_PER_DAY", str(cls.max_accesses_per_day))
+            ),
+            activity_commit_weight=float(
+                os.getenv("ACTIVITY_COMMIT_WEIGHT", str(cls.activity_commit_weight))
+            ),
+            activity_access_weight=float(
+                os.getenv("ACTIVITY_ACCESS_WEIGHT", str(cls.activity_access_weight))
+            ),
+            high_activity_threshold=float(
+                os.getenv("HIGH_ACTIVITY_THRESHOLD", str(cls.high_activity_threshold))
+            ),
+            low_activity_threshold=float(
+                os.getenv("LOW_ACTIVITY_THRESHOLD", str(cls.low_activity_threshold))
+            ),
+            high_activity_multiplier=float(
+                os.getenv("HIGH_ACTIVITY_MULTIPLIER", str(cls.high_activity_multiplier))
+            ),
+            normal_activity_multiplier=float(
+                os.getenv(
+                    "NORMAL_ACTIVITY_MULTIPLIER", str(cls.normal_activity_multiplier)
+                )
+            ),
+            low_activity_multiplier=float(
+                os.getenv("LOW_ACTIVITY_MULTIPLIER", str(cls.low_activity_multiplier))
+            ),
         )
 
     def get_total_cognitive_dimensions(self) -> int:
@@ -396,6 +440,51 @@ class SystemConfig:
         )
         if abs(relevance_sum - 1.0) > 0.01:
             errors.append(f"Relevance weights must sum to 1.0, got {relevance_sum:.3f}")
+
+        # Validate activity tracking parameters
+        if self.cognitive.activity_window_days <= 0:
+            errors.append("Activity window days must be positive")
+
+        if self.cognitive.max_commits_per_day <= 0:
+            errors.append("Max commits per day must be positive")
+
+        if self.cognitive.max_accesses_per_day <= 0:
+            errors.append("Max accesses per day must be positive")
+
+        # Validate activity weights sum to 1.0
+        activity_weights_sum = (
+            self.cognitive.activity_commit_weight
+            + self.cognitive.activity_access_weight
+        )
+        if abs(activity_weights_sum - 1.0) > 0.01:
+            errors.append(
+                f"Activity weights must sum to 1.0, got {activity_weights_sum:.3f}"
+            )
+
+        # Validate activity thresholds
+        if not 0.0 <= self.cognitive.low_activity_threshold <= 1.0:
+            errors.append("Low activity threshold must be between 0.0 and 1.0")
+
+        if not 0.0 <= self.cognitive.high_activity_threshold <= 1.0:
+            errors.append("High activity threshold must be between 0.0 and 1.0")
+
+        if (
+            self.cognitive.low_activity_threshold
+            >= self.cognitive.high_activity_threshold
+        ):
+            errors.append(
+                "Low activity threshold must be less than high activity threshold"
+            )
+
+        # Validate activity multipliers
+        if self.cognitive.high_activity_multiplier <= 0:
+            errors.append("High activity multiplier must be positive")
+
+        if self.cognitive.normal_activity_multiplier <= 0:
+            errors.append("Normal activity multiplier must be positive")
+
+        if self.cognitive.low_activity_multiplier <= 0:
+            errors.append("Low activity multiplier must be positive")
 
         if errors:
             for error in errors:

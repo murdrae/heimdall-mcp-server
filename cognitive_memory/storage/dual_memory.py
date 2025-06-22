@@ -17,6 +17,7 @@ from typing import Any
 from loguru import logger
 
 from ..core.memory import CognitiveMemory
+from .project_activity_tracker import ProjectActivityTracker
 from .sqlite_persistence import DatabaseManager
 
 
@@ -106,11 +107,21 @@ class EpisodicMemoryStore:
     fast decay rates, typically persisting for days to weeks.
     """
 
-    def __init__(self, db_manager: DatabaseManager):
-        """Initialize episodic memory store."""
+    def __init__(
+        self,
+        db_manager: DatabaseManager,
+        activity_tracker: ProjectActivityTracker | None = None,
+    ):
+        """Initialize episodic memory store.
+
+        Args:
+            db_manager: Database manager for persistence
+            activity_tracker: Optional ProjectActivityTracker for context-aware decay
+        """
         self.db_manager = db_manager
         self.decay_rate = 0.1  # Fast decay rate
         self.max_retention_days = 30  # Maximum retention period
+        self.activity_tracker = activity_tracker
 
     def store_episodic_memory(self, memory: CognitiveMemory) -> bool:
         """Store an episodic memory with fast decay parameters."""
@@ -179,9 +190,18 @@ class EpisodicMemoryStore:
             return False
 
     def get_episodic_memories(
-        self, limit: int | None = None, min_strength: float = 0.0
+        self,
+        limit: int | None = None,
+        min_strength: float = 0.0,
+        access_patterns: dict[str, MemoryAccessPattern] | None = None,
     ) -> list[CognitiveMemory]:
-        """Get episodic memories with optional filtering."""
+        """Get episodic memories with optional filtering.
+
+        Args:
+            limit: Maximum number of memories to return
+            min_strength: Minimum strength threshold
+            access_patterns: Access patterns for context-aware decay calculation
+        """
         try:
             with self.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
@@ -203,8 +223,10 @@ class EpisodicMemoryStore:
                 memories = []
                 for row in rows:
                     memory = self._row_to_memory(row)
-                    # Apply decay calculation
-                    memory.strength = self._calculate_decayed_strength(memory)
+                    # Apply decay calculation with optional activity tracking
+                    memory.strength = self._calculate_decayed_strength(
+                        memory, access_patterns
+                    )
                     memories.append(memory)
 
                 return memories
@@ -213,16 +235,40 @@ class EpisodicMemoryStore:
             logger.error("Failed to get episodic memories", error=str(e))
             return []
 
-    def _calculate_decayed_strength(self, memory: CognitiveMemory) -> float:
-        """Calculate current strength after decay."""
+    def _calculate_decayed_strength(
+        self,
+        memory: CognitiveMemory,
+        access_patterns: dict[str, MemoryAccessPattern] | None = None,
+    ) -> float:
+        """Calculate current strength after decay with optional context-aware scaling.
+
+        Args:
+            memory: The memory to calculate decay for
+            access_patterns: Optional access patterns for activity-based decay
+
+        Returns:
+            Decayed strength value between 0.0 and 1.0
+        """
         now = time.time()
         # Convert datetime to timestamp - CognitiveMemory always uses datetime
         timestamp_val = memory.timestamp.timestamp()
         hours_elapsed = (now - timestamp_val) / 3600
 
+        # Get effective decay rate (context-aware if activity tracker available)
+        effective_decay_rate = self.decay_rate
+        if self.activity_tracker and access_patterns is not None:
+            try:
+                effective_decay_rate = self.activity_tracker.get_dynamic_decay_rate(
+                    self.decay_rate, access_patterns
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to get dynamic decay rate, using base rate", error=str(e)
+                )
+
         # Exponential decay: strength = initial * exp(-decay_rate * time)
         decayed_strength = memory.strength * math.exp(
-            -self.decay_rate * hours_elapsed / 24
+            -effective_decay_rate * hours_elapsed / 24
         )
 
         return max(0.0, min(1.0, decayed_strength))
@@ -290,11 +336,21 @@ class SemanticMemoryStore:
     slow decay rates, typically persisting for months to years.
     """
 
-    def __init__(self, db_manager: DatabaseManager):
-        """Initialize semantic memory store."""
+    def __init__(
+        self,
+        db_manager: DatabaseManager,
+        activity_tracker: ProjectActivityTracker | None = None,
+    ):
+        """Initialize semantic memory store.
+
+        Args:
+            db_manager: Database manager for persistence
+            activity_tracker: Optional ProjectActivityTracker for context-aware decay
+        """
         self.db_manager = db_manager
         self.decay_rate = 0.01  # Slow decay rate
         self.min_consolidation_score = 0.6  # Minimum score for consolidation
+        self.activity_tracker = activity_tracker
 
     def store_semantic_memory(self, memory: CognitiveMemory) -> bool:
         """Store a semantic memory with slow decay parameters."""
@@ -362,9 +418,18 @@ class SemanticMemoryStore:
             return False
 
     def get_semantic_memories(
-        self, limit: int | None = None, min_strength: float = 0.0
+        self,
+        limit: int | None = None,
+        min_strength: float = 0.0,
+        access_patterns: dict[str, MemoryAccessPattern] | None = None,
     ) -> list[CognitiveMemory]:
-        """Get semantic memories with optional filtering."""
+        """Get semantic memories with optional filtering.
+
+        Args:
+            limit: Maximum number of memories to return
+            min_strength: Minimum strength threshold
+            access_patterns: Access patterns for context-aware decay calculation
+        """
         try:
             with self.db_manager.get_connection() as conn:
                 cursor = conn.cursor()
@@ -386,8 +451,10 @@ class SemanticMemoryStore:
                 memories = []
                 for row in rows:
                     memory = self._row_to_memory(row)
-                    # Apply slow decay calculation
-                    memory.strength = self._calculate_decayed_strength(memory)
+                    # Apply slow decay calculation with optional activity tracking
+                    memory.strength = self._calculate_decayed_strength(
+                        memory, access_patterns
+                    )
                     memories.append(memory)
 
                 return memories
@@ -396,16 +463,40 @@ class SemanticMemoryStore:
             logger.error("Failed to get semantic memories", error=str(e))
             return []
 
-    def _calculate_decayed_strength(self, memory: CognitiveMemory) -> float:
-        """Calculate current strength after slow decay."""
+    def _calculate_decayed_strength(
+        self,
+        memory: CognitiveMemory,
+        access_patterns: dict[str, MemoryAccessPattern] | None = None,
+    ) -> float:
+        """Calculate current strength after slow decay with optional context-aware scaling.
+
+        Args:
+            memory: The memory to calculate decay for
+            access_patterns: Optional access patterns for activity-based decay
+
+        Returns:
+            Decayed strength value between 0.0 and 1.0
+        """
         now = time.time()
         # Convert datetime to timestamp - CognitiveMemory always uses datetime
         timestamp_val = memory.timestamp.timestamp()
         days_elapsed = (now - timestamp_val) / (24 * 3600)
 
+        # Get effective decay rate (context-aware if activity tracker available)
+        effective_decay_rate = self.decay_rate
+        if self.activity_tracker and access_patterns is not None:
+            try:
+                effective_decay_rate = self.activity_tracker.get_dynamic_decay_rate(
+                    self.decay_rate, access_patterns
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to get dynamic decay rate, using base rate", error=str(e)
+                )
+
         # Very slow exponential decay
         decayed_strength = memory.strength * math.exp(
-            -self.decay_rate * days_elapsed / 30
+            -effective_decay_rate * days_elapsed / 30
         )
 
         return max(0.0, min(1.0, decayed_strength))
@@ -642,11 +733,41 @@ class DualMemorySystem:
     both episodic and semantic memories with automatic consolidation.
     """
 
-    def __init__(self, db_manager: DatabaseManager):
-        """Initialize dual memory system."""
+    def __init__(
+        self,
+        db_manager: DatabaseManager,
+        config: Any = None,
+        repository_path: str | None = None,
+    ):
+        """Initialize dual memory system.
+
+        Args:
+            db_manager: Database manager for persistence
+            config: CognitiveConfig for activity tracking parameters
+            repository_path: Optional git repository path for activity tracking
+        """
         self.db_manager = db_manager
-        self.episodic_store = EpisodicMemoryStore(db_manager)
-        self.semantic_store = SemanticMemoryStore(db_manager)
+
+        # Initialize activity tracker if configuration is provided
+        self.activity_tracker = None
+        if config:
+            try:
+                self.activity_tracker = ProjectActivityTracker(
+                    repository_path=repository_path,
+                    activity_window_days=config.activity_window_days,
+                    max_commits_per_day=config.max_commits_per_day,
+                    max_accesses_per_day=config.max_accesses_per_day,
+                    commit_weight=config.activity_commit_weight,
+                    access_weight=config.activity_access_weight,
+                )
+                logger.info("Activity tracker initialized for context-aware decay")
+            except Exception as e:
+                logger.warning("Failed to initialize activity tracker", error=str(e))
+                self.activity_tracker = None
+
+        # Initialize memory stores with activity tracker
+        self.episodic_store = EpisodicMemoryStore(db_manager, self.activity_tracker)
+        self.semantic_store = SemanticMemoryStore(db_manager, self.activity_tracker)
         self.consolidation = MemoryConsolidation(db_manager)
 
     def store_experience(self, memory: CognitiveMemory) -> bool:
@@ -663,20 +784,25 @@ class DualMemorySystem:
         limit: int | None = None,
         min_strength: float = 0.0,
     ) -> dict[MemoryType, list[CognitiveMemory]]:
-        """Retrieve memories from both stores."""
+        """Retrieve memories from both stores with context-aware decay."""
         if memory_types is None:
             memory_types = [MemoryType.EPISODIC, MemoryType.SEMANTIC]
+
+        # Get access patterns for activity-based decay if activity tracker is available
+        access_patterns: dict[str, MemoryAccessPattern] | None = None
+        if self.activity_tracker:
+            access_patterns = self.consolidation.access_patterns
 
         results = {}
 
         if MemoryType.EPISODIC in memory_types:
             results[MemoryType.EPISODIC] = self.episodic_store.get_episodic_memories(
-                limit=limit, min_strength=min_strength
+                limit=limit, min_strength=min_strength, access_patterns=access_patterns
             )
 
         if MemoryType.SEMANTIC in memory_types:
             results[MemoryType.SEMANTIC] = self.semantic_store.get_semantic_memories(
-                limit=limit, min_strength=min_strength
+                limit=limit, min_strength=min_strength, access_patterns=access_patterns
             )
 
         return results
@@ -799,6 +925,27 @@ class DualMemorySystem:
             logger.error("Failed to get memory stats", error=str(e))
             return {"error": str(e)}
 
+    def get_activity_stats(self) -> dict[str, Any]:
+        """Get activity tracking statistics."""
+        if not self.activity_tracker:
+            return {"activity_tracking": "disabled"}
+
+        try:
+            activity_stats = self.activity_tracker.get_activity_stats()
+            return {"activity_tracking": "enabled", "stats": activity_stats}
+        except Exception as e:
+            logger.error("Failed to get activity stats", error=str(e))
+            return {"activity_tracking": "error", "error": str(e)}
+
+    def close(self) -> None:
+        """Clean up resources."""
+        if self.activity_tracker:
+            try:
+                self.activity_tracker.close()
+                logger.debug("Activity tracker closed")
+            except Exception as e:
+                logger.warning("Error closing activity tracker", error=str(e))
+
     def store_memory(self, memory: CognitiveMemory) -> bool:
         """Store a cognitive memory (interface compliance)."""
         if memory.memory_type == MemoryType.EPISODIC.value:
@@ -903,15 +1050,19 @@ class DualMemorySystem:
 
 def create_dual_memory_system(
     db_path: str = "data/cognitive_memory.db",
+    config: Any = None,
+    repository_path: str | None = None,
 ) -> DualMemorySystem:
     """
     Factory function to create dual memory system.
 
     Args:
         db_path: Path to SQLite database file
+        config: Optional CognitiveConfig for activity tracking parameters
+        repository_path: Optional git repository path for activity tracking
 
     Returns:
-        DualMemorySystem: Configured dual memory system
+        DualMemorySystem: Configured dual memory system with optional activity tracking
     """
     db_manager = DatabaseManager(db_path)
-    return DualMemorySystem(db_manager)
+    return DualMemorySystem(db_manager, config, repository_path)
