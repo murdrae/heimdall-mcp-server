@@ -11,13 +11,15 @@ Each project directory automatically gets its own isolated MCP server instance u
 ### Project Isolation Strategy
 ```
 Project A (/path/to/project-a/)
-├── Container: cognitive-memory-a1b2c3d4 (port 6333+hash)
+├── Container: heimdall-project-a-a1b2c3d4 (port 6333+hash)
+├── Qdrant Container: qdrant-project-a-a1b2c3d4
 ├── Data Volume: cognitive-data-a1b2c3d4
 ├── Qdrant Collections: a1b2c3d4-concepts, a1b2c3d4-contexts, a1b2c3d4-episodes
 └── Claude Config: --scope project (project-specific MCP)
 
 Project B (/path/to/project-b/)
-├── Container: cognitive-memory-e5f6g7h8 (port 6333+hash)
+├── Container: heimdall-project-b-e5f6g7h8 (port 6333+hash)
+├── Qdrant Container: qdrant-project-b-e5f6g7h8
 ├── Data Volume: cognitive-data-e5f6g7h8
 ├── Qdrant Collections: e5f6g7h8-concepts, e5f6g7h8-contexts, e5f6g7h8-episodes
 └── Claude Config: --scope project (project-specific MCP)
@@ -30,8 +32,11 @@ PROJECT_PATH=$(pwd)
 PROJECT_HASH=$(echo $PROJECT_PATH | sha256sum | cut -c1-8)
 
 # Deterministic resource allocation
-QDRANT_PORT=$((6333 + 0x$PROJECT_HASH % 1000))
-CONTAINER_NAME="cognitive-memory-$PROJECT_HASH"
+REPO_NAME=$(basename "$PROJECT_PATH")
+HASH_DECIMAL=$((16#$(echo "$PROJECT_HASH" | cut -c1-3)))
+QDRANT_PORT=$((6333 + ($HASH_DECIMAL % 1000)))
+CONTAINER_PREFIX="heimdall-$REPO_NAME-$PROJECT_HASH"
+QDRANT_CONTAINER="qdrant-$REPO_NAME-$PROJECT_HASH"
 VOLUME_NAME="cognitive-data-$PROJECT_HASH"
 NETWORK_NAME="cognitive-network-$PROJECT_HASH"
 ```
@@ -148,6 +153,7 @@ cd /path/to/my-react-project
 # ✅ Qdrant ready
 # ✅ Cognitive Memory MCP server ready
 # 🎉 Setup complete! Project memory ready.
+# Container names: heimdall-my-react-project-a1b2c3d4, qdrant-my-react-project-a1b2c3d4
 ```
 
 ### Container Lifecycle Management
@@ -182,7 +188,7 @@ docker compose up -d
 docker compose down
 
 # List all cognitive memory containers
-docker ps --filter "name=cognitive-memory-"
+docker ps --filter "name=heimdall-"
 ```
 
 ### Enhanced Cognitive System Integration
@@ -252,13 +258,16 @@ QDRANT_PORT=$((6333 + 0x$PROJECT_HASH % 1000))
 
 ### Container Naming Convention
 ```bash
-# Predictable, collision-resistant naming
-CONTAINER_NAME="cognitive-memory-${PROJECT_HASH}"
+# Human-readable, collision-resistant naming with repo name
+REPO_NAME=$(basename "$PROJECT_PATH")
+CONTAINER_PREFIX="heimdall-${REPO_NAME}-${PROJECT_HASH}"
+QDRANT_CONTAINER="qdrant-${REPO_NAME}-${PROJECT_HASH}"
 VOLUME_NAME="cognitive-data-${PROJECT_HASH}"
 NETWORK_NAME="cognitive-network-${PROJECT_HASH}"
 
 # Examples:
-# cognitive-memory-a1b2c3d4
+# heimdall-my-react-app-a1b2c3d4
+# qdrant-my-react-app-a1b2c3d4
 # cognitive-data-a1b2c3d4
 # cognitive-network-a1b2c3d4
 ```
@@ -266,7 +275,7 @@ NETWORK_NAME="cognitive-network-${PROJECT_HASH}"
 ### Data Persistence Strategy (Actual Implementation)
 ```
 Project Data Layout:
-$PROJECT_PATH/.cognitive-memory/
+$PROJECT_PATH/.heimdall-mcp/
 ├── docker-compose.yml           # Generated compose file
 ├── qdrant/                      # Qdrant vector data (host volume)
 ├── cognitive/                   # Application data (host volume)
