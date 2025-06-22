@@ -166,6 +166,14 @@ class CognitiveConfig:
         }
     )
 
+    # File monitoring parameters
+    monitoring_enabled: bool = True
+    monitoring_interval_seconds: float = 5.0
+    monitoring_batch_size: int = 10
+    monitoring_ignore_patterns: set[str] = field(
+        default_factory=lambda: {".git", "node_modules", "__pycache__", ".pytest_cache"}
+    )
+
     # Date-based ranking parameters
     similarity_closeness_threshold: float = 0.05
     modification_date_weight: float = 0.3
@@ -309,10 +317,27 @@ class CognitiveConfig:
             low_activity_multiplier=float(
                 os.getenv("LOW_ACTIVITY_MULTIPLIER", str(cls.low_activity_multiplier))
             ),
+            monitoring_enabled=os.getenv("MONITORING_ENABLED", "true").lower()
+            == "true",
+            monitoring_interval_seconds=float(
+                os.getenv(
+                    "MONITORING_INTERVAL_SECONDS", str(cls.monitoring_interval_seconds)
+                )
+            ),
+            monitoring_batch_size=int(
+                os.getenv("MONITORING_BATCH_SIZE", str(cls.monitoring_batch_size))
+            ),
         )
 
         # Update decay profiles with environment variable overrides
         config.decay_profiles = config._parse_decay_profiles()
+
+        # Parse monitoring ignore patterns from environment
+        ignore_patterns_env = os.getenv("MONITORING_IGNORE_PATTERNS")
+        if ignore_patterns_env:
+            config.monitoring_ignore_patterns = {
+                pattern.strip() for pattern in ignore_patterns_env.split(",")
+            }
 
         return config
 
@@ -580,6 +605,13 @@ class SystemConfig:
 
         if self.cognitive.low_activity_multiplier <= 0:
             errors.append("Low activity multiplier must be positive")
+
+        # Validate monitoring parameters
+        if self.cognitive.monitoring_interval_seconds <= 0:
+            errors.append("Monitoring interval must be positive")
+
+        if self.cognitive.monitoring_batch_size <= 0:
+            errors.append("Monitoring batch size must be positive")
 
         if errors:
             for error in errors:
