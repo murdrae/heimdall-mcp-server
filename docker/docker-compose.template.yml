@@ -6,7 +6,7 @@ version: '3.8'
 
 services:
   qdrant:
-    container_name: "qdrant-${PROJECT_HASH}"
+    container_name: "qdrant-${REPO_NAME}-${PROJECT_HASH}"
     image: qdrant/qdrant:v1.14.1
     ports:
       - "${QDRANT_PORT}:6333"
@@ -27,7 +27,7 @@ services:
       - heimdall-network
 
   heimdall-mcp:
-    container_name: "heimdall-mcp-${PROJECT_HASH}"
+    container_name: "heimdall-${REPO_NAME}-${PROJECT_HASH}"
     image: "heimdall-mcp:${PROJECT_HASH}"
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     environment:
@@ -37,7 +37,7 @@ services:
       - QDRANT_COLLECTION_PREFIX=${PROJECT_HASH}
 
       # Service URLs (consistent with .env.template)
-      - QDRANT_URL=http://qdrant-${PROJECT_HASH}:6333
+      - QDRANT_URL=http://qdrant-${REPO_NAME}-${PROJECT_HASH}:6333
 
       # Storage paths (consistent with .env.template)
       - SQLITE_PATH=/app/data/cognitive_memory.db
@@ -83,7 +83,7 @@ volumes:
 
 networks:
   heimdall-network:
-    name: "heimdall-network-${PROJECT_HASH}"
+    name: "heimdall-network-${REPO_NAME}-${PROJECT_HASH}"
     driver: bridge
 
 # Metadata for setup scripts

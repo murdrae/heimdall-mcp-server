@@ -15,7 +15,8 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_PATH="$(pwd)"
 PROJECT_HASH=$(echo "$PROJECT_PATH" | sha256sum | cut -c1-8)
-CONTAINER_NAME="heimdall-mcp-$PROJECT_HASH"
+REPO_NAME=$(basename "$PROJECT_PATH")
+CONTAINER_NAME="heimdall-$REPO_NAME-$PROJECT_HASH"
 
 # Utility functions
 log_info() {

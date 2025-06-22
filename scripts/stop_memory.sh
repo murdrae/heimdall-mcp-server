@@ -14,7 +14,8 @@ NC='\033[0m' # No Color
 # Configuration
 PROJECT_PATH="$(pwd)"
 PROJECT_HASH=$(echo "$PROJECT_PATH" | sha256sum | cut -c1-8)
-PROJECT_DATA_DIR="$HOME/.heimdall-mcp/projects/$PROJECT_HASH"
+REPO_NAME=$(basename "$PROJECT_PATH")
+PROJECT_DATA_DIR="$PROJECT_PATH/.heimdall-mcp"
 COMPOSE_FILE="$PROJECT_DATA_DIR/docker-compose.yml"
 
 # Utility functions
@@ -47,7 +48,7 @@ main() {
     echo "======================================="
     echo ""
 
-    log_info "Project: $PROJECT_PATH"
+    log_info "Project: $PROJECT_PATH ($REPO_NAME)"
     log_info "Hash: $PROJECT_HASH"
 
     # Check if compose file exists
@@ -60,7 +61,7 @@ main() {
     log_info "Stopping containers..."
     cd "$(dirname "$COMPOSE_FILE")"
 
-    $COMPOSE_CMD -f "$COMPOSE_FILE" down
+    $COMPOSE_CMD -f "$COMPOSE_FILE" --project-name "heimdall-$PROJECT_HASH" down
 
     log_success "Containers stopped successfully"
 }

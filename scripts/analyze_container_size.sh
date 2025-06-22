@@ -13,9 +13,10 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_PATH="$(pwd)"
 PROJECT_HASH=$(echo "$PROJECT_PATH" | sha256sum | cut -c1-8)
+REPO_NAME=$(basename "$PROJECT_PATH")
 IMAGE_NAME="heimdall-mcp:$PROJECT_HASH"
-CONTAINER_NAME="heimdall-mcp-$PROJECT_HASH"
-QDRANT_CONTAINER="qdrant-$PROJECT_HASH"
+CONTAINER_NAME="heimdall-$REPO_NAME-$PROJECT_HASH"
+QDRANT_CONTAINER="qdrant-$REPO_NAME-$PROJECT_HASH"
 DATA_DIR="$PROJECT_PATH/.heimdall-mcp"
 
 echo -e "${CYAN}🔍 Heimdall MCP Container & Data Analysis${NC}"

@@ -3,8 +3,9 @@ set -e
 
 # Real-time memory and performance monitoring
 PROJECT_HASH=$(echo "$(pwd)" | sha256sum | cut -c1-8)
-CONTAINER_NAME="heimdall-mcp-$PROJECT_HASH"
-QDRANT_CONTAINER="qdrant-$PROJECT_HASH"
+REPO_NAME=$(basename "$(pwd)")
+CONTAINER_NAME="heimdall-$REPO_NAME-$PROJECT_HASH"
+QDRANT_CONTAINER="qdrant-$REPO_NAME-$PROJECT_HASH"
 
 echo "📊 Real-time Memory & Performance Monitor"
 echo "========================================"

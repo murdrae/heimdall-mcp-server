@@ -39,15 +39,18 @@ generate_project_config() {
     # Generate 8-character hash from project path
     PROJECT_HASH=$(echo "$PROJECT_PATH" | sha256sum | cut -c1-8)
 
+    # Extract repository name from project path
+    REPO_NAME=$(basename "$PROJECT_PATH")
+
     # Calculate dynamic ports to avoid conflicts
     # Convert first 3 chars of hash to decimal for port offset
     HASH_DECIMAL=$((16#$(echo "$PROJECT_HASH" | cut -c1-3)))
     QDRANT_PORT=$((6333 + ($HASH_DECIMAL % 1000)))
     MCP_SERVER_PORT=$((8080 + ($HASH_DECIMAL % 1000)))
 
-    # Container and volume names
-    CONTAINER_PREFIX="heimdall-mcp-$PROJECT_HASH"
-    QDRANT_CONTAINER="qdrant-$PROJECT_HASH"
+    # Container and volume names with repo name for easy identification
+    CONTAINER_PREFIX="heimdall-$REPO_NAME-$PROJECT_HASH"
+    QDRANT_CONTAINER="qdrant-$REPO_NAME-$PROJECT_HASH"
 
     # Data directories - store in project directory
     PROJECT_DATA_DIR="$PROJECT_PATH/.heimdall-mcp"
@@ -126,6 +129,7 @@ create_compose_file() {
     # Substitute variables in compose file
     sed -i.bak \
         -e "s/\${PROJECT_HASH}/$PROJECT_HASH/g" \
+        -e "s/\${REPO_NAME}/$REPO_NAME/g" \
         -e "s|\${PROJECT_PATH}|$PROJECT_PATH|g" \
         -e "s/\${QDRANT_PORT}/$QDRANT_PORT/g" \
         -e "s/\${MCP_SERVER_PORT}/$MCP_SERVER_PORT/g" \
@@ -173,8 +177,8 @@ start_containers() {
     # Set build context to repo root
     export DOCKER_BUILDKIT=1
 
-    # Start services with correct compose file path
-    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build
+    # Start services with correct compose file path and explicit project name
+    $COMPOSE_CMD -f "$COMPOSE_FILE" --project-name "heimdall-$PROJECT_HASH" up -d --build
 
     log_success "Containers started successfully"
 }
@@ -245,7 +249,7 @@ cleanup_on_error() {
     log_error "Setup failed. Cleaning up..."
     if [ -f "$COMPOSE_FILE" ]; then
         cd "$(dirname "$COMPOSE_FILE")"
-        $COMPOSE_CMD -f "$COMPOSE_FILE" down --volumes --remove-orphans 2>/dev/null || true
+        $COMPOSE_CMD -f "$COMPOSE_FILE" --project-name "heimdall-$PROJECT_HASH" down --volumes --remove-orphans 2>/dev/null || true
     fi
     rm -f "$COMPOSE_FILE"
 }
@@ -314,7 +318,7 @@ case "${1:-}" in
         log_info "Cleaning up project containers..."
         if [ -f "$COMPOSE_FILE" ]; then
             cd "$(dirname "$COMPOSE_FILE")"
-            $COMPOSE_CMD -f "$COMPOSE_FILE" down --volumes --remove-orphans
+            $COMPOSE_CMD -f "$COMPOSE_FILE" --project-name "heimdall-$PROJECT_HASH" down --volumes --remove-orphans
 
             # Fix any permission issues before removal
             if [ -d "$PROJECT_DATA_DIR" ]; then
@@ -342,7 +346,7 @@ case "${1:-}" in
         # Stop and remove existing containers
         if [ -f "$COMPOSE_FILE" ]; then
             log_info "Stopping and removing existing containers..."
-            $COMPOSE_CMD -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+            $COMPOSE_CMD -f "$COMPOSE_FILE" --project-name "heimdall-$PROJECT_HASH" down --remove-orphans 2>/dev/null || true
         fi
 
         # Remove existing project-specific images only
