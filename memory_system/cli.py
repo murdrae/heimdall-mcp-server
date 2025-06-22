@@ -10,7 +10,9 @@ This module provides a comprehensive command-line interface that handles:
 """
 
 import json
+import os
 import sys
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -46,6 +48,10 @@ app.add_typer(qdrant_app, name="qdrant")
 # Server interface commands
 serve_app = typer.Typer(help="Start interface servers")
 app.add_typer(serve_app, name="serve")
+
+# Monitoring service commands
+monitor_app = typer.Typer(help="File monitoring service management")
+app.add_typer(monitor_app, name="monitor")
 
 
 @qdrant_app.command("start")  # type: ignore[misc]
@@ -510,6 +516,294 @@ def _display_health_results(results: HealthCheckResults, verbose: bool) -> None:
         console.print("\n📋 Recommendations:", style="bold blue")
         for i, recommendation in enumerate(results.recommendations, 1):
             console.print(f"  {i}. {recommendation}")
+
+
+@monitor_app.command("start")  # type: ignore[misc]
+def monitor_start(
+    target_path: str | None = typer.Argument(None, help="Directory to monitor"),
+    daemon: bool = typer.Option(False, "--daemon", help="Run in daemon mode"),
+    interval: float = typer.Option(5.0, help="Polling interval in seconds"),
+    json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
+) -> None:
+    """Start file monitoring service."""
+    try:
+        from .monitoring_service import MonitoringService, MonitoringServiceError
+
+        # Set target path if provided
+        if target_path:
+            os.environ["MONITORING_TARGET_PATH"] = str(Path(target_path).resolve())
+
+        # Set interval if provided
+        if interval != 5.0:
+            os.environ["MONITORING_INTERVAL_SECONDS"] = str(interval)
+
+        console.print("🔍 Starting file monitoring service...", style="bold blue")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Starting monitoring service...", total=None)
+
+            service = MonitoringService()
+            success = service.start(daemon_mode=daemon)
+
+            if success:
+                progress.update(task, description="✅ Monitoring service started")
+
+                if json_output:
+                    status = service.get_status()
+                    console.print(json.dumps(status, indent=2))
+                else:
+                    console.print(
+                        "✅ File monitoring service started successfully",
+                        style="bold green",
+                    )
+
+                    target = os.getenv("MONITORING_TARGET_PATH", "unknown")
+                    console.print(f"📁 Monitoring: {target}")
+                    console.print(f"⏱️ Interval: {interval}s")
+
+                    if daemon:
+                        console.print("🔧 Running in daemon mode")
+                    else:
+                        console.print("Press Ctrl+C to stop monitoring")
+            else:
+                progress.update(task, description="❌ Failed to start monitoring")
+                console.print("❌ Failed to start monitoring service", style="bold red")
+                raise typer.Exit(1)
+
+    except MonitoringServiceError as e:
+        console.print(f"❌ Monitoring service error: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    except Exception as e:
+        console.print(f"❌ Error starting monitoring: {e}", style="bold red")
+        raise typer.Exit(1) from e
+
+
+@monitor_app.command("stop")  # type: ignore[misc]
+def monitor_stop(
+    json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
+) -> None:
+    """Stop file monitoring service."""
+    try:
+        from .monitoring_service import MonitoringService, MonitoringServiceError
+
+        console.print("🛑 Stopping file monitoring service...", style="bold yellow")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Stopping monitoring service...", total=None)
+
+            service = MonitoringService()
+            success = service.stop()
+
+            if success:
+                progress.update(task, description="✅ Monitoring service stopped")
+
+                if json_output:
+                    status = service.get_status()
+                    console.print(json.dumps(status, indent=2))
+                else:
+                    console.print(
+                        "✅ File monitoring service stopped", style="bold green"
+                    )
+            else:
+                progress.update(task, description="⚠️ Service was not running")
+                console.print(
+                    "⚠️ Monitoring service was not running", style="bold yellow"
+                )
+
+    except MonitoringServiceError as e:
+        console.print(f"❌ Monitoring service error: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    except Exception as e:
+        console.print(f"❌ Error stopping monitoring: {e}", style="bold red")
+        raise typer.Exit(1) from e
+
+
+@monitor_app.command("restart")  # type: ignore[misc]
+def monitor_restart(
+    json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
+) -> None:
+    """Restart file monitoring service."""
+    try:
+        from .monitoring_service import MonitoringService, MonitoringServiceError
+
+        console.print("🔄 Restarting file monitoring service...", style="bold blue")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Restarting monitoring service...", total=None)
+
+            service = MonitoringService()
+            success = service.restart()
+
+            if success:
+                progress.update(task, description="✅ Monitoring service restarted")
+
+                if json_output:
+                    status = service.get_status()
+                    console.print(json.dumps(status, indent=2))
+                else:
+                    console.print(
+                        "✅ File monitoring service restarted successfully",
+                        style="bold green",
+                    )
+            else:
+                progress.update(task, description="❌ Failed to restart monitoring")
+                console.print(
+                    "❌ Failed to restart monitoring service", style="bold red"
+                )
+                raise typer.Exit(1)
+
+    except MonitoringServiceError as e:
+        console.print(f"❌ Monitoring service error: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    except Exception as e:
+        console.print(f"❌ Error restarting monitoring: {e}", style="bold red")
+        raise typer.Exit(1) from e
+
+
+@monitor_app.command("status")  # type: ignore[misc]
+def monitor_status(
+    json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
+    detailed: bool = typer.Option(
+        False, "--detailed", help="Show detailed status information"
+    ),
+) -> None:
+    """Show file monitoring service status."""
+    try:
+        from .monitoring_service import MonitoringService, MonitoringServiceError
+
+        service = MonitoringService()
+        status = service.get_status()
+
+        if json_output:
+            console.print(json.dumps(status, indent=2))
+            return
+
+        # Rich formatted output
+        if status["is_running"]:
+            console.print("🟢 File monitoring service is running", style="bold green")
+        else:
+            console.print("🔴 File monitoring service is stopped", style="bold red")
+
+        # Status table
+        status_table = Table(title="Monitoring Service Status")
+        status_table.add_column("Property", style="cyan")
+        status_table.add_column("Value", style="white")
+
+        status_table.add_row("Status", "Running" if status["is_running"] else "Stopped")
+        status_table.add_row("PID", str(status["pid"]) if status["pid"] else "N/A")
+
+        if status["uptime_seconds"]:
+            uptime = status["uptime_seconds"]
+            if uptime > 3600:
+                uptime_str = f"{uptime / 3600:.1f} hours"
+            elif uptime > 60:
+                uptime_str = f"{uptime / 60:.1f} minutes"
+            else:
+                uptime_str = f"{uptime:.1f} seconds"
+            status_table.add_row("Uptime", uptime_str)
+
+        status_table.add_row("Files Monitored", str(status["files_monitored"]))
+        status_table.add_row("Sync Operations", str(status["sync_operations"]))
+        status_table.add_row("Error Count", str(status["error_count"]))
+
+        if detailed:
+            if status["memory_usage_mb"]:
+                status_table.add_row(
+                    "Memory Usage", f"{status['memory_usage_mb']:.1f} MB"
+                )
+            if status["cpu_percent"]:
+                status_table.add_row("CPU Usage", f"{status['cpu_percent']:.1f}%")
+            if status["restart_count"]:
+                status_table.add_row("Restart Count", str(status["restart_count"]))
+            if status["last_error"]:
+                status_table.add_row("Last Error", status["last_error"])
+
+        console.print(status_table)
+
+        # Target path information
+        target_path = os.getenv("MONITORING_TARGET_PATH")
+        if target_path:
+            console.print(f"\n📁 Target Path: {target_path}")
+
+    except MonitoringServiceError as e:
+        console.print(f"❌ Monitoring service error: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    except Exception as e:
+        console.print(f"❌ Error getting status: {e}", style="bold red")
+        raise typer.Exit(1) from e
+
+
+@monitor_app.command("health")  # type: ignore[misc]
+def monitor_health(
+    json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
+) -> None:
+    """Perform monitoring service health check."""
+    try:
+        from .monitoring_service import MonitoringService, MonitoringServiceError
+
+        service = MonitoringService()
+        health = service.health_check()
+
+        if json_output:
+            console.print(json.dumps(health, indent=2))
+            return
+
+        # Rich formatted output
+        if health["status"] == "healthy":
+            console.print("🟢 Monitoring service is healthy", style="bold green")
+        elif health["status"] == "warning":
+            console.print("🟡 Monitoring service has warnings", style="bold yellow")
+        else:
+            console.print("🔴 Monitoring service is unhealthy", style="bold red")
+
+        # Health checks table
+        health_table = Table(title="Health Check Results")
+        health_table.add_column("Check", style="cyan")
+        health_table.add_column("Status", style="white")
+        health_table.add_column("Message", style="white")
+
+        for check in health["checks"]:
+            if check["status"] == "pass":
+                status_display = "✅ PASS"
+            elif check["status"] == "warn":
+                status_display = "⚠️ WARN"
+            else:
+                status_display = "❌ FAIL"
+
+            health_table.add_row(
+                check["name"].replace("_", " ").title(),
+                status_display,
+                check["message"],
+            )
+
+        console.print(health_table)
+
+        # Exit with appropriate code
+        if health["status"] == "healthy":
+            return
+        elif health["status"] == "warning":
+            raise typer.Exit(1)
+        else:
+            raise typer.Exit(2)
+
+    except MonitoringServiceError as e:
+        console.print(f"❌ Monitoring service error: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    except Exception as e:
+        console.print(f"❌ Error checking health: {e}", style="bold red")
+        raise typer.Exit(1) from e
 
 
 def main() -> int:

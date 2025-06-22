@@ -159,22 +159,230 @@ Implements automatic markdown file change detection and memory synchronization. 
 - ✅ **COMPLETED**: All integration tests passing (13/13)
 - Ready to proceed to Step 4: CLI Integration and Service Management
 
-### Step 4: CLI Integration and Service Management
-**Status**: Not Started
-**Date Range**: 2025-06-25 - 2025-06-26
+### Step 4: Container Service Integration (Production Ready)
+**Status**: In Progress
+**Date Range**: 2025-06-22 - 2025-06-26
+
+#### Architecture Implementation
+**Container Service Architecture**: Monitoring runs as built-in service within the existing `heimdall-mcp` container, leveraging the established Docker Compose deployment pattern with project-specific container isolation (`heimdall-{REPO_NAME}-{PROJECT_HASH}`).
+
+**Service Integration Model**:
+- **Shared Container**: Monitoring service runs in same container as MCP server to share CognitiveSystem resources
+- **Process Management**: Uses Python multiprocessing with PID file tracking and signal handling
+- **Automatic Startup**: Container entrypoint conditionally starts monitoring based on `MONITORING_ENABLED` environment variable
+- **Health Integration**: Monitoring status included in existing container health check system
+- **Resource Sharing**: Leverages existing Qdrant connection, SQLite database, and cognitive system initialization
+
+**Production Service Features**:
+- **Daemon Mode**: Background service with proper daemonization and PID management
+- **Signal Handling**: Graceful shutdown on SIGTERM/SIGINT for clean container stops
+- **Auto-Recovery**: Automatic restart on service failures with exponential backoff
+- **Health Reporting**: Service status endpoints for container orchestration monitoring
+- **Error Resilience**: Continue MCP server operation even if monitoring fails
+- **Resource Monitoring**: Memory/CPU usage tracking and resource limit awareness
+
+#### Container Integration Points
+
+**Docker Compose Integration**:
+```yaml
+# Added to docker/docker-compose.template.yml
+environment:
+  # File monitoring configuration
+  - MONITORING_ENABLED=true
+  - MONITORING_TARGET_PATH=${PROJECT_PATH}
+  - MONITORING_INTERVAL_SECONDS=5.0
+  - MONITORING_IGNORE_PATTERNS=.git,node_modules,__pycache__,.pytest_cache
+  - SYNC_ENABLED=true
+  - SYNC_ATOMIC_OPERATIONS=true
+  - SYNC_CONTINUE_ON_ERROR=true
+  - SYNC_MAX_RETRY_ATTEMPTS=3
+  - SYNC_RETRY_DELAY_SECONDS=1.0
+```
+
+**Container Startup Sequence**:
+```bash
+# Modified docker/entrypoint.sh
+1. Environment validation and setup
+2. Conditional monitoring service startup (if MONITORING_ENABLED=true)
+3. PID file creation (/tmp/monitoring.pid)
+4. Background daemon process launch
+5. MCP server startup (existing behavior)
+6. Health check registration for both services
+```
+
+**Health Check Integration**:
+```bash
+# Enhanced docker/healthcheck.sh
+1. Existing MCP server health check
+2. Monitoring service health validation (if enabled)
+3. PID file verification and process status
+4. Service communication verification
+5. Resource usage validation
+```
+
+#### Service Management Architecture
+
+**MonitoringService Class Structure**:
+- **Service Lifecycle**: `start()`, `stop()`, `restart()`, `status()`, `health_check()`
+- **Configuration Management**: Environment-driven config with hot reload capability
+- **Process Management**: PID tracking, daemon mode, signal handlers
+- **Error Handling**: Comprehensive error recovery and logging
+- **Resource Management**: Memory limits, CPU monitoring, graceful degradation
+- **Statistics Tracking**: Operation counters, performance metrics, error rates
+
+**CLI Integration Patterns**:
+```bash
+# Container-internal service management
+python -m memory_system.monitoring_service --start
+python -m memory_system.monitoring_service --stop
+python -m memory_system.monitoring_service --restart
+python -m memory_system.monitoring_service --status
+python -m memory_system.monitoring_service --logs
+
+# Host-to-container management
+docker exec heimdall-{hash} python -m memory_system.monitoring_service --status
+docker exec heimdall-{hash} memory_system monitor status
+docker exec heimdall-{hash} memory_system monitor restart
+```
+
+**Service Communication Architecture**:
+- **IPC Method**: Unix domain sockets for service communication
+- **Control Interface**: JSON-RPC for status queries and control commands
+- **Log Aggregation**: Structured JSON logging for production log systems
+- **Metrics Exposure**: Prometheus-compatible metrics endpoint
+
+#### Implementation Details
+
+**Core Service Components**:
+1. **MonitoringService** (`memory_system/monitoring_service.py`):
+   - Production service manager with full lifecycle control
+   - Environment configuration management and validation
+   - Process daemonization and PID file management
+   - Signal handling for graceful shutdown
+   - Health check endpoints and status reporting
+   - Error recovery with exponential backoff
+   - Resource monitoring and limit enforcement
+
+2. **ServiceHealth** (`memory_system/service_health.py`):
+   - Health check implementation for container orchestration
+   - Service status validation and reporting
+   - Resource usage monitoring and alerting
+   - Dependency validation (Qdrant, SQLite, file system)
+
+3. **Container Integration Files**:
+   - `docker/entrypoint.sh`: Service startup integration (~30 lines added)
+   - `docker/healthcheck.sh`: Health check enhancement (~15 lines added)
+   - `docker/docker-compose.template.yml`: Environment configuration (~20 lines added)
+
+**Configuration Management**:
+- **Environment Variables**: All configuration via Docker environment variables
+- **Validation**: Startup validation of paths, permissions, and dependencies
+- **Hot Reload**: Configuration changes without service restart
+- **Defaults**: Production-appropriate defaults with override capability
+- **Security**: Secure handling of file paths and access permissions
+
+**Error Handling & Recovery**:
+- **Service Failures**: Automatic restart with exponential backoff (1s, 2s, 4s, 8s, max 60s)
+- **Resource Exhaustion**: Graceful degradation and resource limit enforcement
+- **Permission Errors**: Fallback strategies and user guidance
+- **Network Issues**: Qdrant connection retry with circuit breaker pattern
+- **File System Errors**: Robust handling of permission denied, disk full, etc.
+
+#### Production Deployment Flow
+
+**Container Startup Sequence**:
+```
+1. Container starts → docker/entrypoint.sh executes
+2. Environment variable validation and logging setup
+3. Conditional monitoring service initialization (if MONITORING_ENABLED=true)
+4. MonitoringService.start() → daemon process creation
+5. PID file creation and signal handler registration
+6. File monitoring initialization and callback registration
+7. MCP server startup (existing behavior unchanged)
+8. Health check registration for both services
+9. Container ready for production traffic
+```
+
+**Runtime Operation**:
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Container     │    │ Monitoring       │    │ File System     │
+│   Orchestrator  │    │ Service          │    │ Changes         │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         │ health check          │                       │
+         │◄─────────────────────►│                       │
+         │                       │ polling               │
+         │                       │◄─────────────────────►│
+         │                       │                       │
+         │                       │ file change detected  │
+         │                       │◄──────────────────────│
+         │                       │                       │
+         │                       │ sync operation        │
+         │                       │──────────────────────►│
+```
+
+**Service Management**:
+- **Status Monitoring**: Real-time service status via CLI and health endpoints
+- **Log Management**: Structured logging with log rotation and aggregation
+- **Metrics Collection**: Operation counters, performance metrics, error rates
+- **Resource Monitoring**: Memory usage, CPU utilization, disk I/O tracking
+- **Alert Integration**: Error conditions logged for monitoring system integration
 
 #### Tasks Completed
-- None yet
+- Architecture analysis of existing Docker deployment infrastructure (`docker/docker-compose.template.yml`, `docker/Dockerfile`, `docker/setup-deps.sh`)
+- Production deployment requirements analysis and container integration patterns
+- Container service integration architecture design and implementation planning
+- Service lifecycle management design and process architecture
+- Error handling and recovery strategy design
+- Health check and monitoring integration planning
+
+#### Tasks Completed
+- ✅ **Core Service Implementation**: Created `MonitoringService` class (~500 lines) with production-grade lifecycle management
+  - Daemon mode with PID file tracking and signal handling
+  - Error recovery with exponential backoff and automatic restart capability
+  - Resource monitoring (memory/CPU usage) and statistics tracking
+  - Comprehensive configuration validation and environment variable support
+- ✅ **Service Health System**: Created `ServiceHealthChecker` class (~300 lines) with detailed health validation
+  - Container orchestration health checks with dependency validation
+  - Resource usage monitoring and alerting thresholds
+  - Comprehensive permission and configuration validation
+- ✅ **CLI Integration**: Added monitoring commands to `memory_system` CLI following existing patterns
+  - `memory_system monitor start/stop/restart/status/health` commands
+  - JSON output support for programmatic integration
+  - Rich formatted output with progress indicators and status tables
+  - Proper error handling and user-friendly messages
+- ✅ **Health Check Integration**: Enhanced existing `HealthChecker` to include monitoring service validation
+  - Automatic monitoring service health checks in `memory_system doctor`
+  - Fix mode capability with automatic service restart
+  - Graceful handling when monitoring is disabled or not configured
 
 #### Current Work
-- None yet
+- Container integration modifications (entrypoint.sh, docker-compose, healthcheck)
+- Docker container startup integration and environment variable configuration
 
 #### Next Tasks
-- Add `memory_system monitor <directory>` CLI command
-- Integrate with existing service management in `memory_system/cli.py`
-- Add configuration options to `CognitiveConfig`
-- Implement background service lifecycle management
-- Add status reporting and monitoring controls
+- **Container Integration** (High Priority):
+  - Modify `docker/entrypoint.sh` - Add monitoring service startup integration
+  - Update `docker/docker-compose.template.yml` - Add monitoring environment variables
+  - Enhance `docker/healthcheck.sh` - Include monitoring in health checks
+  - Test container startup sequence with monitoring service
+
+- **Testing & Validation** (High Priority):
+  - Create `tests/unit/test_monitoring_service.py` - Service unit tests (~300 lines)
+  - Create `tests/integration/test_container_monitoring.py` - Container integration tests (~250 lines)
+  - Test end-to-end monitoring workflow with file changes
+  - Performance testing with large file structures and high change rates
+
+- **Bug Fixes** (Medium Priority):
+  - Fix JSON serialization issue in existing `HealthChecker` with `ServiceStatus` objects
+  - Test actual monitoring service startup and stop lifecycle
+  - Validate cognitive system integration with file monitoring
+
+- **Enhancements** (Low Priority):
+  - Add service communication via Unix domain sockets for advanced IPC
+  - Implement log rotation and structured logging for production
+  - Add Prometheus-compatible metrics endpoints
 
 ### Step 5: Testing and Validation
 **Status**: Not Started
@@ -197,9 +405,11 @@ Implements automatic markdown file change detection and memory synchronization. 
 
 ### Architecture Decisions
 - **Polling vs Filesystem Events**: Chose polling for simplicity and cross-platform reliability
-- **Metadata Querying**: Using JSON_EXTRACT for SQLite source_path queries (consider indexing if performance issues)
+- **Metadata Querying**: Using JSON_EXTRACT for SQLite source_path queries with performance indexes
 - **Memory Lifecycle**: Delete + reload approach for file modifications to ensure consistency
 - **Atomic Operations**: Ensure memory operations are atomic to prevent partial state corruption
+- **Production Deployment**: Container service integration for production-ready automatic monitoring
+- **Service Management**: Built-in service within heimdall-mcp container for reliability and resilience
 
 ### Key Implementation Files
 - `cognitive_memory/storage/sqlite_persistence.py` - Add metadata querying methods
@@ -210,7 +420,11 @@ Implements automatic markdown file change detection and memory synchronization. 
 
 ### Data Flow
 ```
-File System Changes → MarkdownFileMonitor (polling) → Change Handlers → MarkdownSyncHandler → CognitiveSystem
+Container Startup → MonitoringService (daemon) → MarkdownFileMonitor (polling) → FileSyncHandler → CognitiveSystem
+                                ↓
+File System Changes → FileChangeEvent → LoaderRegistry → MemoryLoader → Memory Operations
+                                ↓
+Container Health Check ← Service Status ← Error Recovery ← Statistics Tracking
 ```
 
 ## Dependencies
