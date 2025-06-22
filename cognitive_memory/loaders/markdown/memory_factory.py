@@ -67,6 +67,9 @@ class MemoryFactory:
         # Add document name as first line if not already present
         content = self._add_document_name_prefix(content, source_path)
 
+        # Filter ASCII art if present
+        content = self._filter_ascii_art(content)
+
         # Perform linguistic analysis
         linguistic_features = self.content_analyzer.extract_linguistic_features(content)
 
@@ -197,9 +200,14 @@ class MemoryFactory:
             # Check if parent has explanatory content
             parent_content = node.parent.content.strip()
             if parent_content and len(parent_content) > 50:
-                # Extract first paragraph as context
+                # Extract first paragraph as context, excluding code blocks
                 first_paragraph = parent_content.split("\n\n")[0]
-                if len(first_paragraph) > 20:
+                if (
+                    len(first_paragraph) > 20
+                    and self.content_analyzer.calculate_code_fraction(first_paragraph)
+                    < 0.1
+                    and not self._contains_structural_content(first_paragraph)
+                ):
                     enhanced_content.insert(-1, f"**Background**: {first_paragraph}")
 
         # Look for explanatory siblings (sections before/after this one)
@@ -284,6 +292,62 @@ class MemoryFactory:
         # Reconstruct text
         truncated_text = "".join(token.text_with_ws for token in truncated_tokens)
         return truncated_text.strip() + "..." if truncated_text != content else content
+
+    def _contains_structural_content(self, text: str) -> bool:
+        """Check if text contains structural content like SQL, Mermaid, or other diagrams."""
+        text_lower = text.lower()
+        structural_indicators = [
+            "select ",
+            "from ",
+            "where ",
+            "join ",
+            "insert ",
+            "update ",
+            "create table",
+            "graph ",
+            "flowchart",
+            "sequencediagram",
+            "classDiagram",
+            "```",
+            "---",
+            "┌",
+            "└",
+            "├",
+            "─",
+            "│",
+        ]
+        return any(indicator in text_lower for indicator in structural_indicators)
+
+    def _filter_ascii_art(self, content: str) -> str:
+        """Remove ASCII art box-drawing characters while preserving text labels."""
+        # Box-drawing characters that commonly appear in diagrams
+        box_chars = "┌┐└┘├┤┬┴┼─┃━┏┓┗┛┣┫┳┻╋"
+
+        # Quick check if content contains any box characters
+        if not any(char in content for char in box_chars):
+            return content
+
+        lines = content.split("\n")
+        filtered_lines = []
+
+        for line in lines:
+            # Count box characters vs text characters
+            box_char_count = sum(1 for char in line if char in box_chars)
+
+            # If line has no box characters, keep it as-is
+            if box_char_count == 0:
+                filtered_lines.append(line)
+                continue
+
+            # If line is mostly box characters (>50%), skip it
+            if box_char_count / max(len(line), 1) > 0.5:
+                continue
+
+            # Otherwise, remove box characters but keep the text
+            filtered_line = "".join(char for char in line if char not in box_chars)
+            filtered_lines.append(filtered_line)
+
+        return "\n".join(filtered_lines)
 
     def _add_document_name_prefix(self, content: str, source_path: str) -> str:
         """Add document path as first line of memory content."""
