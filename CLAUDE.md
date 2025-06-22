@@ -243,7 +243,7 @@ DECAY_PROFILE_L2_EPISODE=1.0            # Fallback - normal (episodes fade)
 
 - **`recall_memories`**: Before coding, when user mentions features/errors, exploring architecture
 - **`store_memory`**: Architecture decisions, file relationships, project conventions, design patterns
-- **`session_lessons`**: User signals value ("that was tricky", "good approach"), breakthrough moments
+- **`session_lessons`**: User signals value ("well done", that was tricky", "good approach"), breakthrough moments. Split big lessons into smaller contexts.
 
 ## Quality Standards
 
