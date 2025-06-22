@@ -49,7 +49,11 @@ dmypy.json
 
 # Data and models
 data/*
-!data/models/.gitkeep
+!data/models/
+data/models/*
+!data/models/*.onnx
+!data/models/*.json
+!data/models/tokenizer/
 
 # Logs
 *.log
