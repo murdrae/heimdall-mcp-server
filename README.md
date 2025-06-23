@@ -226,6 +226,7 @@ To maximize the effectiveness of Heimdall:
   * [x] ~~Git `post-commit` hook for automatic, real-time memory updates~~ ✅ **Completed**
   * [x] ~~Watcher to auto-detect and load new documents in the `.heimdall-mcp` directory.~~ ✅ **Completed**
   * [x] ~~Release v0.1.0 publicly~~ ✅ **Completed**
+  * [ ] Simplify installation
 
 ## License
 
