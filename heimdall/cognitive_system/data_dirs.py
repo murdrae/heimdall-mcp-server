@@ -191,22 +191,11 @@ def _download_models_from_github(target_dir: Path) -> None:
     Args:
         target_dir: Directory to extract models to
     """
-    # Import version information
-    try:
-        from cognitive_memory.core.version import SYSTEM_VERSION
 
-        version = SYSTEM_VERSION
-    except ImportError:
-        version = "0.2.10"  # Fallback version
-
-    # GitHub release configuration
-    github_repo = "lcbcFoo/heimdall-mcp-server"
-    release_tag = f"v{version}"
-    asset_name = f"heimdall-models-v{version}.zip"
-
-    download_url = (
-        f"https://github.com/{github_repo}/releases/download/{release_tag}/{asset_name}"
-    )
+    # Model download configuration
+    # Using Google Drive direct content URL for large model files (>25MB GitHub limit)
+    # Models are version-independent, so we use a fixed v1.0 package
+    download_url = "https://drive.usercontent.google.com/download?id=1NCIUkKS3O_plHqctvB73wMP3Zpfi3iVH&export=download&confirm=t&uuid=2e38c453-5f57-477a-938e-066102dc0ac4&at=AN8xHooryp07wbvK69P5FaOakPLX%3A1750739112232"
 
     # Create target directory
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -216,7 +205,7 @@ def _download_models_from_github(target_dir: Path) -> None:
         temp_path = Path(temp_file.name)
 
         try:
-            print(f"Downloading models from {download_url}...")
+            print("Downloading models from Google Drive...")
             urllib.request.urlretrieve(download_url, temp_path)
 
             # Extract zip file

@@ -811,6 +811,59 @@ class HealthChecker:
         """Check ONNX model availability and functionality."""
         try:
             from cognitive_memory.encoding.onnx_provider import ONNXEmbeddingProvider
+            from heimdall.cognitive_system.data_dirs import get_models_data_dir
+
+            # First check if shared models directory is empty
+            models_dir = get_models_data_dir()
+            critical_files = [
+                models_dir / "all-MiniLM-L6-v2.onnx",
+                models_dir / "tokenizer" / "tokenizer.json",
+                models_dir / "model_config.json",
+            ]
+
+            missing_files = [f for f in critical_files if not f.exists()]
+
+            if missing_files:
+                if fix_issues:
+                    try:
+                        from heimdall.cognitive_system.data_dirs import (
+                            ensure_models_available,
+                        )
+
+                        print("Models missing from shared directory, downloading...")
+                        ensure_models_available()
+
+                        return HealthCheck(
+                            name="Model Availability",
+                            status=HealthResult.HEALTHY,
+                            message="Models downloaded to shared directory and working",
+                            fix_attempted=True,
+                            fix_successful=True,
+                            details={"models_dir": str(models_dir)}
+                            if verbose
+                            else None,
+                        )
+                    except Exception as download_error:
+                        return HealthCheck(
+                            name="Model Availability",
+                            status=HealthResult.CRITICAL,
+                            message=f"Model download failed: {str(download_error)}",
+                            fix_attempted=True,
+                            fix_successful=False,
+                        )
+                else:
+                    missing_names = [f.name for f in missing_files]
+                    return HealthCheck(
+                        name="Model Availability",
+                        status=HealthResult.CRITICAL,
+                        message=f"Models missing from shared directory: {', '.join(missing_names)}. Run 'heimdall doctor --fix' to download.",
+                        details={
+                            "models_dir": str(models_dir),
+                            "missing_files": missing_names,
+                        }
+                        if verbose
+                        else None,
+                    )
 
             try:
                 # Try to load the ONNX model
@@ -836,39 +889,6 @@ class HealthChecker:
                 )
 
             except Exception as model_error:
-                # If fix_issues is True, try to download models
-                if fix_issues:
-                    try:
-                        from heimdall.cognitive_system.data_dirs import (
-                            ensure_models_available,
-                        )
-
-                        print("Models not found, attempting to download...")
-                        ensure_models_available()
-
-                        # Retry after download
-                        provider = ONNXEmbeddingProvider()
-                        test_encoding = provider.encode("test sentence")
-
-                        return HealthCheck(
-                            name="Model Availability",
-                            status=HealthResult.HEALTHY,
-                            message="ONNX model downloaded and working",
-                            fix_attempted=True,
-                            fix_successful=True,
-                            details={"model_path": str(provider.model_path)}
-                            if verbose
-                            else None,
-                        )
-                    except Exception as download_error:
-                        return HealthCheck(
-                            name="Model Availability",
-                            status=HealthResult.CRITICAL,
-                            message=f"Model download failed: {str(download_error)}",
-                            fix_attempted=True,
-                            fix_successful=False,
-                        )
-
                 return HealthCheck(
                     name="Model Availability",
                     status=HealthResult.CRITICAL,

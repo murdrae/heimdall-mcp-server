@@ -376,13 +376,18 @@ class DatabaseConfig:
 
 def _get_default_model_cache_dir() -> str:
     """Get default model cache directory using standard data dirs."""
-    try:
-        from heimdall.cognitive_system.data_dirs import get_models_data_dir
+    from heimdall.cognitive_system.data_dirs import (
+        get_models_data_dir,
+        initialize_shared_environment,
+    )
 
-        return str(get_models_data_dir())
-    except ImportError:
-        # Fallback for backward compatibility
-        return "./data/models"
+    # Always initialize shared environment first
+    initialize_shared_environment()
+
+    # Note: Model availability will be checked by health checker
+    # Don't download here to allow health checker to provide better feedback
+
+    return str(get_models_data_dir())
 
 
 @dataclass
