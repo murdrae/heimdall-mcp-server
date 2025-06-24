@@ -926,6 +926,108 @@ class CognitiveMemorySystem(CognitiveSystem):
                 "error": str(e),
             }
 
+    def atomic_reload_memories_from_source(
+        self, loader: Any, source_path: str, **kwargs: Any
+    ) -> dict[str, Any]:
+        """
+        Atomically reload memories from a source by deleting existing ones first.
+
+        This method ensures consistency by treating delete+reload as a single operation.
+        It first deletes all existing memories from the source path, then loads new ones.
+
+        Args:
+            loader: MemoryLoader instance to use for loading
+            source_path: Path to the source file
+            **kwargs: Additional loader parameters
+
+        Returns:
+            Dictionary containing combined operation results:
+            - success: bool - True if operation completed successfully
+            - deleted_count: int - Number of memories deleted
+            - memories_loaded: int - Number of new memories loaded
+            - connections_created: int - Number of connections created
+            - processing_time: float - Total time for both operations
+            - hierarchy_distribution: dict - Distribution of new memories by level
+            - error: str | None - Error message if operation failed
+        """
+        start_time = time.time()
+
+        try:
+            logger.info(f"Starting atomic reload for source: {source_path}")
+
+            # Step 1: Delete existing memories
+            delete_result = self.delete_memories_by_source_path(source_path)
+            deleted_count = delete_result.get("deleted_count", 0)
+
+            if delete_result.get("error"):
+                logger.warning(
+                    f"Delete operation had errors but continuing: {delete_result['error']}"
+                )
+
+            # Step 2: Load new memories
+            load_result = self.load_memories_from_source(loader, source_path, **kwargs)
+
+            processing_time = time.time() - start_time
+
+            if load_result.get("success", False):
+                logger.info(
+                    f"Atomic reload completed: deleted {deleted_count}, "
+                    f"loaded {load_result.get('memories_loaded', 0)} memories from {source_path}"
+                )
+
+                return {
+                    "success": True,
+                    "deleted_count": deleted_count,
+                    "memories_loaded": load_result.get("memories_loaded", 0),
+                    "connections_created": load_result.get("connections_created", 0),
+                    "memories_failed": load_result.get("memories_failed", 0),
+                    "connections_failed": load_result.get("connections_failed", 0),
+                    "processing_time": processing_time,
+                    "hierarchy_distribution": load_result.get(
+                        "hierarchy_distribution", {}
+                    ),
+                    "source_path": source_path,
+                    "loader_type": loader.__class__.__name__,
+                    "error": None,
+                }
+            else:
+                # Load failed, but delete succeeded
+                error_msg = f"Load operation failed after successful delete: {load_result.get('error', 'Unknown error')}"
+                logger.error(error_msg)
+
+                return {
+                    "success": False,
+                    "deleted_count": deleted_count,
+                    "memories_loaded": 0,
+                    "connections_created": 0,
+                    "memories_failed": 0,
+                    "connections_failed": 0,
+                    "processing_time": processing_time,
+                    "hierarchy_distribution": {},
+                    "source_path": source_path,
+                    "loader_type": loader.__class__.__name__,
+                    "error": error_msg,
+                }
+
+        except Exception as e:
+            processing_time = time.time() - start_time
+            error_msg = f"Atomic reload failed: {str(e)}"
+            logger.error(error_msg)
+
+            return {
+                "success": False,
+                "deleted_count": 0,
+                "memories_loaded": 0,
+                "connections_created": 0,
+                "memories_failed": 0,
+                "connections_failed": 0,
+                "processing_time": processing_time,
+                "hierarchy_distribution": {},
+                "source_path": source_path,
+                "loader_type": loader.__class__.__name__ if loader else "Unknown",
+                "error": error_msg,
+            }
+
     def _calculate_hierarchy_distribution(
         self, memories: list[CognitiveMemory]
     ) -> dict[str, int]:

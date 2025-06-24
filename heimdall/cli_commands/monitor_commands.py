@@ -1,6 +1,7 @@
 """File monitoring service management commands."""
 
 import json
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -60,6 +61,39 @@ def monitor_start(
                 info_table.add_row("PID", str(status["pid"]))
                 info_table.add_row("Files Monitored", str(status["files_monitored"]))
                 console.print(info_table)
+
+                # Keep running in foreground if not daemon mode
+                if not daemon:
+                    try:
+                        import signal
+                        import time
+
+                        def signal_handler(sig: int, frame: Any) -> None:
+                            console.print(
+                                "\n🛑 Stopping monitoring service...",
+                                style="bold yellow",
+                            )
+                            service.stop()
+                            console.print(
+                                "✅ Monitoring service stopped", style="bold green"
+                            )
+                            raise SystemExit(0)
+
+                        signal.signal(signal.SIGINT, signal_handler)
+                        signal.signal(signal.SIGTERM, signal_handler)
+
+                        # Keep running until interrupted
+                        while service._is_service_running():
+                            time.sleep(1)
+
+                    except KeyboardInterrupt:
+                        console.print(
+                            "\n🛑 Stopping monitoring service...", style="bold yellow"
+                        )
+                        service.stop()
+                        console.print(
+                            "✅ Monitoring service stopped", style="bold green"
+                        )
 
             else:
                 progress.update(task, description="❌ Failed to start monitoring")

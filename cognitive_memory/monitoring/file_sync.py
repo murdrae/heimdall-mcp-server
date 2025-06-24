@@ -12,7 +12,7 @@ from typing import Any
 
 from loguru import logger
 
-from ..core.interfaces import CognitiveSystem, MemoryLoader
+from ..core.interfaces import CognitiveSystem
 from .file_monitor import ChangeType, FileChangeEvent
 from .loader_registry import LoaderRegistry
 
@@ -36,7 +36,6 @@ class FileSyncHandler:
         self,
         cognitive_system: CognitiveSystem,
         loader_registry: LoaderRegistry,
-        enable_atomic_operations: bool = True,
     ):
         """
         Initialize file sync handler.
@@ -44,11 +43,9 @@ class FileSyncHandler:
         Args:
             cognitive_system: CognitiveSystem instance for memory operations
             loader_registry: Registry of available MemoryLoader implementations
-            enable_atomic_operations: Whether to use atomic delete+reload operations
         """
         self.cognitive_system = cognitive_system
         self.loader_registry = loader_registry
-        self.enable_atomic_operations = enable_atomic_operations
 
         # Statistics tracking
         self.stats: dict[str, int | float | None] = {
@@ -59,10 +56,7 @@ class FileSyncHandler:
             "last_sync_time": None,
         }
 
-        logger.info(
-            "FileSyncHandler initialized with atomic operations: %s",
-            enable_atomic_operations,
-        )
+        logger.info("FileSyncHandler initialized")
 
     def handle_file_change(self, event: FileChangeEvent) -> bool:
         """
@@ -178,10 +172,26 @@ class FileSyncHandler:
                 logger.debug(f"No loader available for modified file: {event.path}")
                 return True  # Not an error - just unsupported file type
 
-            if self.enable_atomic_operations:
-                return self._atomic_file_reload(event.path, loader)
+            # Use centralized atomic reload operation
+            source_path = str(event.path)
+            logger.debug(f"Performing atomic reload for modified file: {event.path}")
+
+            result = self.cognitive_system.atomic_reload_memories_from_source(
+                loader, source_path
+            )
+
+            if result.get("success", False):
+                deleted_count = result.get("deleted_count", 0)
+                loaded_count = result.get("memories_loaded", 0)
+                logger.info(
+                    f"File sync reload completed: deleted {deleted_count}, "
+                    f"loaded {loaded_count} memories from {event.path}"
+                )
+                return True
             else:
-                return self._simple_file_reload(event.path, loader)
+                error_msg = result.get("error", "Unknown error")
+                logger.error(f"Atomic reload failed for {event.path}: {error_msg}")
+                return False
 
         except Exception as e:
             logger.error(f"Error handling file modification {event.path}: {e}")
@@ -214,130 +224,6 @@ class FileSyncHandler:
 
         except Exception as e:
             logger.error(f"Error handling file deletion {event.path}: {e}")
-            return False
-
-    def _atomic_file_reload(self, file_path: Path, loader: MemoryLoader) -> bool:
-        """
-        Perform atomic delete+reload operation for file modification.
-
-        This method ensures memory consistency by treating the delete+reload
-        as a single atomic operation. If reload fails, the system state
-        remains consistent (though possibly stale).
-
-        Args:
-            file_path: Path to the modified file
-            loader: MemoryLoader to use for reloading
-
-        Returns:
-            True if operation succeeded, False otherwise
-        """
-        source_path = str(file_path)
-
-        try:
-            # Step 1: Load new memories first (this can fail safely)
-            logger.debug(f"Loading new memories for modified file: {file_path}")
-            new_memories = loader.load_from_source(source_path)
-
-            if not new_memories:
-                logger.debug(f"No new memories from modified file: {file_path}")
-                # Still need to delete old memories
-                result = self.cognitive_system.delete_memories_by_source_path(
-                    source_path
-                )
-                deleted_count = result.get("deleted_count", 0) if result else 0
-                logger.info(f"Deleted {deleted_count} old memories from: {file_path}")
-                return True
-
-            # Step 2: Delete existing memories
-            logger.debug(f"Deleting existing memories for: {file_path}")
-            delete_result = self.cognitive_system.delete_memories_by_source_path(
-                source_path
-            )
-            deleted_count = (
-                delete_result.get("deleted_count", 0) if delete_result else 0
-            )
-
-            # Step 3: Store new memories
-            logger.debug(f"Storing {len(new_memories)} new memories for: {file_path}")
-            success_count = 0
-            failed_memories = []
-
-            for memory in new_memories:
-                try:
-                    memory_id = self.cognitive_system.store_experience(
-                        memory.content, memory.metadata
-                    )
-                    if memory_id:
-                        success_count += 1
-                    else:
-                        failed_memories.append(memory)
-                except Exception as e:
-                    logger.error(f"Failed to store memory during reload: {e}")
-                    failed_memories.append(memory)
-
-            # Log results
-            logger.info(
-                f"File reload: deleted {deleted_count}, stored {success_count}/{len(new_memories)} "
-                f"memories for: {file_path}"
-            )
-
-            # Consider partial success acceptable for atomic operations
-            return len(failed_memories) == 0
-
-        except Exception as e:
-            logger.error(f"Error in atomic file reload for {file_path}: {e}")
-            return False
-
-    def _simple_file_reload(self, file_path: Path, loader: MemoryLoader) -> bool:
-        """
-        Perform simple delete+reload operation without atomicity guarantees.
-
-        Args:
-            file_path: Path to the modified file
-            loader: MemoryLoader to use for reloading
-
-        Returns:
-            True if operation succeeded, False otherwise
-        """
-        source_path = str(file_path)
-
-        try:
-            # Delete existing memories
-            delete_result = self.cognitive_system.delete_memories_by_source_path(
-                source_path
-            )
-            deleted_count = (
-                delete_result.get("deleted_count", 0) if delete_result else 0
-            )
-
-            # Load and store new memories
-            new_memories = loader.load_from_source(source_path)
-            if not new_memories:
-                logger.info(
-                    f"Simple reload: deleted {deleted_count}, no new memories: {file_path}"
-                )
-                return True
-
-            success_count = 0
-            for memory in new_memories:
-                try:
-                    memory_id = self.cognitive_system.store_experience(
-                        memory.content, memory.metadata
-                    )
-                    if memory_id:
-                        success_count += 1
-                except Exception as e:
-                    logger.error(f"Failed to store memory in simple reload: {e}")
-
-            logger.info(
-                f"Simple reload: deleted {deleted_count}, stored {success_count}/{len(new_memories)} "
-                f"memories for: {file_path}"
-            )
-
-            return success_count == len(new_memories)
-
-        except Exception as e:
-            logger.error(f"Error in simple file reload for {file_path}: {e}")
             return False
 
     def get_sync_statistics(self) -> dict[str, Any]:

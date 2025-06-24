@@ -657,5 +657,10 @@ def run_server(
         asyncio.run(mcp_server.run_stdio())
 
 
-if __name__ == "__main__":
+def main_sync() -> None:
+    """Synchronous wrapper for console script entry point."""
     asyncio.run(main())
+
+
+if __name__ == "__main__":
+    main_sync()

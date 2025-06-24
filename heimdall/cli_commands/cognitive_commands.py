@@ -186,6 +186,10 @@ def load_memories(
         results_table.add_column("Value", style="white")
 
         results_table.add_row("Memories Loaded", str(result["memories_loaded"]))
+        if result.get("memories_deleted", 0) > 0:
+            results_table.add_row(
+                "Outdated Memories Replaced", str(result["memories_deleted"])
+            )
         results_table.add_row("Connections Created", str(result["connections_created"]))
         results_table.add_row("Processing Time", f"{result['processing_time']:.2f}s")
         results_table.add_row("Memories Failed", str(result["memories_failed"]))
@@ -264,12 +268,15 @@ def load_git_patterns(
         results_table.add_column("Metric", style="cyan")
         results_table.add_column("Value", style="white")
 
-        results_table.add_row("Patterns Loaded", str(result["patterns_loaded"]))
-        results_table.add_row("Commits Processed", str(result["commits_processed"]))
+        results_table.add_row("Patterns Loaded", str(result["memories_loaded"]))
+        if "files_processed" in result:
+            results_table.add_row(
+                "Files Processed", str(len(result["files_processed"]))
+            )
+        results_table.add_row("Connections Created", str(result["connections_created"]))
         results_table.add_row("Processing Time", f"{result['processing_time']:.2f}s")
-
-        if "patterns_failed" in result:
-            results_table.add_row("Patterns Failed", str(result["patterns_failed"]))
+        results_table.add_row("Memories Failed", str(result["memories_failed"]))
+        results_table.add_row("Connections Failed", str(result["connections_failed"]))
 
         console.print(results_table)
 

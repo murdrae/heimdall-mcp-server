@@ -442,7 +442,7 @@ def main() -> None:
             i += 1
 
         # Execute logic
-        execute_action(action, repo_path, force, dry_run)
+        execute_action_cli(action, repo_path, force, dry_run)
     else:
         # Use typer for rich CLI experience
         app = typer.Typer(help="Heimdall Git Hook Installer")
@@ -455,7 +455,7 @@ def main() -> None:
             ),
         ) -> None:
             """Install Heimdall post-commit hook."""
-            execute_action("install", Path(repo_path).resolve(), force, dry_run)
+            execute_action_cli("install", Path(repo_path).resolve(), force, dry_run)
 
         app.command("install")(install_cmd)
 
@@ -466,7 +466,7 @@ def main() -> None:
             ),
         ) -> None:
             """Uninstall Heimdall post-commit hook."""
-            execute_action("uninstall", Path(repo_path).resolve(), False, dry_run)
+            execute_action_cli("uninstall", Path(repo_path).resolve(), False, dry_run)
 
         app.command("uninstall")(uninstall_cmd)
 
@@ -474,14 +474,14 @@ def main() -> None:
             repo_path: str = typer.Argument(".", help="Repository path"),
         ) -> None:
             """Show hook installation status."""
-            execute_action("status", Path(repo_path).resolve(), False, False)
+            execute_action_cli("status", Path(repo_path).resolve(), False, False)
 
         app.command("status")(status_cmd)
 
         app()
 
 
-def execute_action(action: str, repo_path: Path, force: bool, dry_run: bool) -> None:
+def execute_action(action: str, repo_path: Path, force: bool, dry_run: bool) -> bool:
     """
     Execute the specified action.
 
@@ -490,14 +490,17 @@ def execute_action(action: str, repo_path: Path, force: bool, dry_run: bool) -> 
         repo_path: Repository path
         force: Force flag
         dry_run: Dry run flag
+
+    Returns:
+        True if successful, False otherwise
     """
     # Validate inputs
     if not validate_git_repo(repo_path):
-        sys.exit(1)
+        return False
 
     hook_valid, hook_script = validate_hook_script()
     if not hook_valid:
-        sys.exit(1)
+        return False
 
     # Execute action
     try:
@@ -509,24 +512,41 @@ def execute_action(action: str, repo_path: Path, force: bool, dry_run: bool) -> 
                     "The hook will automatically process new commits for memory storage"
                 )
                 log_info("Hook logs are written to: .heimdall/monitor.log")
-            sys.exit(0 if success else 1)
+            return success
 
         elif action == "uninstall":
-            success = uninstall_hook(repo_path, dry_run)
-            sys.exit(0 if success else 1)
+            return uninstall_hook(repo_path, dry_run)
 
         elif action == "status":
             show_status(repo_path)
-            sys.exit(0)
+            return True
 
         else:
             log_error(f"Unknown action: {action}")
-            show_usage()
-            sys.exit(1)
+            return False
 
     except Exception as e:
         log_error(f"Unexpected error: {e}")
-        sys.exit(1)
+        return False
+
+
+def execute_action_cli(
+    action: str, repo_path: Path, force: bool, dry_run: bool
+) -> None:
+    """
+    Execute action with CLI behavior (exits on completion).
+
+    Args:
+        action: Action to perform (install/uninstall/status)
+        repo_path: Repository path
+        force: Force flag
+        dry_run: Dry run flag
+    """
+    success = execute_action(action, repo_path, force, dry_run)
+    if action == "status":
+        sys.exit(0)  # Status always succeeds
+    else:
+        sys.exit(0 if success else 1)
 
 
 if __name__ == "__main__":

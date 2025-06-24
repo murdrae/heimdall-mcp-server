@@ -438,6 +438,7 @@ class CognitiveOperations:
 
         # Process files
         total_memories_loaded = 0
+        total_memories_deleted = 0
         total_connections_created = 0
         total_processing_time = 0.0
         hierarchy_dist_combined = {"L0": 0, "L1": 0, "L2": 0}
@@ -472,13 +473,14 @@ class CognitiveOperations:
                     total_success = False
             else:
                 try:
-                    # Perform actual loading
-                    results = self.cognitive_system.load_memories_from_source(
+                    # Perform atomic reload (delete existing + load new)
+                    results = self.cognitive_system.atomic_reload_memories_from_source(
                         loader, file_path_str, **kwargs
                     )
 
                     if results["success"]:
                         total_memories_loaded += results["memories_loaded"]
+                        total_memories_deleted += results.get("deleted_count", 0)
                         total_connections_created += results["connections_created"]
                         total_processing_time += results["processing_time"]
                         total_memories_failed += results["memories_failed"]
@@ -500,6 +502,7 @@ class CognitiveOperations:
         return {
             "success": total_success,
             "memories_loaded": total_memories_loaded,
+            "memories_deleted": total_memories_deleted,
             "connections_created": total_connections_created,
             "processing_time": total_processing_time,
             "hierarchy_distribution": hierarchy_dist_combined,
@@ -570,14 +573,15 @@ class CognitiveOperations:
                 }
         else:
             try:
-                # Perform actual loading
-                results = self.cognitive_system.load_memories_from_source(
+                # Perform atomic reload (delete existing + load new)
+                results = self.cognitive_system.atomic_reload_memories_from_source(
                     loader, source_path, **kwargs
                 )
 
                 return {
                     "success": results["success"],
                     "memories_loaded": results["memories_loaded"],
+                    "memories_deleted": results.get("deleted_count", 0),
                     "connections_created": results["connections_created"],
                     "processing_time": results["processing_time"],
                     "hierarchy_distribution": results.get("hierarchy_distribution", {}),

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "heimdall-mcp"
-version = "0.2.10"
+version = "0.2.11"
 description = "Persistent, project-aware, long-term memory for AI coding assistants"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -75,7 +75,7 @@ test = [
 
 [project.scripts]
 heimdall = "heimdall.cli:main"
-heimdall-mcp = "heimdall.mcp_server:main"
+heimdall-mcp = "heimdall.mcp_server:main_sync"
 
 [tool.setuptools.packages.find]
 where = ["."]

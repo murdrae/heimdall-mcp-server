@@ -110,6 +110,7 @@ class MonitoringService:
     MAX_RESTART_ATTEMPTS = 5
     RESTART_BACKOFF_BASE = 1.0  # seconds
     RESTART_BACKOFF_MAX = 60.0  # seconds
+    STATUS_FILE_NAME = "monitor_status.json"  # Status file for daemon-CLI communication
 
     def __init__(self, project_root: str | None = None):
         """
@@ -144,6 +145,11 @@ class MonitoringService:
         self._is_container = detect_container_environment()
 
         logger.info("MonitoringService initialized with configuration")
+
+    @property
+    def status_file(self) -> Path:
+        """Get path to status file for daemon-CLI communication."""
+        return self.project_paths.heimdall_dir / self.STATUS_FILE_NAME
 
     def _validate_configuration(self) -> None:
         """Validate service configuration and dependencies."""
@@ -185,36 +191,58 @@ class MonitoringService:
                 logger.warning("Monitoring service is already running")
                 return False
 
-            logger.info("Starting monitoring service...")
+            logger.info("Starting lightweight monitoring service...")
 
-            # Initialize cognitive system
-            self._initialize_cognitive_system()
-
-            # Initialize monitoring components
+            # Initialize ONLY monitoring components (no cognitive system yet)
             self._initialize_monitoring()
 
             # Setup signal handlers
             self._setup_signal_handlers()
 
-            # Start monitoring
-            if self.file_monitor:
-                self.file_monitor.start_monitoring()
-
-            # Update status
-            self.status.started_at = time.time()
-            self.status.pid = os.getpid()
-            self.status.is_running = True
-            self.status.restart_count = self._restart_attempts
-
-            # Write project-local PID file
-            self._write_pid_file()
-
-            logger.info(
-                f"Monitoring service started successfully (PID: {self.status.pid})"
-            )
-
             if daemon_mode:
+                # For daemon mode: fork FIRST, then start monitoring in child process
+                logger.info("Preparing to fork daemon process...")
+
+                # Update status before fork
+                self.status.started_at = time.time()
+                self.status.pid = os.getpid()
+                self.status.is_running = True
+                self.status.restart_count = self._restart_attempts
+
+                # Write temporary PID file before daemon fork
+                self._write_pid_file()
+                logger.info(
+                    f"Lightweight monitoring service starting daemon mode (PID: {self.status.pid})"
+                )
+
+                # Properly detach as daemon BEFORE starting monitoring threads
+                self._detach_daemon()
+
+                # NOW start monitoring in the daemon process (after fork)
+                if self.file_monitor:
+                    self.file_monitor.start_monitoring()
+
+                # Update status with daemon PID and write to file
+                self._write_status_file()
+
                 self._run_daemon_loop()
+            else:
+                # For non-daemon mode: start monitoring normally
+                if self.file_monitor:
+                    self.file_monitor.start_monitoring()
+
+                # Update status
+                self.status.started_at = time.time()
+                self.status.pid = os.getpid()
+                self.status.is_running = True
+                self.status.restart_count = self._restart_attempts
+
+                # Write PID file and status for non-daemon mode
+                self._write_pid_file()
+                self._write_status_file()
+                logger.info(
+                    f"Lightweight monitoring service started successfully (PID: {self.status.pid})"
+                )
 
             return True
 
@@ -243,8 +271,9 @@ class MonitoringService:
             # Update status
             self.status.is_running = False
 
-            # Remove project-local PID file
+            # Remove project-local PID file and status file
             self._remove_pid_file()
+            self._remove_status_file()
 
             logger.info("Monitoring service stopped successfully")
             return True
@@ -283,6 +312,32 @@ class MonitoringService:
         Returns:
             Dictionary containing service status information
         """
+        # Try to read status from daemon's status file first
+        daemon_status = self._read_status_file()
+        if daemon_status and self._is_service_running():
+            # Use daemon's actual status data
+            return daemon_status
+
+        # Fallback: If daemon is running but we don't have local status, get daemon PID info
+        if self._is_service_running() and not self.status.is_running:
+            try:
+                with open(self.project_paths.pid_file) as f:
+                    daemon_pid = int(f.read().strip())
+
+                # Update status with daemon info
+                self.status.pid = daemon_pid
+                self.status.is_running = True
+
+                # Try to get daemon start time from process
+                try:
+                    process = psutil.Process(daemon_pid)
+                    self.status.started_at = process.create_time()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
+            except (ValueError, FileNotFoundError, PermissionError):
+                pass
+
         # Update monitored files count
         if self.file_monitor:
             self.status.files_monitored = len(self.file_monitor.get_monitored_files())
@@ -303,45 +358,25 @@ class MonitoringService:
         }
 
         try:
-            # Check if service is running - different logic for container vs dev environments
-            if self._is_container:
-                # Container environment: check actual process via PID file
-                if not self._is_service_running():
-                    health["status"] = "unhealthy"
-                    health["checks"].append(
-                        {
-                            "name": "service_running",
-                            "status": "fail",
-                            "message": "Monitoring service is not running",
-                        }
-                    )
-                else:
-                    health["checks"].append(
-                        {
-                            "name": "service_running",
-                            "status": "pass",
-                            "message": "Monitoring service is running",
-                        }
-                    )
+            # Check if service is running - use consistent PID-based detection for all environments
+            service_running = self._is_service_running()
+            if not service_running:
+                health["status"] = "unhealthy"
+                health["checks"].append(
+                    {
+                        "name": "service_running",
+                        "status": "fail",
+                        "message": "Monitoring service is not running",
+                    }
+                )
             else:
-                # Dev/test environment: check internal status
-                if not self.status.is_running:
-                    health["status"] = "unhealthy"
-                    health["checks"].append(
-                        {
-                            "name": "service_running",
-                            "status": "fail",
-                            "message": "Monitoring service is not running (dev mode)",
-                        }
-                    )
-                else:
-                    health["checks"].append(
-                        {
-                            "name": "service_running",
-                            "status": "pass",
-                            "message": "Monitoring service is running (dev mode)",
-                        }
-                    )
+                health["checks"].append(
+                    {
+                        "name": "service_running",
+                        "status": "pass",
+                        "message": "Monitoring service is running",
+                    }
+                )
 
             # Check project-local PID file
             if not self.project_paths.pid_file.exists():
@@ -358,26 +393,16 @@ class MonitoringService:
                     {"name": "pid_file", "status": "pass", "message": "PID file exists"}
                 )
 
-            # Check cognitive system
-            # If service is running, assume cognitive system is initialized
-            if self._is_service_running():
+            # Check cognitive system (lazy loading approach)
+            if service_running:
                 health["checks"].append(
                     {
                         "name": "cognitive_system",
                         "status": "pass",
-                        "message": "Cognitive system initialized (service running)",
+                        "message": "Cognitive system ready (lazy loading enabled)",
                     }
                 )
-            elif not self.cognitive_system:
-                health["status"] = "unhealthy"
-                health["checks"].append(
-                    {
-                        "name": "cognitive_system",
-                        "status": "fail",
-                        "message": "Cognitive system not initialized",
-                    }
-                )
-            else:
+            elif self.cognitive_system:
                 health["checks"].append(
                     {
                         "name": "cognitive_system",
@@ -385,10 +410,18 @@ class MonitoringService:
                         "message": "Cognitive system initialized",
                     }
                 )
+            else:
+                health["checks"].append(
+                    {
+                        "name": "cognitive_system",
+                        "status": "pass",
+                        "message": "Cognitive system not loaded (lazy loading)",
+                    }
+                )
 
             # Check file monitoring
             # If service is running, assume file monitoring is active
-            if self._is_service_running():
+            if service_running:
                 health["checks"].append(
                     {
                         "name": "file_monitoring",
@@ -460,9 +493,9 @@ class MonitoringService:
             ) from e
 
     def _initialize_monitoring(self) -> None:
-        """Initialize file monitoring components."""
+        """Initialize lightweight file monitoring components (no cognitive system)."""
         try:
-            logger.info("Initializing monitoring components...")
+            logger.info("Initializing lightweight monitoring components...")
 
             # Get target path from centralized configuration
             target_path = self.monitoring_config["target_path"]
@@ -476,18 +509,7 @@ class MonitoringService:
             # Add target path to monitoring
             self.file_monitor.add_path(target_path)
 
-            # Create loader registry and sync handler
-            if not self.cognitive_system:
-                raise MonitoringServiceError("Cognitive system not initialized")
-
-            loader_registry = create_default_registry()
-            self.sync_handler = FileSyncHandler(
-                cognitive_system=self.cognitive_system,
-                loader_registry=loader_registry,
-                enable_atomic_operations=self.config.sync_atomic_operations,
-            )
-
-            # Register sync callbacks
+            # Register sync callbacks (sync handler will be created lazily)
             self.file_monitor.register_callback(
                 ChangeType.ADDED, self._handle_file_change
             )
@@ -498,21 +520,35 @@ class MonitoringService:
                 ChangeType.DELETED, self._handle_file_change
             )
 
-            logger.info(f"Monitoring initialized for path: {target_path}")
+            logger.info(f"Lightweight monitoring initialized for path: {target_path}")
 
         except Exception as e:
             raise MonitoringServiceError(f"Failed to initialize monitoring: {e}") from e
 
     def _handle_file_change(self, event: FileChangeEvent) -> None:
-        """Handle file change events."""
+        """Handle file change events with lazy loading of cognitive system."""
         try:
             logger.info(f"Processing file change: {event}")
 
-            # Delegate to sync handler
+            # Lazy load cognitive system and sync handler only when needed
+            if not self.cognitive_system:
+                logger.info("Lazy loading cognitive system for file processing...")
+                self._initialize_cognitive_system()
+
             if not self.sync_handler:
-                logger.error("Sync handler not initialized")
-                return
-            success = self.sync_handler.handle_file_change(event)
+                logger.info("Initializing sync handler for file processing...")
+                loader_registry = create_default_registry()
+                if self.cognitive_system:
+                    self.sync_handler = FileSyncHandler(
+                        cognitive_system=self.cognitive_system,
+                        loader_registry=loader_registry,
+                    )
+
+            # Process the file change
+            if self.sync_handler:
+                success = self.sync_handler.handle_file_change(event)
+            else:
+                success = False
 
             if success:
                 self.status.sync_operations += 1
@@ -522,10 +558,15 @@ class MonitoringService:
                 self.status.error_count += 1
                 logger.error(f"Failed to process file change: {event.path}")
 
+            # Update status file after processing
+            self._write_status_file()
+
         except Exception as e:
             self.status.error_count += 1
             self.status.last_error = str(e)
             logger.error(f"Error handling file change {event}: {e}")
+            # Update status file with error info
+            self._write_status_file()
 
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
@@ -622,6 +663,87 @@ class MonitoringService:
             logger.debug(f"PID file removed: {self.project_paths.pid_file}")
         except Exception as e:
             logger.warning(f"Failed to remove PID file: {e}")
+
+    def _write_status_file(self) -> None:
+        """Write current status to shared JSON file for CLI communication."""
+        try:
+            status_data = self.status.to_dict()
+            # Add files monitored count if available
+            if self.file_monitor:
+                status_data["files_monitored"] = len(
+                    self.file_monitor.get_monitored_files()
+                )
+
+            with open(self.status_file, "w") as f:
+                json.dump(status_data, f, indent=2)
+            logger.debug(f"Status file updated: {self.status_file}")
+        except Exception as e:
+            logger.warning(f"Failed to write status file: {e}")
+
+    def _read_status_file(self) -> dict[str, Any] | None:
+        """Read status from shared JSON file."""
+        try:
+            if not self.status_file.exists():
+                return None
+
+            with open(self.status_file) as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else None
+        except Exception as e:
+            logger.warning(f"Failed to read status file: {e}")
+            return None
+
+    def _remove_status_file(self) -> None:
+        """Remove status file on service shutdown."""
+        try:
+            self.status_file.unlink(missing_ok=True)
+            logger.debug(f"Status file removed: {self.status_file}")
+        except Exception as e:
+            logger.warning(f"Failed to remove status file: {e}")
+
+    def _detach_daemon(self) -> None:
+        """Properly detach the process as a daemon."""
+        try:
+            # First fork
+            pid = os.fork()
+            if pid > 0:
+                # Parent process exits
+                sys.exit(0)
+        except OSError as e:
+            logger.error(f"First fork failed: {e}")
+            sys.exit(1)
+
+        # Decouple from parent environment but stay in project directory
+        # Don't change to root directory - stay in project directory for file access
+        os.setsid()
+        os.umask(0)
+
+        try:
+            # Second fork
+            pid = os.fork()
+            if pid > 0:
+                # Second parent exits
+                sys.exit(0)
+        except OSError as e:
+            logger.error(f"Second fork failed: {e}")
+            sys.exit(1)
+
+        # Redirect standard file descriptors
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+        # Redirect stdin/stdout/stderr to /dev/null to prevent hanging
+        with open(os.devnull) as devnull_r, open(os.devnull, "w") as devnull_w:
+            os.dup2(devnull_r.fileno(), sys.stdin.fileno())
+            os.dup2(devnull_w.fileno(), sys.stdout.fileno())
+            os.dup2(devnull_w.fileno(), sys.stderr.fileno())
+
+        # Update PID file and status file with new daemon PID
+        self.status.pid = os.getpid()
+        self._write_pid_file()
+        self._write_status_file()
+
+        logger.info(f"Daemon detached successfully (PID: {self.status.pid})")
 
 
 def main() -> int:

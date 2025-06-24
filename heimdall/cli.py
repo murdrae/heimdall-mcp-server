@@ -24,6 +24,11 @@ from heimdall.cli_commands.cognitive_commands import (
     store_experience,
     system_status,
 )
+from heimdall.cli_commands.git_hook_commands import (
+    git_hook_install,
+    git_hook_status,
+    git_hook_uninstall,
+)
 from heimdall.cli_commands.health_commands import health_check, interactive_shell
 from heimdall.cli_commands.monitor_commands import (
     monitor_health,
@@ -64,6 +69,9 @@ app.add_typer(monitor_app, name="monitor")
 project_app = typer.Typer(help="Project memory management")
 app.add_typer(project_app, name="project")
 
+git_hook_app = typer.Typer(help="Git hook management for automatic memory processing")
+app.add_typer(git_hook_app, name="git-hook")
+
 serve_app = typer.Typer(help="Start interface servers")
 app.add_typer(serve_app, name="serve")
 
@@ -99,6 +107,11 @@ monitor_app.command("health")(monitor_health)
 project_app.command("init")(project_init)
 project_app.command("list")(project_list)
 project_app.command("clean")(project_clean)
+
+# Register git hook commands
+git_hook_app.command("install")(git_hook_install)
+git_hook_app.command("uninstall")(git_hook_uninstall)
+git_hook_app.command("status")(git_hook_status)
 
 
 def main() -> int:

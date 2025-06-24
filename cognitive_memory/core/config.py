@@ -278,6 +278,10 @@ def detect_project_config() -> dict[str, str] | None:
                         env_overrides["MONITORING_INTERVAL_SECONDS"] = str(
                             monitoring["interval_seconds"]
                         )
+                    if "enabled" in monitoring:
+                        env_overrides["MONITORING_ENABLED"] = str(
+                            monitoring["enabled"]
+                        ).lower()
 
                 # Map database settings
                 if "database" in config_data and isinstance(

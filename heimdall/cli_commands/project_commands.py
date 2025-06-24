@@ -151,32 +151,85 @@ def project_init(
                         style="bold yellow",
                     )
 
-        # Create project configuration file
+        # Create project configuration file and directories
         heimdall_dir = project_path / ".heimdall"
         heimdall_dir.mkdir(exist_ok=True)
+
+        # Create docs directory for monitoring
+        docs_dir = heimdall_dir / "docs"
+        docs_dir.mkdir(exist_ok=True)
 
         config_file = heimdall_dir / "config.yaml"
         if not config_file.exists():
             import yaml
 
-            project_config = {
-                "project_id": project_id,
-                "qdrant_url": qdrant_config.url,
-                "monitoring": {
-                    "target_path": "./docs",
-                    "interval_seconds": 5.0,
-                    "ignore_patterns": [
-                        ".git",
-                        "node_modules",
-                        "__pycache__",
-                        ".pytest_cache",
-                    ],
-                },
-                "database": {"path": "./.heimdall/cognitive_memory.db"},
-            }
+            # Use template-based generation
+            template_path = (
+                Path(__file__).parent.parent.parent
+                / "templates"
+                / "config.yaml.template"
+            )
+            if template_path.exists():
+                template = template_path.read_text()
+                yaml_content = template.replace("${project_id}", project_id)
+                yaml_content = yaml_content.replace("${qdrant_url}", qdrant_config.url)
+                config_file.write_text(yaml_content)
+            else:
+                # Fallback to direct YAML generation
+                project_config = {
+                    "project_id": project_id,
+                    "qdrant_url": qdrant_config.url,
+                    "monitoring": {
+                        "enabled": True,
+                        "target_path": "./.heimdall/docs",
+                        "interval_seconds": 5.0,
+                        "ignore_patterns": [
+                            ".git",
+                            "node_modules",
+                            "__pycache__",
+                            ".pytest_cache",
+                        ],
+                    },
+                    "database": {"path": "./.heimdall/cognitive_memory.db"},
+                }
+                config_file.write_text(
+                    yaml.dump(project_config, default_flow_style=False)
+                )
 
-            config_file.write_text(yaml.dump(project_config, default_flow_style=False))
             console.print(f"📝 Created configuration: {config_file}")
+            console.print(f"📁 Created monitoring directory: {docs_dir}")
+
+            # Create a README in the docs directory
+            readme_content = """# Heimdall Documentation Directory
+
+This directory is monitored by Heimdall's file monitoring service for automatic memory updates.
+
+## Usage
+
+- Place documentation files directly in this directory
+- Or create symlinks to your actual documentation:
+  ```bash
+  ln -s ../docs ./.heimdall/docs/project-docs
+  ln -s ../README.md ./.heimdall/docs/README.md
+  ```
+
+## Supported Formats
+
+- Markdown (.md, .markdown, .mdown, .mkd)
+- Text files (.txt)
+- More formats coming soon
+
+## Monitoring
+
+Files in this directory are automatically:
+- Parsed and stored as cognitive memories
+- Updated when modified
+- Indexed for semantic search
+- Connected to related concepts
+"""
+            readme_file = docs_dir / "README.md"
+            if not readme_file.exists():
+                readme_file.write_text(readme_content)
 
         if json_output:
             output_data = {
@@ -188,6 +241,65 @@ def project_init(
             }
             console.print(json.dumps(output_data, indent=2))
         else:
+            # Start monitoring service in daemon mode if enabled
+            try:
+                from cognitive_memory.core.config import CognitiveConfig
+
+                # Check if monitoring is enabled in core config
+                cognitive_config = CognitiveConfig.from_env()
+
+                if cognitive_config.monitoring_enabled:
+                    console.print(
+                        "🔍 Starting monitoring service...", style="bold blue"
+                    )
+                    import subprocess
+                    import sys
+
+                    # Start monitoring in a separate process
+                    try:
+                        result = subprocess.run(
+                            [
+                                sys.executable,
+                                "-m",
+                                "heimdall.cli",
+                                "monitor",
+                                "start",
+                                "--daemon",
+                                "--project-root",
+                                str(project_path),
+                            ],
+                            cwd=str(project_path),
+                            timeout=5,
+                            capture_output=True,
+                            text=True,
+                        )
+
+                        if result.returncode == 0:
+                            console.print(
+                                "✅ Monitoring service started in daemon mode",
+                                style="bold green",
+                            )
+                        else:
+                            console.print(
+                                f"⚠️ Failed to start monitoring service: {result.stderr}",
+                                style="bold yellow",
+                            )
+                    except subprocess.TimeoutExpired:
+                        # This shouldn't happen with proper daemon detachment, but handle gracefully
+                        console.print(
+                            "✅ Monitoring service started in daemon mode",
+                            style="bold green",
+                        )
+                    except Exception as e:
+                        console.print(
+                            f"⚠️ Failed to start monitoring service: {e}",
+                            style="bold yellow",
+                        )
+                else:
+                    console.print("ℹ️ Monitoring is disabled in config", style="dim")
+
+            except Exception as e:
+                console.print(f"⚠️ Failed to start monitoring: {e}", style="bold yellow")
             console.print("✅ Project initialization complete!", style="bold green")
 
             # Show project info table

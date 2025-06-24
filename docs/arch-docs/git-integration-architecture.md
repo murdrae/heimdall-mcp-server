@@ -275,6 +275,133 @@ Since the system embeds all commit information into memory content text rather t
 "Git commit ghi9012 by Bob Wilson on 2024-01-17: 'Fix memory leak in background tasks'. Modified 1 file: tasks/background.py (8 lines added, 15 deleted). This bug fix resolves memory accumulation by properly closing database connections in background task workers."
 ```
 
+## Git Hook Architecture
+
+### Overview
+Git hooks provide automatic memory creation on commit, enabling real-time project memory building without manual intervention. The architecture uses embedded Python hooks for cross-platform compatibility and direct integration with the cognitive memory system.
+
+### Hook Components
+
+**Hook Installation System**:
+- **Command Interface**: `heimdall git-hook install/uninstall/status`
+- **Embedded Templates**: Post-commit hook script embedded in CLI commands (no external file dependencies)
+- **Safe Installation**: Automatic backup and chaining of existing hooks
+- **Cross-Platform**: Pure Python implementation works on Windows/macOS/Linux
+
+**Hook Execution Flow**:
+```
+Git Commit
+    ↓
+Post-commit hook triggered (.git/hooks/post-commit)
+    ↓
+Embedded Python script execution
+    ├── Repository validation (GitPython)
+    ├── Project initialization check (Qdrant collections exist)
+    ├── Cognitive system initialization
+    └── Incremental git loading (max_commits=1)
+    ↓
+Latest commit processed and stored
+    ↓
+Colored console output + log file (.heimdall/monitor.log)
+    ↓
+Git operation completes (hook always exits 0)
+```
+
+**Data Flow Architecture**:
+```
+New Git Commit (abc1234)
+    ↓
+Hook Script (.git/hooks/post-commit)
+    ↓
+get_project_paths(repo_root) → .heimdall/monitor.log
+    ↓
+initialize_system() → CognitiveOperations
+    ↓
+operations.load_git_patterns(max_commits=1)
+    ↓
+GitHistoryLoader.load_from_source() [incremental mode]
+    ↓
+Single commit → CognitiveMemory object
+    ↓
+Multi-dimensional encoding + Qdrant storage
+    ↓
+Hook output: "Processed commit abc1234: 1 memory loaded"
+```
+
+### Hook Safety Features
+
+**Git Operation Safety**:
+- **Never fails commits**: Always exits with code 0 regardless of memory processing success
+- **Graceful degradation**: Continues if Qdrant unavailable or project uninitialized
+- **Timeout protection**: 5-minute execution limit prevents hanging
+- **Error isolation**: Memory processing errors don't affect git operations
+
+**Existing Hook Preservation**:
+- **Backup and chain**: Existing hooks moved to `.heimdall-backup` and executed first
+- **Safe uninstallation**: Original hooks restored from backup during removal
+- **Force installation**: `--force` flag creates chained hooks preserving existing functionality
+
+**Project Integration**:
+- **Project-specific**: Each repository gets isolated memory collections
+- **Automatic detection**: Uses `get_project_id()` from repository path for collection naming
+- **Initialization check**: Verifies Qdrant connection and project collections exist
+- **Helpful errors**: Clear messages when project needs `heimdall project init`
+
+### Hook Management Commands
+
+**Installation**:
+```bash
+# Install in current repository
+heimdall git-hook install
+
+# Install with existing hook chaining
+heimdall git-hook install --force
+
+# Preview installation
+heimdall git-hook install --dry-run
+```
+
+**Status and Maintenance**:
+```bash
+# Check hook status
+heimdall git-hook status
+
+# Remove hook (restore original if exists)
+heimdall git-hook uninstall
+
+# Preview uninstallation
+heimdall git-hook uninstall --dry-run
+```
+
+**Integration with Project Workflow**:
+```bash
+# Complete project setup
+cd /path/to/project
+heimdall project init          # Create collections + start Qdrant
+heimdall git-hook install      # Enable automatic memory creation
+git commit -m "Test"          # Hook automatically processes commit
+```
+
+### Hook Implementation Details
+
+**Embedded Script Architecture**:
+- **Template Storage**: Hook script stored as string constant in `git_hook_commands.py`
+- **Dynamic Creation**: Script written to `.git/hooks/heimdall_post_commit_hook.py` on install
+- **Symlink Strategy**: Main hook file symlinks to generated script for easy updates
+- **Package Independence**: No external file dependencies, works after pip install
+
+**Error Handling and Logging**:
+- **Colored Output**: Green for success, blue for info, red for errors during commit
+- **File Logging**: All activity logged to `.heimdall/monitor.log` with timestamps
+- **Silent Operation**: Verbose system logging suppressed during hook execution
+- **Contextual Messages**: Specific guidance for common issues (Qdrant not running, project not initialized)
+
+**Performance Characteristics**:
+- **Execution Time**: 2-5 seconds per commit for single commit processing
+- **Resource Usage**: Minimal memory footprint, only processes latest commit
+- **Startup Cost**: One-time cognitive system initialization per hook execution
+- **Storage Efficiency**: Incremental storage, no duplicate commit processing
+
 ## Integration Benefits
 
 ### For LLM Context Enhancement
@@ -346,3 +473,55 @@ payload = {
     "is_merge": False,
     "is_fix": True
 }
+
+## Testing Architecture
+
+### E2E Test Suite
+
+The git hook functionality is validated through comprehensive end-to-end tests that verify the complete workflow from hook installation to memory processing.
+
+**Prerequisites:**
+- Python environment with pytest installed
+- Git available in PATH
+- **Qdrant running locally** (for memory processing tests only)
+
+**Test Structure:**
+```
+tests/e2e/
+├── test_git_hook_commands.py          # Core hook management functions
+├── test_git_hook_cli_integration.py   # CLI command integration
+└── test_git_hook_memory_processing.py # Memory system integration
+```
+
+**Test Coverage:**
+- **Hook Installation** (no services required): Fresh repos, existing hooks, chaining, permissions
+- **Hook Uninstallation** (no services required): Backup restoration, cleanup, edge cases
+- **Hook Status Detection** (no services required): All hook states, repository validation
+- **CLI Integration** (no services required): All heimdall git-hook commands with various flags
+- **Memory Processing** (requires Qdrant): Actual hook execution, commit processing, error handling
+- **Safety Features** (no services required): Git operation safety, concurrent execution, error isolation
+
+**Running Tests:**
+```bash
+# Hook management tests (no services required)
+python -m pytest tests/e2e/test_git_hook_commands.py -v
+python -m pytest tests/e2e/test_git_hook_cli_integration.py -v
+
+# Memory processing tests (requires Qdrant running)
+heimdall qdrant start  # Start Qdrant first
+python -m pytest tests/e2e/test_git_hook_memory_processing.py -v
+
+# All git hook tests (requires Qdrant)
+heimdall qdrant start
+python -m pytest tests/e2e/test_git_hook*.py -v
+```
+
+**Test Isolation:**
+- Each test creates temporary git repositories
+- No shared state between tests
+- Cleanup automatically handled by pytest fixtures
+
+**Service Dependencies:**
+- **Hook management tests**: No external services required
+- **Memory processing tests**: Require Qdrant running locally (uses `initialize_system('test')`)
+- **Hook safety features**: Gracefully handle missing services via try/catch blocks
