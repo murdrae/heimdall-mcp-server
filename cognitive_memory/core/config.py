@@ -291,6 +291,26 @@ def detect_project_config() -> dict[str, str] | None:
                     if "path" in database:
                         env_overrides["SQLITE_PATH"] = database["path"]
 
+                # Map logging settings
+                if "logging" in config_data and isinstance(
+                    config_data["logging"], dict
+                ):
+                    logging_config = config_data["logging"]
+                    if "level" in logging_config:
+                        # Convert common logging level names to loguru format
+                        level = logging_config["level"].lower()
+                        level_mapping = {
+                            "warn": "WARNING",
+                            "warning": "WARNING",
+                            "info": "INFO",
+                            "debug": "DEBUG",
+                            "error": "ERROR",
+                            "critical": "CRITICAL",
+                        }
+                        env_overrides["LOG_LEVEL"] = level_mapping.get(
+                            level, level.upper()
+                        )
+
                 if env_overrides:
                     logger.debug(
                         f"Loaded project config from .heimdall/config.yaml: {list(env_overrides.keys())}"

@@ -99,7 +99,12 @@ def recall_memories(
 
                 for i, memory in enumerate(memories, 1):
                     # Handle different memory object types
-                    if hasattr(memory, "content"):
+                    if hasattr(memory, "memory") and hasattr(memory.memory, "content"):
+                        # This is a BridgeMemory object
+                        content = memory.memory.content
+                        score = getattr(memory, "bridge_score", "N/A")
+                    elif hasattr(memory, "content"):
+                        # This is a CognitiveMemory object
                         content = memory.content
                         score = getattr(memory, "similarity_score", "N/A")
                     elif isinstance(memory, dict):

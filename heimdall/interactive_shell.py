@@ -567,7 +567,12 @@ class InteractiveShell:
                 )
                 return
 
-            memories_by_type = result["memories_by_type"]
+            # Extract memory types from the result
+            memories_by_type = {
+                "core": result.get("core", []),
+                "peripheral": result.get("peripheral", []),
+                "bridge": result.get("bridge", []),
+            }
             total_results = result["total_count"]
 
             if total_results == 0:
@@ -598,11 +603,11 @@ class InteractiveShell:
 
                     # Use bridge-specific formatting for bridge memories
                     if memory_type == "bridge":
-                        content = self._format_bridges_from_data(
+                        content = self._format_bridges(
                             memories, full_output=full_output
                         )
                     else:
-                        content = self._format_memories_from_data(
+                        content = self._format_memories(
                             memories, full_output=full_output
                         )
 
@@ -636,7 +641,7 @@ class InteractiveShell:
                 )
                 return
 
-            bridges = result["memories_by_type"].get("bridge", [])
+            bridges = result.get("bridge", [])
 
             if not bridges:
                 self.console.print(
@@ -645,7 +650,7 @@ class InteractiveShell:
                 return
 
             bridge_panel = Panel(
-                self._format_bridges_from_data(bridges),
+                self._format_bridges(bridges),
                 title=f"🌉 BRIDGE CONNECTIONS ({len(bridges)})",
                 border_style="magenta",
             )
@@ -921,7 +926,12 @@ class InteractiveShell:
                 )
                 return
 
-            memories_by_type = result["memories_by_type"]
+            # Extract memory types from the result
+            memories_by_type = {
+                "core": result.get("core", []),
+                "peripheral": result.get("peripheral", []),
+                "bridge": result.get("bridge", []),
+            }
             total_results = result["total_count"]
 
             if total_results == 0:
@@ -932,9 +942,7 @@ class InteractiveShell:
 
             for memory_type, memories in memories_by_type.items():
                 if memories:
-                    content = self._format_memories_from_data(
-                        memories, full_output=True
-                    )
+                    content = self._format_memories(memories, full_output=True)
                     type_panel = Panel(
                         content,
                         title=f"🔍 GIT PATTERNS - {memory_type.upper()} ({len(memories)})",

@@ -157,7 +157,7 @@ class CognitiveOperations:
 
             total_count = sum(len(memories) for memories in results.values())
 
-            # Ensure all expected keys are present with empty lists as defaults
+            # Keep the proper types - CognitiveMemory and BridgeMemory objects
             standardized_results = {
                 "core": results.get("core", []),
                 "peripheral": results.get("peripheral", []),

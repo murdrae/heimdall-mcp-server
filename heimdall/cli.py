@@ -14,6 +14,7 @@ components for infrastructure operations.
 import sys
 
 import typer
+from loguru import logger
 from rich.console import Console
 
 # Import command functions from separate modules
@@ -47,6 +48,15 @@ from heimdall.cli_commands.qdrant_commands import (
     qdrant_start,
     qdrant_status,
     qdrant_stop,
+)
+
+# Set default Loguru log level to WARNING to prevent early DEBUG messages
+# This will be reconfigured by early logging setup based on project config
+logger.remove()
+logger.add(
+    sys.stderr,
+    level="WARNING",
+    format="{time} | {level} | {name}:{function}:{line} - {message}",
 )
 
 # Initialize rich console for enhanced output
@@ -114,9 +124,50 @@ git_hook_app.command("uninstall")(git_hook_uninstall)
 git_hook_app.command("status")(git_hook_status)
 
 
+def _setup_early_logging() -> None:
+    """
+    Set up early logging based on project configuration before any CLI operations.
+
+    This detects project config and applies logging level early to reduce verbosity
+    of initialization messages across all commands.
+    """
+    try:
+        # Detect project config and apply environment overrides
+        import os
+
+        from cognitive_memory.core.config import LoggingConfig, detect_project_config
+        from cognitive_memory.core.logging_setup import setup_logging
+
+        project_config = detect_project_config()
+        if project_config:
+            # Apply project config to environment variables
+            for key, value in project_config.items():
+                if key not in os.environ:  # Only set if not already defined
+                    os.environ[key] = value
+
+        # Create logging config using the environment (including project overrides)
+        logging_config = LoggingConfig.from_env()
+
+        # Set up logging immediately
+        setup_logging(logging_config)
+
+        # Mark logging as configured to prevent duplicate setup
+        from loguru import logger
+
+        logger._heimdall_configured = True
+
+    except Exception:
+        # If early setup fails, continue with default logging
+        # Individual commands will set up logging again later
+        pass
+
+
 def main() -> int:
     """Main entry point for the unified Heimdall CLI."""
     try:
+        # Set up early logging from project config before any operations
+        _setup_early_logging()
+
         app()
         return 0
     except typer.Exit as e:

@@ -105,12 +105,49 @@ def project_init(
 
             progress.update(task, description="✅ Project collections initialized")
 
-        # Check and download spaCy model if needed
+        # Initialize shared environment and download models if needed
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
+            # Initialize shared data directories first
+            task = progress.add_task(
+                "Setting up shared data directories...", total=None
+            )
+
+            try:
+                from heimdall.cognitive_system.data_dirs import (
+                    initialize_shared_environment,
+                )
+
+                initialize_shared_environment()
+                progress.update(task, description="✅ Shared data directories ready")
+            except Exception as e:
+                progress.update(task, description="❌ Failed to setup data directories")
+                console.print(
+                    f"❌ Failed to setup data directories. Error: {e}",
+                    style="bold red",
+                )
+
+            # Download SentenceBERT ONNX models
+            task = progress.add_task("Checking SentenceBERT models...", total=None)
+
+            try:
+                from heimdall.cognitive_system.data_dirs import ensure_models_available
+
+                ensure_models_available()
+                progress.update(task, description="✅ SentenceBERT models ready")
+            except Exception as e:
+                progress.update(
+                    task, description="❌ Failed to download SentenceBERT models"
+                )
+                console.print(
+                    f"❌ Failed to download SentenceBERT models. Error: {e}",
+                    style="bold red",
+                )
+
+            # Check and download spaCy model
             task = progress.add_task("Checking spaCy model...", total=None)
 
             try:
@@ -179,6 +216,9 @@ def project_init(
                 project_config = {
                     "project_id": project_id,
                     "qdrant_url": qdrant_config.url,
+                    "logging": {
+                        "level": "warn",
+                    },
                     "monitoring": {
                         "enabled": True,
                         "target_path": "./.heimdall/docs",
@@ -561,6 +601,36 @@ def project_clean(
                     )
                     console.print(f"❌ Failed to delete {collection.name}: {e}")
 
+            # Check for .heimdall directory after successful collection deletion
+            heimdall_dir_removed = False
+            heimdall_dir_error = None
+            heimdall_dir = Path.cwd() / ".heimdall"
+
+            if heimdall_dir.exists() and heimdall_dir.is_dir() and deleted_collections:
+                # Only ask if we successfully deleted some collections
+                if not confirm:  # If --yes wasn't used, ask for confirmation
+                    console.print(f"\n📁 Found .heimdall directory: {heimdall_dir}")
+                    remove_heimdall = typer.confirm(
+                        "Do you want to remove the .heimdall directory as well?"
+                    )
+                else:
+                    # If --yes was used, also remove .heimdall directory
+                    remove_heimdall = True
+
+                if remove_heimdall:
+                    try:
+                        import shutil
+
+                        shutil.rmtree(heimdall_dir)
+                        heimdall_dir_removed = True
+                        console.print(f"✅ Removed .heimdall directory: {heimdall_dir}")
+                    except Exception as e:
+                        heimdall_dir_error = str(e)
+                        console.print(
+                            f"❌ Failed to remove .heimdall directory: {e}",
+                            style="bold red",
+                        )
+
             if json_output:
                 result = {
                     "project_id": project_id,
@@ -568,6 +638,8 @@ def project_clean(
                     "failed_collections": failed_collections,
                     "total_deleted": len(deleted_collections),
                     "total_failed": len(failed_collections),
+                    "heimdall_dir_removed": heimdall_dir_removed,
+                    "heimdall_dir_error": heimdall_dir_error,
                 }
                 console.print(json.dumps(result, indent=2))
             else:

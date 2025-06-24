@@ -7,7 +7,6 @@ stack for significant memory and dependency reduction.
 """
 
 import json
-from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -98,19 +97,16 @@ class ONNXEmbeddingProvider(EmbeddingProvider):
             ) from e
 
     def _get_package_resource_path(self, filename: str) -> Path:
-        """Get path to a resource file within the package."""
-        try:
-            with resources.path(
-                "cognitive_memory.data.models", filename
-            ) as resource_path:
-                return Path(resource_path)
-        except (ImportError, FileNotFoundError):
-            # Fallback for development environment
-            fallback_path = Path(__file__).parent.parent / "data" / "models" / filename
-            if fallback_path.exists():
-                return fallback_path
-            # Last resort - old relative path
-            return Path("./data/models") / filename
+        """Get path to a resource file from shared data directory."""
+        from heimdall.cognitive_system.data_dirs import get_models_data_dir
+
+        model_path = get_models_data_dir() / filename
+        if not model_path.exists():
+            raise FileNotFoundError(
+                f"Model file not found: {model_path}. "
+                f"Run 'heimdall project init' to download required models."
+            )
+        return model_path
 
     def _load_config(self) -> None:
         """Load model configuration from JSON file."""

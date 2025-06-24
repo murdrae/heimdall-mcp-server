@@ -61,8 +61,11 @@ def create_default_system(config: SystemConfig | None = None) -> CognitiveMemory
         except Exception as e:
             raise InitializationError(f"Failed to load configuration: {e}") from e
 
-    # Setup logging based on configuration
-    setup_logging(config.logging)
+    # Setup logging based on configuration (only if not already configured)
+    # Check if logging has already been set up (e.g., by CLI early setup)
+    if not hasattr(logger, "_heimdall_configured"):
+        setup_logging(config.logging)
+        logger._heimdall_configured = True
 
     try:
         # Import factory functions
