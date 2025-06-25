@@ -622,6 +622,7 @@ class CognitiveMemorySystem(CognitiveSystem):
                         vector_metadata = {
                             "memory_id": memory.id,
                             "content": memory.content,
+                            "memory_type": memory.memory_type,
                             "hierarchy_level": memory.hierarchy_level,
                             "timestamp": memory.timestamp.timestamp()
                             if memory.timestamp

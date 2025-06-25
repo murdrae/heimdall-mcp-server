@@ -181,7 +181,7 @@ class GitHistoryMiner:
 
         try:
             # Security: limit max_commits to prevent memory exhaustion
-            if max_commits > 10000:
+            if max_commits is not None and max_commits > 10000:
                 logger.warning(
                     "Max commits limited to 10000 for security", requested=max_commits
                 )

@@ -13,6 +13,7 @@ from cognitive_memory.main import (
     initialize_system,
     initialize_with_config,
 )
+from heimdall.display_utils import format_memory_results_json
 from heimdall.operations import CognitiveOperations
 
 console = Console()
@@ -23,7 +24,9 @@ def store_experience(
     context_json: str | None = typer.Option(
         None, "--context", help="Context as JSON string"
     ),
-    config: str | None = typer.Option(None, help="Path to configuration file"),
+    config: str | None = typer.Option(
+        None, help="Path to .env configuration file to override default settings"
+    ),
 ) -> None:
     """Store an experience in cognitive memory."""
     try:
@@ -66,7 +69,10 @@ def recall_memories(
         None, "--types", help="Memory types to retrieve (core, peripheral, bridge)"
     ),
     limit: int = typer.Option(10, "--limit", help="Maximum results per type"),
-    config: str | None = typer.Option(None, help="Path to configuration file"),
+    json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
+    config: str | None = typer.Option(
+        None, help="Path to .env configuration file to override default settings"
+    ),
 ) -> None:
     """Retrieve memories matching a query."""
     try:
@@ -86,45 +92,51 @@ def recall_memories(
             )
             raise typer.Exit(1)
 
-        # Display results with terminal-specific formatting
-        console.print(f"🔍 Query: [bold cyan]{query}[/bold cyan]")
-        console.print(f"📊 Total results: {results['total_count']}")
+        if json_output:
+            formatted_json = format_memory_results_json(results)
+            console.print(formatted_json)
+        else:
+            # Display results with terminal-specific formatting
+            console.print(f"🔍 Query: [bold cyan]{query}[/bold cyan]")
+            console.print(f"📊 Total results: {results['total_count']}")
 
-        for memory_type in ["core", "peripheral", "bridge"]:
-            memories = results[memory_type]
-            if memories:
-                console.print(
-                    f"\n[bold]{memory_type.upper()}[/bold] ({len(memories)} results)"
-                )
-
-                for i, memory in enumerate(memories, 1):
-                    # Handle different memory object types
-                    if hasattr(memory, "memory") and hasattr(memory.memory, "content"):
-                        # This is a BridgeMemory object
-                        content = memory.memory.content
-                        score = getattr(memory, "bridge_score", "N/A")
-                    elif hasattr(memory, "content"):
-                        # This is a CognitiveMemory object
-                        content = memory.content
-                        score = getattr(memory, "similarity_score", "N/A")
-                    elif isinstance(memory, dict):
-                        content = memory.get("content", str(memory))
-                        score = memory.get("similarity_score", "N/A")
-                    else:
-                        content = str(memory)
-                        score = "N/A"
-
-                    # Truncate long content for display
-                    display_content = (
-                        content[:200] + "..." if len(content) > 200 else content
+            for memory_type in ["core", "peripheral", "bridge"]:
+                memories = results[memory_type]
+                if memories:
+                    console.print(
+                        f"\n[bold]{memory_type.upper()}[/bold] ({len(memories)} results)"
                     )
-                    console.print(f"  {i}. [dim]Score: {score}[/dim]")
-                    console.print(f"     {display_content}")
 
-        if results["total_count"] == 0:
-            console.print(
-                "📭 No memories found matching your query", style="bold yellow"
-            )
+                    for i, memory in enumerate(memories, 1):
+                        # Handle different memory object types
+                        if hasattr(memory, "memory") and hasattr(
+                            memory.memory, "content"
+                        ):
+                            # This is a BridgeMemory object
+                            content = memory.memory.content
+                            score = getattr(memory, "bridge_score", "N/A")
+                        elif hasattr(memory, "content"):
+                            # This is a CognitiveMemory object
+                            content = memory.content
+                            score = getattr(memory, "similarity_score", "N/A")
+                        elif isinstance(memory, dict):
+                            content = memory.get("content", str(memory))
+                            score = memory.get("similarity_score", "N/A")
+                        else:
+                            content = str(memory)
+                            score = "N/A"
+
+                        # Truncate long content for display
+                        display_content = (
+                            content[:200] + "..." if len(content) > 200 else content
+                        )
+                        console.print(f"  {i}. [dim]Score: {score}[/dim]")
+                        console.print(f"     {display_content}")
+
+            if results["total_count"] == 0:
+                console.print(
+                    "📭 No memories found matching your query", style="bold yellow"
+                )
 
         # Cleanup
         graceful_shutdown(cognitive_system)
@@ -150,7 +162,9 @@ def load_memories(
     recursive: bool = typer.Option(
         False, "--recursive", help="Recursively process directories"
     ),
-    config: str | None = typer.Option(None, help="Path to configuration file"),
+    config: str | None = typer.Option(
+        None, help="Path to .env configuration file to override default settings"
+    ),
 ) -> None:
     """Load memories from external source file or directory."""
     try:
@@ -233,7 +247,9 @@ def load_git_patterns(
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be loaded without loading"
     ),
-    config: str | None = typer.Option(None, help="Path to configuration file"),
+    config: str | None = typer.Option(
+        None, help="Path to .env configuration file to override default settings"
+    ),
 ) -> None:
     """Load git commit patterns into cognitive memory."""
     try:
@@ -301,7 +317,9 @@ def system_status(
         False, "--detailed", help="Show detailed system statistics"
     ),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
-    config: str | None = typer.Option(None, help="Path to configuration file"),
+    config: str | None = typer.Option(
+        None, help="Path to .env configuration file to override default settings"
+    ),
 ) -> None:
     """Show cognitive memory system status and statistics."""
     try:
@@ -379,7 +397,9 @@ def remove_file_cmd(
     file_path: str = typer.Argument(
         ..., help="Path to file whose memories should be removed"
     ),
-    config: str | None = typer.Option(None, help="Path to configuration file"),
+    config: str | None = typer.Option(
+        None, help="Path to .env configuration file to override default settings"
+    ),
 ) -> None:
     """Remove all memories associated with a deleted file."""
     try:

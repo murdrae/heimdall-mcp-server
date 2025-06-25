@@ -33,7 +33,7 @@ from starlette.routing import Route
 from cognitive_memory.core.interfaces import CognitiveSystem
 from cognitive_memory.core.version import get_version_info
 from cognitive_memory.main import initialize_system, initialize_with_config
-from heimdall.display_utils import format_source_info
+from heimdall.display_utils import format_memory_results_json
 from heimdall.operations import CognitiveOperations
 
 # Configure logging
@@ -65,96 +65,6 @@ class HeimdallMCPServer:
         self._register_handlers()
 
         logger.info("Heimdall MCP Server initialized")
-
-    def _format_memory_results(self, result_data: dict[str, Any]) -> str:
-        """
-        Format memory retrieval results optimized for LLM consumption using JSON structure.
-
-        Args:
-            result_data: Dictionary from operations.retrieve_memories()
-
-        Returns:
-            str: JSON-structured formatted string optimized for LLM processing
-        """
-        if not result_data["success"]:
-            return f"❌ Error retrieving memories: {result_data['error']}"
-
-        if result_data["total_count"] == 0:
-            return f"No memories found for query: '{result_data['query']}'"
-
-        formatted_results: dict[str, Any] = {
-            "query": result_data["query"],
-            "total_results": result_data["total_count"],
-            "memories": {},
-        }
-
-        # Process each memory type
-        for memory_type in ["core", "peripheral", "bridge"]:
-            memories = result_data.get(memory_type, [])
-            if memories:
-                formatted_results["memories"][memory_type] = []
-
-                for memory_item in memories:
-                    if memory_type == "bridge" and hasattr(memory_item, "memory"):
-                        # Handle BridgeMemory objects
-                        bridge_mem = memory_item
-                        memory = bridge_mem.memory
-
-                        memory_data = {
-                            "type": "bridge",
-                            "content": memory.content,
-                            "metadata": {
-                                "id": memory.id,
-                                "hierarchy_level": memory.hierarchy_level,
-                                "memory_type": memory.memory_type,
-                                "novelty_score": round(bridge_mem.novelty_score, 3),
-                                "bridge_score": round(bridge_mem.bridge_score, 3),
-                                "connection_potential": round(
-                                    bridge_mem.connection_potential, 3
-                                ),
-                                "source": format_source_info(memory),
-                                "created_date": memory.created_date.isoformat()
-                                if memory.created_date
-                                else None,
-                                "last_accessed": memory.last_accessed.isoformat()
-                                if memory.last_accessed
-                                else None,
-                                "access_count": memory.access_count,
-                                "importance_score": memory.importance_score,
-                                "tags": memory.tags,
-                            },
-                        }
-
-                    else:
-                        # Handle regular CognitiveMemory objects
-                        memory = memory_item
-
-                        # Use similarity score from metadata if available, otherwise fallback to memory strength
-                        score = memory.metadata.get("similarity_score", memory.strength)
-
-                        memory_data = {
-                            "type": memory.memory_type,
-                            "content": memory.content,
-                            "metadata": {
-                                "id": memory.id,
-                                "hierarchy_level": memory.hierarchy_level,
-                                "strength": round(score, 3),
-                                "source": format_source_info(memory),
-                                "created_date": memory.created_date.isoformat()
-                                if memory.created_date
-                                else None,
-                                "last_accessed": memory.last_accessed.isoformat()
-                                if memory.last_accessed
-                                else None,
-                                "access_count": memory.access_count,
-                                "importance_score": memory.importance_score,
-                                "tags": memory.tags,
-                            },
-                        }
-
-                    formatted_results["memories"][memory_type].append(memory_data)
-
-        return json.dumps(formatted_results, ensure_ascii=False, separators=(",", ":"))
 
     def _register_handlers(self) -> None:
         """Register MCP protocol handlers."""
@@ -378,7 +288,7 @@ class HeimdallMCPServer:
                 ]
 
             # Format the response as JSON for optimal LLM processing
-            formatted_response = self._format_memory_results(result)
+            formatted_response = format_memory_results_json(result)
             return [TextContent(type="text", text=formatted_response)]
 
         except Exception as e:

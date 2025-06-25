@@ -20,9 +20,56 @@ def project_init(
         True, help="Automatically start Qdrant if not running"
     ),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
+    # Interactive control flags
+    non_interactive: bool = typer.Option(
+        False, "--non-interactive", help="Skip all prompts, use defaults"
+    ),
+    # Monitoring control
+    auto_monitor: bool = typer.Option(
+        False, "--auto-monitor", help="Force enable automatic file monitoring"
+    ),
+    no_monitor: bool = typer.Option(
+        False, "--no-monitor", help="Force disable automatic file monitoring"
+    ),
+    # Git history control
+    load_git_history: bool = typer.Option(
+        False, "--load-git-history", help="Force enable git history loading"
+    ),
+    skip_git_history: bool = typer.Option(
+        False, "--skip-git-history", help="Force disable git history loading"
+    ),
+    # Git hooks control
+    setup_git_hooks: bool = typer.Option(
+        False, "--setup-git-hooks", help="Force enable git hooks installation"
+    ),
+    skip_git_hooks: bool = typer.Option(
+        False, "--skip-git-hooks", help="Force disable git hooks installation"
+    ),
 ) -> None:
     """Initialize project-specific collections and setup."""
     try:
+        # Validate flag combinations early
+        if auto_monitor and no_monitor:
+            console.print(
+                "❌ Cannot specify both --auto-monitor and --no-monitor",
+                style="bold red",
+            )
+            raise typer.Exit(1)
+
+        if load_git_history and skip_git_history:
+            console.print(
+                "❌ Cannot specify both --load-git-history and --skip-git-history",
+                style="bold red",
+            )
+            raise typer.Exit(1)
+
+        if setup_git_hooks and skip_git_hooks:
+            console.print(
+                "❌ Cannot specify both --setup-git-hooks and --skip-git-hooks",
+                style="bold red",
+            )
+            raise typer.Exit(1)
+
         from cognitive_memory.core.config import (
             QdrantConfig,
             SystemConfig,
@@ -271,74 +318,59 @@ Files in this directory are automatically:
             if not readme_file.exists():
                 readme_file.write_text(readme_content)
 
+        # Determine user choices for optional features
+        user_wants_monitoring = _determine_monitoring_choice(
+            auto_monitor, no_monitor, non_interactive
+        )
+        user_wants_git_history = _determine_git_history_choice(
+            load_git_history, skip_git_history, non_interactive, project_path
+        )
+        user_wants_git_hooks = _determine_git_hooks_choice(
+            setup_git_hooks, skip_git_hooks, non_interactive, project_path
+        )
+
         if json_output:
+            # Execute user-selected features for JSON mode too
+            git_history_loaded = False
+            git_hooks_installed = False
+
+            if user_wants_git_history:
+                git_history_loaded = _execute_git_history_loading(project_path)
+
+            if user_wants_git_hooks:
+                git_hooks_installed = _execute_git_hooks_installation(project_path)
+
+            if user_wants_monitoring:
+                _execute_monitoring_service_startup(project_path)
+
             output_data = {
                 "project_id": project_id,
                 "project_root": str(project_path),
                 "qdrant_url": qdrant_config.url,
                 "config_file": str(config_file),
                 "status": "initialized",
+                "monitoring_enabled": user_wants_monitoring,
+                "git_history_loaded": git_history_loaded,
+                "git_hooks_installed": git_hooks_installed,
             }
             console.print(json.dumps(output_data, indent=2))
         else:
-            # Start monitoring service if enabled
-            try:
-                from cognitive_memory.core.config import CognitiveConfig
+            # Execute user-selected features
+            git_history_loaded = False
+            git_hooks_installed = False
 
-                # Check if monitoring is enabled in core config
-                cognitive_config = CognitiveConfig.from_env()
+            # Load git history if requested
+            if user_wants_git_history:
+                git_history_loaded = _execute_git_history_loading(project_path)
 
-                if cognitive_config.monitoring_enabled:
-                    console.print(
-                        "🔍 Starting monitoring service...", style="bold blue"
-                    )
-                    import subprocess
-                    import sys
+            # Install git hooks if requested
+            if user_wants_git_hooks:
+                git_hooks_installed = _execute_git_hooks_installation(project_path)
 
-                    # Start monitoring in a separate process
-                    try:
-                        result = subprocess.run(
-                            [
-                                sys.executable,
-                                "-m",
-                                "heimdall.cli",
-                                "monitor",
-                                "start",
-                                "--project-root",
-                                str(project_path),
-                            ],
-                            cwd=str(project_path),
-                            timeout=5,
-                            capture_output=True,
-                            text=True,
-                        )
+            # Start monitoring service if requested
+            if user_wants_monitoring:
+                _execute_monitoring_service_startup(project_path)
 
-                        if result.returncode == 0:
-                            console.print(
-                                "✅ Monitoring service started in daemon mode",
-                                style="bold green",
-                            )
-                        else:
-                            console.print(
-                                f"⚠️ Failed to start monitoring service: {result.stderr}",
-                                style="bold yellow",
-                            )
-                    except subprocess.TimeoutExpired:
-                        # This shouldn't happen with proper daemon detachment, but handle gracefully
-                        console.print(
-                            "✅ Monitoring service started in daemon mode",
-                            style="bold green",
-                        )
-                    except Exception as e:
-                        console.print(
-                            f"⚠️ Failed to start monitoring service: {e}",
-                            style="bold yellow",
-                        )
-                else:
-                    console.print("ℹ️ Monitoring is disabled in config", style="dim")
-
-            except Exception as e:
-                console.print(f"⚠️ Failed to start monitoring: {e}", style="bold yellow")
             console.print("✅ Project initialization complete!", style="bold green")
 
             # Show project info table
@@ -667,3 +699,294 @@ def project_clean(
     except Exception as e:
         console.print(f"❌ Error cleaning project: {e}", style="bold red")
         raise typer.Exit(1) from e
+
+
+def _determine_monitoring_choice(
+    auto_monitor: bool, no_monitor: bool, non_interactive: bool
+) -> bool:
+    """
+    Determine user's choice for monitoring service.
+
+    Args:
+        auto_monitor: Force enable monitoring
+        no_monitor: Force disable monitoring
+        non_interactive: Skip prompts, use defaults
+
+    Returns:
+        True if user wants monitoring enabled
+    """
+    # Use explicit flags if provided
+    if auto_monitor:
+        return True
+    if no_monitor:
+        return False
+
+    # Use defaults for non-interactive mode
+    if non_interactive:
+        return True  # Default: enable monitoring
+
+    # Interactive prompt
+    console.print("", end="")  # Empty line for spacing
+    return bool(
+        typer.confirm(
+            "🔍 Start automatic file monitoring for documentation changes?",
+            default=True,
+        )
+    )
+
+
+def _determine_git_history_choice(
+    load_git_history: bool,
+    skip_git_history: bool,
+    non_interactive: bool,
+    project_path: Path,
+) -> bool:
+    """
+    Determine user's choice for git history loading.
+
+    Args:
+        load_git_history: Force enable git history loading
+        skip_git_history: Force disable git history loading
+        non_interactive: Skip prompts, use defaults
+        project_path: Project path to check for git repository
+
+    Returns:
+        True if user wants git history loaded
+    """
+    # Check if this is a git repository
+    if not (project_path / ".git").exists():
+        if load_git_history:
+            console.print(
+                "⚠️ --load-git-history specified but this is not a git repository",
+                style="bold yellow",
+            )
+        return False  # Not a git repo, can't load history
+
+    # Use explicit flags if provided
+    if load_git_history:
+        return True
+    if skip_git_history:
+        return False
+
+    # Use defaults for non-interactive mode
+    if non_interactive:
+        return False  # Default: skip git history (can be slow)
+
+    # Interactive prompt
+    return bool(
+        typer.confirm(
+            "📚 Parse existing git history into memory? (This may take time for large repositories)",
+            default=False,
+        )
+    )
+
+
+def _determine_git_hooks_choice(
+    setup_git_hooks: bool,
+    skip_git_hooks: bool,
+    non_interactive: bool,
+    project_path: Path,
+) -> bool:
+    """
+    Determine user's choice for git hooks installation.
+
+    Args:
+        setup_git_hooks: Force enable git hooks setup
+        skip_git_hooks: Force disable git hooks setup
+        non_interactive: Skip prompts, use defaults
+        project_path: Project path to check for git repository
+
+    Returns:
+        True if user wants git hooks installed
+    """
+    # Check if this is a git repository
+    if not (project_path / ".git").exists():
+        if setup_git_hooks:
+            console.print(
+                "⚠️ --setup-git-hooks specified but this is not a git repository",
+                style="bold yellow",
+            )
+        return False  # Not a git repo, can't install hooks
+
+    # Use explicit flags if provided
+    if setup_git_hooks:
+        return True
+    if skip_git_hooks:
+        return False
+
+    # Use defaults for non-interactive mode
+    if non_interactive:
+        return False  # Default: skip git hooks (user can set up manually)
+
+    # Interactive prompt
+    return bool(
+        typer.confirm(
+            "🪝 Setup git hooks for automatic commit processing?", default=False
+        )
+    )
+
+
+def _execute_git_history_loading(project_path: Path) -> bool:
+    """
+    Execute git history loading using the operations layer.
+
+    Args:
+        project_path: Path to the project directory
+
+    Returns:
+        True if git history loading succeeded
+    """
+    try:
+        console.print("📚 Loading git history into memory...", style="bold blue")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Processing git commits...", total=None)
+
+            # Import and use the operations layer
+            from cognitive_memory.main import initialize_system
+            from heimdall.operations import CognitiveOperations
+
+            # Initialize cognitive system and operations
+            cognitive_system = initialize_system()
+            operations = CognitiveOperations(cognitive_system)
+
+            # Load git patterns (full history)
+            result = operations.load_git_patterns(
+                repo_path=str(project_path),
+                dry_run=False,
+                max_commits=None,  # Load full history
+            )
+
+            success = result.get("success", False)
+            memories_loaded = result.get("memories_loaded", 0)
+
+            if success:
+                memory_word = "memory" if memories_loaded == 1 else "memories"
+                progress.update(
+                    task,
+                    description=f"✅ Loaded {memories_loaded} {memory_word} from git history",
+                )
+                console.print(
+                    f"✅ Git history loaded: {memories_loaded} {memory_word}",
+                    style="bold green",
+                )
+                return True
+            else:
+                progress.update(task, description="❌ Failed to load git history")
+                console.print("❌ Failed to load git history", style="bold red")
+                return False
+
+    except Exception as e:
+        console.print(f"❌ Error loading git history: {e}", style="bold red")
+        return False
+
+
+def _execute_git_hooks_installation(project_path: Path) -> bool:
+    """
+    Execute git hooks installation using the existing git hook commands.
+
+    Args:
+        project_path: Path to the project directory
+
+    Returns:
+        True if git hooks installation succeeded
+    """
+    try:
+        console.print("🪝 Installing git hooks...", style="bold blue")
+
+        # Import git hook installation function
+        from heimdall.cli_commands.git_hook_commands import install_hook
+
+        # Install hooks with force=False (preserve existing hooks via chaining)
+        success = install_hook(project_path, force=False, dry_run=False)
+
+        if success:
+            console.print("✅ Git hooks installed successfully", style="bold green")
+            console.print(
+                "   Commits will now be automatically processed for memory storage",
+                style="dim",
+            )
+        else:
+            console.print("❌ Failed to install git hooks", style="bold red")
+
+        return success
+
+    except Exception as e:
+        console.print(f"❌ Error installing git hooks: {e}", style="bold red")
+        return False
+
+
+def _execute_monitoring_service_startup(project_path: Path) -> None:
+    """
+    Execute monitoring service startup (same logic as before).
+
+    Args:
+        project_path: Path to the project directory
+    """
+    try:
+        from cognitive_memory.core.config import CognitiveConfig
+
+        # Check if monitoring is enabled in core config
+        cognitive_config = CognitiveConfig.from_env()
+
+        if cognitive_config.monitoring_enabled:
+            console.print("🔍 Starting monitoring service...", style="bold blue")
+            import subprocess
+            import sys
+
+            # Start monitoring in a separate process
+            try:
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "heimdall.cli",
+                        "monitor",
+                        "start",
+                        "--project-root",
+                        str(project_path),
+                    ],
+                    cwd=str(project_path),
+                    timeout=5,
+                    capture_output=True,
+                    text=True,
+                )
+
+                if result.returncode == 0:
+                    console.print(
+                        "✅ Monitoring service started in daemon mode",
+                        style="bold green",
+                    )
+                else:
+                    # Clean stderr output from color codes and format nicely
+                    import re
+
+                    clean_stderr = re.sub(r"\x1b\[[0-9;]*m", "", result.stderr.strip())
+                    console.print(
+                        f"⚠️ Failed to start monitoring service: {clean_stderr}",
+                        style="bold yellow",
+                    )
+            except subprocess.TimeoutExpired:
+                # This shouldn't happen with proper daemon detachment, but handle gracefully
+                console.print(
+                    "✅ Monitoring service started in daemon mode",
+                    style="bold green",
+                )
+            except Exception as e:
+                # Clean exception message from color codes if present
+                import re
+
+                clean_error_msg = re.sub(r"\x1b\[[0-9;]*m", "", str(e).strip())
+                console.print(
+                    f"⚠️ Failed to start monitoring service: {clean_error_msg}",
+                    style="bold yellow",
+                )
+        else:
+            console.print("ℹ️ Monitoring is disabled in config", style="dim")
+
+    except Exception as e:
+        console.print(f"⚠️ Failed to start monitoring: {e}", style="bold yellow")
