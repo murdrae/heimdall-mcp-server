@@ -2,7 +2,9 @@
 
 ## Executive Overview
 
-This document extends the high-level architecture plan with concrete technical decisions and implementation details for the cognitive memory system. The system implements true cognitive processing for Large Language Models using Python 3.13, enabling associative thinking, serendipitous connections, and emergent insights through multi-dimensional memory representation and dynamic activation patterns.
+This document provides the technical architecture specification for the Heimdall cognitive memory system. The system implements true cognitive processing for Large Language Models using Python 3.13, enabling associative thinking, serendipitous connections, and emergent insights through multi-dimensional memory representation and dynamic activation patterns.
+
+The architecture delivers a production-ready Python package distributed via pip, providing unified command-line interfaces and AI-agnostic MCP protocol support. The system uses a shared Qdrant vector database with project-scoped collections to enable efficient multi-project isolation while minimizing resource overhead. Core design principles emphasize operations-first architecture, clean interface separation, and subprocess delegation for optimal memory management.
 
 ## Technology Stack and Design Decisions
 
@@ -29,209 +31,193 @@ This document extends the high-level architecture plan with concrete technical d
 
 | Component | Technology Choice | Technical Details |
 |-----------|------------------|------------------|
-| **Configuration** | .env files | Environment-specific settings with python-dotenv |
+| **Configuration** | YAML + .env files | Project-local YAML config with environment variable fallbacks |
 | **Logging** | Loguru | Structured logging for cognitive events and debugging |
-| **API Interfaces** | CLI + MCP + HTTP | Multiple interfaces to cognitive core system |
-| **Deployment** | Local-only | Single-machine development and testing |
+| **API Interfaces** | Unified CLI + MCP Protocol | Dual entry points: `heimdall` terminal interface, `heimdall-mcp` AI-agnostic server |
+| **Deployment** | Standard Python Package | pip installable with cross-platform compatibility |
+| **Process Management** | Subprocess Delegation | Lightweight monitoring with CLI subprocess execution |
 
 ## System Architecture
 
-### Enhanced Component Diagram
+### System Architecture Overview
 
 ```mermaid
 graph TB
-    subgraph "Technology Layer"
-        ONNX[ONNX Runtime]
-        NUMPY[NumPy]
-        QDRANT[Qdrant Vector DB]
-        SQLITE[SQLite + JSON]
-        ONNXMODEL[ONNX all-MiniLM-L6-v2]
+    subgraph "Interface Layer"
+        CLI[heimdall CLI<br/>Terminal Interface]
+        MCP[heimdall-mcp<br/>AI Protocol Server]
+        SHELL[Interactive Shell<br/>Rich UI]
     end
 
-    subgraph "Input Processing"
-        EXP[Experience Input]
-        TXT[Text Preprocessing]
+    subgraph "Operations Layer"
+        OPS[CognitiveOperations<br/>Business Logic Core]
     end
 
-    subgraph "Multi-Dimensional Encoding"
-        MDE[Multi-Dimensional Encoder]
-        RBE[Rule-Based Extractor]
-        SEN[Sentiment Analysis]
-        TEM[Temporal Extraction]
-        CON[Context Inference]
+    subgraph "Cognitive Core"
+        ENCODER[Multi-Dimensional Encoder]
+        STORAGE[Hierarchical Memory Storage]
+        RETRIEVAL[Contextual Retrieval Engine]
+        MONITOR[Lightweight File Monitor]
     end
 
-    subgraph "Memory Storage"
-        HMS[Hierarchical Memory Storage]
-        L0[L0: Concepts Collection]
-        L1[L1: Contexts Collection]
-        L2[L2: Episodes Collection]
-        DMS[Dual Memory System]
-        EPI[Episodic Memory]
-        SEM[Semantic Memory]
+    subgraph "Storage Infrastructure"
+        QDRANT[Shared Qdrant Instance<br/>Project-Scoped Collections]
+        SQLITE[SQLite Persistence<br/>Metadata & Connections]
+        MODELS[ONNX Model Cache<br/>Local Embeddings]
     end
 
-    subgraph "Cognitive Processing"
-        CAE[Context-Driven Activation]
-        BFS[BFS Traversal]
-        BDM[Bridge Discovery]
-        INV[Distance Inversion]
+    subgraph "Process Management"
+        DAEMON[Monitor Daemon<br/>File Watching]
+        SUBPROCESS[CLI Subprocesses<br/>Memory Operations]
     end
 
-    subgraph "Persistence Layer"
-        META[Memory Metadata]
-        CONN[Connection Graph]
-        STATS[Usage Statistics]
-    end
+    CLI --> OPS
+    MCP --> OPS
+    SHELL --> OPS
 
-    EXP --> TXT
-    TXT --> MDE
-    MDE --> RBE
-    MDE --> SEN
-    MDE --> TEM
-    MDE --> CON
+    OPS --> ENCODER
+    OPS --> STORAGE
+    OPS --> RETRIEVAL
 
-    MDE --> HMS
-    HMS --> L0
-    HMS --> L1
-    HMS --> L2
-    HMS --> DMS
-    DMS --> EPI
-    DMS --> SEM
+    ENCODER --> MODELS
+    STORAGE --> QDRANT
+    STORAGE --> SQLITE
+    RETRIEVAL --> QDRANT
+    RETRIEVAL --> SQLITE
 
-    HMS --> CAE
-    CAE --> BFS
-    CAE --> BDM
-    BDM --> INV
+    MONITOR --> DAEMON
+    DAEMON --> SUBPROCESS
+    SUBPROCESS --> CLI
 
-    HMS --> SQLITE
-    SQLITE --> META
-    SQLITE --> CONN
-    SQLITE --> STATS
-
-    ONNXMODEL --> MDE
-    ONNX --> MDE
-    NUMPY --> MDE
-    QDRANT --> HMS
-
-    style ONNX fill:#ff6b35
-    style NUMPY fill:#ff9500
+    style OPS fill:#ff6b35
     style QDRANT fill:#4a90e2
-    style SQLITE fill:#5ac8fa
-    style ONNXMODEL fill:#34c759
+    style CLI fill:#34c759
+    style MCP fill:#34c759
+    style DAEMON fill:#ff9500
 ```
 
-## Automatic File Change Monitoring
+### Interface Architecture Design
 
-The system includes production-ready automatic file change monitoring that synchronizes markdown files with cognitive memory in real-time. The monitoring system uses a hybrid architecture: markdown-specific file detection combined with a generic synchronization layer that can be extended to support other file types.
+```mermaid
+graph LR
+    subgraph "Data Flow"
+        INPUT[Experience Input]
+        PROCESS[Multi-Dimensional<br/>Processing]
+        STORE[Hierarchical<br/>Storage]
+        RETRIEVE[Contextual<br/>Retrieval]
+        OUTPUT[Formatted Output]
+    end
+
+    subgraph "Interface Separation"
+        OPERATIONS[Operations Layer<br/>Data-First APIs]
+        FORMAT[Interface Formatting<br/>Consumer-Specific]
+    end
+
+    INPUT --> PROCESS
+    PROCESS --> STORE
+    STORE --> OPERATIONS
+    OPERATIONS --> RETRIEVE
+    RETRIEVE --> FORMAT
+    FORMAT --> OUTPUT
+
+    style OPERATIONS fill:#ff6b35
+    style FORMAT fill:#4a90e2
+```
+
+## Lightweight File Monitoring Architecture
+
+The system implements a memory-efficient file monitoring architecture using subprocess delegation to eliminate memory leaks and optimize resource usage. The monitoring process remains lightweight by delegating cognitive operations to isolated CLI subprocesses.
 
 ### Architecture Components
 
-#### Markdown File Monitoring
-- **MarkdownFileMonitor**: Polling-based detection specifically for markdown files (`.md`, `.markdown`, `.mdown`, `.mkd`)
-- **FileChangeEvent System**: Observer pattern with ChangeType enum (ADDED, MODIFIED, DELETED)
-- **FileState Tracking**: Monitors file mtime, size, and existence with efficient change detection
-- **Cross-platform Compatibility**: Reliable polling approach that works on all operating systems
+#### Lightweight Monitor Process
+- **LightweightMonitor**: Core monitoring daemon with minimal memory footprint (<50MB target)
+- **MarkdownFileWatcher**: Polls `.heimdall/docs` directory for markdown file changes
+- **EventQueue**: Thread-safe queue with event deduplication and batching
+- **SingletonLock**: File-based process coordination preventing multiple monitor instances
 
-#### Generic File Synchronization Layer
-- **FileSyncHandler**: Generic file synchronization using MemoryLoader interface pattern
-- **LoaderRegistry**: Discovers and manages MemoryLoader implementations for different file types
-- **File Type Detection**: Automatic loader selection via extension matching and source validation
-- **Atomic Operations**: Delete+reload pattern with transaction-like error handling for consistency
+#### Subprocess Delegation Pattern
+- **CLI Subprocess Execution**: Heavy cognitive operations run as isolated `heimdall` command processes
+- **Command Mapping**: File events map to specific CLI commands (`load`, `remove-file`)
+- **Retry Logic**: Configurable retry attempts with exponential backoff for transient failures
+- **Process Isolation**: Each cognitive operation runs independently and exits cleanly
 
-#### Service Integration
-- **MonitoringService**: Container-integrated daemon with lifecycle management (`start/stop/restart/status/health`)
-- **Process Management**: PID file tracking and signal handling (SIGTERM/SIGINT)
-- **Health Monitoring**: Service status included in container health check system
-- **Error Recovery**: Automatic restart with exponential backoff on failures
+#### Resource Management
+- **Context Managers**: Guaranteed resource cleanup using Python context management
+- **Signal Handling**: Graceful shutdown coordination via threading.Event
+- **Lock Management**: Cross-platform file locking using portalocker library
+- **PID Coordination**: Project-local PID files preventing conflicts
 
 ### CLI Integration
 
-The unified `heimdall` CLI provides monitoring commands:
+The monitoring service integrates with the unified CLI architecture:
 
 ```bash
-# Monitoring service management
-heimdall monitor start      # Start monitoring service
-heimdall monitor stop       # Stop monitoring service
-heimdall monitor restart    # Restart monitoring service
-heimdall monitor status     # Check service status
-heimdall monitor health     # Detailed health check
+# Monitoring lifecycle management
+heimdall monitor start      # Start lightweight daemon process
+heimdall monitor stop       # Stop monitoring service gracefully
+heimdall monitor restart    # Restart with state preservation
+heimdall monitor status     # Display daemon status and statistics
+heimdall monitor health     # Comprehensive health validation
 
-# Health check integration
-heimdall doctor             # Includes monitoring service validation
+# Project initialization with monitoring
+heimdall project init       # Automatically enables monitoring if configured
 ```
 
-### Memory Source Path Querying
+### Subprocess Command Delegation
 
-SQLite persistence provides source path querying capabilities:
+File change events trigger specific CLI subprocess execution:
 
-```sql
--- JSON index for performance
-CREATE INDEX idx_memories_source_path ON memories(
-    JSON_EXTRACT(context_metadata, '$.source_path')
-) WHERE JSON_EXTRACT(context_metadata, '$.source_path') IS NOT NULL;
+```bash
+# File addition/modification
+File Changed: docs/example.md → heimdall load docs/example.md
+
+# File deletion
+File Deleted: docs/example.md → heimdall remove-file docs/example.md
 ```
 
-**Methods**:
-- `get_memories_by_source_path()`: Efficiently query memories by source file path
-- `delete_memories_by_source_path()`: Atomic deletion of all memories from a specific file
+### Configuration Integration
 
-### Configuration
-
-Key environment variables for container deployment:
+Monitoring configuration through project-local YAML:
 
 ```yaml
-MONITORING_ENABLED=true                    # Enable automatic monitoring
-MONITORING_INTERVAL_SECONDS=5.0            # Polling interval
-SYNC_ENABLED=true                          # Enable file synchronization
-SYNC_ATOMIC_OPERATIONS=true                # Use atomic operations
+# .heimdall/config.yaml
+monitoring:
+  enabled: true
+  interval_seconds: 5.0
+  target_path: ".heimdall/docs"
+
+sync:
+  enabled: true
+  atomic_operations: true
 ```
 
-### Data Flow
+### Memory Efficiency Design
+
+The architecture prioritizes memory efficiency through several mechanisms:
+
+- **Lazy Loading**: Cognitive system loaded only when processing files, not at daemon startup
+- **Process Isolation**: Each file operation runs in separate subprocess with automatic cleanup
+- **Minimal Dependencies**: Monitor process imports only essential modules for file watching
+- **Resource Bounds**: Configurable limits on concurrent subprocess execution
+
+### Data Flow Architecture
 
 ```
-Container Startup → MonitoringService → MarkdownFileMonitor → FileSyncHandler → CognitiveSystem
-                         ↓                        ↓                    ↓
-File Changes → FileChangeEvent → FileSyncHandler → LoaderRegistry → MemoryLoader (auto-selected) → Memory Operations
+Daemon Process → File Watcher → Event Queue → Subprocess Coordinator → CLI Commands
+     ↓               ↓              ↓              ↓                    ↓
+Lightweight    File Changes   Event Batching   Command Mapping    Memory Operations
+(<50MB)        Detection      & Deduplication   & Execution        (Isolated Process)
 ```
 
-### Component Interaction
+### Extensibility Framework
 
-The monitoring architecture uses three distinct layers:
+The monitoring system supports extension through modular components:
 
-1. **Detection Layer (MarkdownFileMonitor)**:
-   - Polls markdown files for changes using file state tracking (mtime, size, existence)
-   - Emits FileChangeEvents for ADDED/MODIFIED/DELETED files
-   - Currently specialized for markdown extensions only
-
-2. **Coordination Layer (FileSyncHandler)**:
-   - Receives FileChangeEvents from file monitor
-   - Implements atomic delete+reload operations for consistency
-   - Orchestrates synchronization workflow with error recovery
-
-3. **Loading Layer (LoaderRegistry + MemoryLoaders)**:
-   - Auto-discovers appropriate MemoryLoader based on file extension and validation
-   - Converts files to memory objects using existing loader implementations
-   - Provides extensibility point for future file types
-
-### Extensibility
-
-The monitoring system uses a hybrid extensibility model that separates file detection from memory loading:
-
-**Current Implementation**:
-- **MarkdownFileMonitor**: Hardcoded to monitor only markdown files (`.md`, `.markdown`, `.mdown`, `.mkd`)
-- **LoaderRegistry**: Generic registry that auto-discovers and manages any MemoryLoader implementation
-- **FileSyncHandler**: Generic synchronization coordinator that works with any file type
-
-**Adding New File Types**:
-1. **Implement MemoryLoader**: Create a new MemoryLoader for the file type (e.g., PDFMemoryLoader)
-2. **Register with LoaderRegistry**: The registry will automatically handle file type detection and delegation
-3. **File Monitoring**: Extend (and rename to generic) MarkdownFileMonitor to support additional extensions
-
-**Design Benefits**:
-- Memory loading is already generic and extensible
-- File monitoring can be specialized per file type for optimal detection strategies
-- FileSyncHandler provides consistent atomic operations across all file types
+- **File Type Detection**: Configurable file extension monitoring patterns
+- **Command Mapping**: Pluggable mapping from file events to CLI commands
+- **Retry Strategies**: Configurable retry logic for different failure modes
+- **Health Monitoring**: Extensible health check framework for service validation
 
 ## Technical Implementation Details
 
@@ -555,13 +541,19 @@ logger.error("Qdrant connection failed", error=str(e))
          ▼                 ▼                        ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    UNIFIED CLI LAYER                           │
-│                memory_system [command]                         │
+│                    heimdall [command]                          │
 ├─────────────────────────────────────────────────────────────────┤
 │ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
-│ │   qdrant    │ │    serve    │ │    shell    │ │   doctor    │ │
-│ │   start     │ │    http     │ │ interactive │ │ health      │ │
-│ │   stop      │ │    mcp      │ │    REPL     │ │ checks      │ │
-│ │   status    │ │             │ │             │ │             │ │
+│ │   qdrant    │ │   project   │ │   monitor   │ │   doctor    │ │
+│ │ start/stop  │ │ init/list   │ │ start/stop  │ │ health      │ │
+│ │   status    │ │   clean     │ │   status    │ │ checks      │ │
+│ │   logs      │ │             │ │             │ │             │ │
+│ └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
+│ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
+│ │    store    │ │   recall    │ │    load     │ │    shell    │ │
+│ │ experience  │ │  memories   │ │   files     │ │ interactive │ │
+│ │             │ │             │ │  git-load   │ │    REPL     │ │
+│ │             │ │             │ │             │ │             │ │
 │ └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
          │
@@ -580,20 +572,20 @@ logger.error("Qdrant connection failed", error=str(e))
 ┌─────────────────────────────────────────────────────────────────┐
 │                    STORAGE LAYER                               │
 ├─────────────────┬───────────────────────────┬───────────────────┤
-│   VECTOR DB     │      METADATA DB          │   SERVICE MGR     │
+│   VECTOR DB     │      METADATA DB          │   MODEL CACHE     │
 │                 │                           │                   │
 │ ┌─────────────┐ │ ┌─────────────────────────┐ │ ┌─────────────┐ │
-│ │   QDRANT    │ │ │        SQLITE           │ │ │  DOCKER     │ │
-│ │             │ │ │                         │ │ │ CONTAINER   │ │
-│ │ Concepts    │ │ │ • Memory metadata       │ │ │ MANAGER     │ │
-│ │ Contexts    │ │ │ • Connection graph      │ │ │             │ │
-│ │ Episodes    │ │ │ • Usage statistics      │ │ │ Fallback:   │ │
-│ │             │ │ │ • Bridge cache          │ │ │ Local       │ │
-│ │ 512D        │ │ │                         │ │ │ Binary      │ │
-│ │ Vectors     │ │ │ Relationships & Meta    │ │ │             │ │
+│ │   QDRANT    │ │ │        SQLITE           │ │ │    ONNX     │ │
+│ │   SHARED    │ │ │                         │ │ │   MODELS    │ │
+│ │ Project-    │ │ │ • Memory metadata       │ │ │             │ │
+│ │ Scoped      │ │ │ • Connection graph      │ │ │ Embeddings  │ │
+│ │ Collections │ │ │ • Usage statistics      │ │ │ Sentiment   │ │
+│ │             │ │ │ • Bridge cache          │ │ │ Analysis    │ │
+│ │ 400D        │ │ │                         │ │ │             │ │
+│ │ Vectors     │ │ │ Relationships & Meta    │ │ │ Cached      │ │
 │ └─────────────┘ │ └─────────────────────────┘ │ └─────────────┘ │
 │                 │                           │                   │
-│ Port: 6333      │ File: ./data/memory.db    │ Auto-managed      │
+│ Port: 6333      │ ~/.local/share/heimdall   │ Local Files     │
 └─────────────────┴───────────────────────────┴───────────────────┘
 ```
 
@@ -712,10 +704,11 @@ Experience Input → Multi-dimensional Encoding → Vector Storage (Qdrant)
 ```
 
 #### How Components Work Together
-1. **Setup Phase**: System checks for Docker, downloads Qdrant binary if needed, creates data directories, initializes collections
+1. **Setup Phase**: System creates shared data directories, initializes project-scoped collections, starts shared Qdrant service as needed
 2. **Runtime Architecture**: Dual entry points - `heimdall` command for terminal use, `heimdall-mcp` for AI integration
-3. **Persistent Storage**: Memories survive restarts via Docker volumes/local files
+3. **Persistent Storage**: Memories survive restarts via shared Qdrant instance and local metadata files
 4. **AI System Integration**: LLMs connect via standalone MCP server for real-time memory operations, context preservation, serendipitous discovery
+5. **Process Management**: Lightweight monitoring delegates to CLI subprocesses for memory operations
 
 **API Operations**:
 - `store_experience(text, context)` - Form new memory
@@ -725,12 +718,10 @@ Experience Input → Multi-dimensional Encoding → Vector Storage (Qdrant)
 
 **Project Structure**:
 ```
-heimdall-mcp-server/
+cognitive-memory/
 ├── .env                      # Environment configuration
 ├── .pre-commit-config.yaml   # Git hook configuration
 ├── pyproject.toml           # Python project settings
-├── requirements.txt         # Production dependencies
-├── requirements-dev.txt     # Development dependencies
 ├── CLAUDE.md               # Project instructions for AI assistants
 ├── cognitive_memory/        # Core cognitive system
 │   ├── core/               # System interfaces and orchestration
@@ -738,7 +729,8 @@ heimdall-mcp-server/
 │   ├── storage/            # Qdrant + SQLite persistence layer
 │   ├── retrieval/          # Memory activation and bridge discovery
 │   ├── git_analysis/       # Git commit processing and analysis
-│   └── loaders/            # Content ingestion (markdown, git)
+│   ├── loaders/            # Content ingestion (markdown, git)
+│   └── monitoring/         # File change detection
 ├── heimdall/               # Unified CLI and MCP interfaces
 │   ├── cli.py             # Main heimdall command entry point
 │   ├── operations.py      # Pure operations layer (business logic)
@@ -746,34 +738,41 @@ heimdall-mcp-server/
 │   ├── interactive_shell.py # Interactive memory operations
 │   ├── display_utils.py   # Rich terminal formatting utilities
 │   ├── cli_commands/      # Modular CLI command implementations
-│   └── cognitive_system/  # Service management utilities
-├── interfaces/             # Legacy API implementations (deprecated)
-│   ├── cli.py             # Legacy CognitiveCLI
-│   ├── mcp_server.py      # Legacy MCP server
-│   └── mcp_tools/         # Individual MCP tool implementations
+│   ├── cognitive_system/  # Service management utilities
+│   └── monitoring/        # Lightweight file monitoring
 ├── docker/                 # Container infrastructure
-│   ├── Dockerfile         # Cognitive memory container image
-│   ├── docker-compose.template.yml # Project-specific containers
-│   └── entrypoint.sh      # Container initialization
+│   └── docker-compose.template.yml # Shared Qdrant service
 ├── scripts/               # Automation and setup utilities
-│   ├── setup_project_memory.sh    # Project isolation setup
 │   ├── setup_claude_code_mcp.sh   # Claude Code integration
-│   ├── load_project_content.sh    # Batch content loading
-│   └── claude_mcp_wrapper.sh      # MCP transport wrapper
+│   ├── post_commit_hook.py        # Git hook integration
+│   └── git_hook_installer.py      # Git hook management
 ├── docs/                  # Architecture and usage documentation
 │   ├── arch-docs/         # Technical architecture specifications
-│   └── progress/          # Development progress tracking
-├── tests/                 # Comprehensive test suite
-│   ├── unit/              # Component-level tests
-│   ├── integration/       # Cross-component integration tests
-│   └── e2e/               # End-to-end system tests
-└── data/                  # Local data storage (created at runtime)
-    ├── cognitive_memory.db # SQLite metadata database
-    └── models/            # ONNX model files
+│   ├── progress/          # Development progress tracking
+│   └── monitoring-architecture.md # File monitoring details
+└── tests/                 # Comprehensive test suite
+    ├── unit/              # Component-level tests
+    ├── integration/       # Cross-component integration tests
+    └── e2e/               # End-to-end system tests
 ```
 
 ## Conclusion
 
-This technical specification provides a concrete implementation path for the cognitive memory system, balancing ambitious cognitive capabilities with practical engineering constraints. The interface-driven architecture enables rapid iteration and component swapping, while the phased approach ensures deliverable milestones throughout development.
+This technical specification provides the architectural foundation for the Heimdall cognitive memory system, balancing advanced cognitive capabilities with practical engineering constraints. The operations-first architecture enables clean separation of concerns, making the system maintainable and extensible for future interface additions.
 
-The chosen technology stack (Qdrant + ONNX Runtime + NumPy + SQLite) provides the optimal balance of cognitive fidelity, deployment efficiency, and operational simplicity. The ONNX migration achieved a 920MB Docker image reduction (56.8% smaller) while maintaining identical functionality and performance.
+The chosen technology stack (Shared Qdrant + ONNX Runtime + NumPy + SQLite) provides optimal cognitive fidelity, deployment efficiency, and operational simplicity. The unified CLI architecture with subprocess delegation ensures memory efficiency while maintaining comprehensive functionality.
+
+## Detailed Implementation Documentation
+
+For specific implementation details and development progress, refer to the following specialized documents:
+
+### Architecture Details
+- **Unified CLI Architecture**: `docs/arch-docs/unified-cli-architecture.md` - Operations layer design and interface separation
+- **File Monitoring Architecture**: `docs/monitoring-architecture.md` - Lightweight subprocess delegation patterns
+
+### Implementation Progress
+- **Shared Qdrant Migration**: `docs/progress/021_shared_qdrant_architecture.md` - Project isolation via collections
+- **CLI Consolidation**: `docs/progress/022_unified_cli_architecture.md` - Operations-first design implementation
+- **Lightweight Monitoring**: `docs/progress/023_lightweight_monitoring_architecture.md` - Memory-efficient file monitoring
+
+These documents provide comprehensive technical details, implementation decisions, and development milestones for each architectural component.

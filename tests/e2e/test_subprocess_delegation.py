@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from loguru import logger
 
-from cognitive_memory.monitoring import ChangeType, FileChangeEvent
+from heimdall.monitoring.file_types import ChangeType, FileChangeEvent
 from heimdall.monitoring.lightweight_monitor import LightweightMonitor
 
 

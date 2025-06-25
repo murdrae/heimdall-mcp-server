@@ -1,7 +1,6 @@
 """File monitoring service management commands."""
 
 import json
-from typing import Any
 
 import typer
 from rich.console import Console
@@ -18,7 +17,6 @@ console = Console()
 
 
 def monitor_start(
-    daemon: bool = typer.Option(False, help="Run in daemon mode"),
     project_root: str | None = typer.Option(None, help="Project root directory"),
 ) -> None:
     """Start file monitoring service."""
@@ -33,7 +31,7 @@ def monitor_start(
 
         try:
             service = MonitoringService(project_root=project_root)
-            success = service.start(daemon_mode=daemon)
+            success = service.start()
 
             if success:
                 progress.update(task, description="✅ Monitoring service started")
@@ -41,16 +39,10 @@ def monitor_start(
                     "✅ File monitoring service started successfully",
                     style="bold green",
                 )
-
-                if daemon:
-                    console.print(
-                        "🔄 Running in daemon mode - monitoring files in background",
-                        style="dim",
-                    )
-                else:
-                    console.print(
-                        "👀 Monitoring files - press Ctrl+C to stop", style="dim"
-                    )
+                console.print(
+                    "🔄 Running in daemon mode - monitoring files in background",
+                    style="dim",
+                )
 
                 # Show status info
                 status = service.get_status()
@@ -61,39 +53,6 @@ def monitor_start(
                 info_table.add_row("PID", str(status["pid"]))
                 info_table.add_row("Files Monitored", str(status["files_monitored"]))
                 console.print(info_table)
-
-                # Keep running in foreground if not daemon mode
-                if not daemon:
-                    try:
-                        import signal
-                        import time
-
-                        def signal_handler(sig: int, frame: Any) -> None:
-                            console.print(
-                                "\n🛑 Stopping monitoring service...",
-                                style="bold yellow",
-                            )
-                            service.stop()
-                            console.print(
-                                "✅ Monitoring service stopped", style="bold green"
-                            )
-                            raise SystemExit(0)
-
-                        signal.signal(signal.SIGINT, signal_handler)
-                        signal.signal(signal.SIGTERM, signal_handler)
-
-                        # Keep running until interrupted
-                        while service._is_service_running():
-                            time.sleep(1)
-
-                    except KeyboardInterrupt:
-                        console.print(
-                            "\n🛑 Stopping monitoring service...", style="bold yellow"
-                        )
-                        service.stop()
-                        console.print(
-                            "✅ Monitoring service stopped", style="bold green"
-                        )
 
             else:
                 progress.update(task, description="❌ Failed to start monitoring")

@@ -11,7 +11,7 @@ from typing import Any
 
 from loguru import logger
 
-from ..core.interfaces import MemoryLoader
+from cognitive_memory.core.interfaces import MemoryLoader
 
 
 class LoaderRegistry:
@@ -219,8 +219,8 @@ def create_default_registry() -> LoaderRegistry:
 
     # Import and register standard loaders
     try:
-        from ..core.config import CognitiveConfig
-        from ..loaders.markdown_loader import MarkdownMemoryLoader
+        from cognitive_memory.core.config import CognitiveConfig
+        from cognitive_memory.loaders.markdown_loader import MarkdownMemoryLoader
 
         # Create default config for loaders
         config = CognitiveConfig()

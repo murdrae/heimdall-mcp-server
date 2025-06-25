@@ -5,23 +5,288 @@ Lightweight file monitoring process with subprocess delegation.
 Provides file change detection and delegates cognitive operations to CLI subprocesses.
 """
 
+import argparse
 import os
 import queue
 import signal
 import subprocess
+import sys
 import threading
 import time
+
+# ================================================================================
+# COPIED CODE FROM file_types.py - AVOID PACKAGE IMPORTS FOR MEMORY EFFICIENCY
+# ================================================================================
+#
+# IMPORTANT: This code is intentionally DUPLICATED from heimdall/monitoring/file_types.py
+# to avoid importing from the heimdall package, which would load all heavy dependencies
+# (200MB+ ML stack) into the lightweight monitoring process.
+#
+# MAINTENANCE STRATEGY:
+# 1. Any changes to file monitoring logic should be made in BOTH files
+# 2. Keep this copy minimal - only include what's needed for monitoring
+# 3. Add tests to ensure both implementations stay in sync
+# 4. Consider this technical debt that enables <50MB memory target
+#
+# WHY THIS APPROACH:
+# - Python package imports load ALL dependencies transitively
+# - heimdall package includes onnxruntime, numpy, spacy, qdrant (200MB+)
+# - Standalone script with copied code uses only stdlib + lightweight deps (~20MB)
+# - Achieves architecture goal of lightweight monitoring with subprocess delegation
+#
+# COPIED FROM: heimdall/monitoring/file_types.py
+# LAST SYNC: 2025-06-25
+# ================================================================================
+from collections.abc import Callable
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import portalocker
 from loguru import logger
 
-from cognitive_memory.monitoring import (
-    ChangeType,
-    FileChangeEvent,
-    MarkdownFileMonitor,
-)
+
+class ChangeType(Enum):
+    """Types of file changes that can be detected."""
+
+    ADDED = "added"
+    MODIFIED = "modified"
+    DELETED = "deleted"
+
+
+@dataclass
+class FileChangeEvent:
+    """Represents a file change event."""
+
+    path: Path
+    change_type: ChangeType
+    timestamp: float
+
+    def __str__(self) -> str:
+        change_type_str = getattr(self.change_type, "value", str(self.change_type))
+        return f"{change_type_str}: {self.path} at {self.timestamp}"
+
+
+@dataclass
+class FileState:
+    """Tracks the state of a monitored file."""
+
+    path: Path
+    exists: bool
+    mtime: float | None = None
+    size: int | None = None
+
+    @classmethod
+    def from_path(cls, path: Path) -> "FileState":
+        """Create FileState by examining the current file."""
+        try:
+            if path.exists():
+                stat = path.stat()
+                return cls(
+                    path=path, exists=True, mtime=stat.st_mtime, size=stat.st_size
+                )
+            else:
+                return cls(path=path, exists=False)
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Cannot stat file {path}: {e}")
+            return cls(path=path, exists=False)
+
+    def has_changed(self, other: "FileState") -> bool:
+        """Check if this state differs from another state."""
+        if self.exists != other.exists:
+            return True
+        if self.exists and other.exists:
+            return self.mtime != other.mtime or self.size != other.size
+        return False
+
+    def detect_change_type(self, previous: "FileState") -> ChangeType | None:
+        """Determine the type of change from previous state."""
+        if not previous.exists and self.exists:
+            return ChangeType.ADDED
+        elif previous.exists and not self.exists:
+            return ChangeType.DELETED
+        elif (
+            previous.exists
+            and self.exists
+            and (self.mtime != previous.mtime or self.size != previous.size)
+        ):
+            return ChangeType.MODIFIED
+        return None
+
+
+class FileMonitor:
+    """
+    Minimal file monitor with no heavy dependencies.
+
+    Monitors markdown files for changes using polling-based detection.
+    This implementation has minimal memory footprint and no ML dependencies.
+    """
+
+    # Supported markdown file extensions
+    MARKDOWN_EXTENSIONS = {".md", ".markdown", ".mdown", ".mkd"}
+
+    def __init__(
+        self, polling_interval: float = 5.0, ignore_patterns: set[str] | None = None
+    ):
+        """Initialize file monitor."""
+        self.polling_interval = polling_interval
+        self.ignore_patterns = ignore_patterns or {
+            ".git",
+            "__pycache__",
+            ".pytest_cache",
+        }
+        self.file_states: dict[Path, FileState] = {}
+        self.callbacks: dict[ChangeType, list[Callable[[FileChangeEvent], None]]] = {
+            ChangeType.ADDED: [],
+            ChangeType.MODIFIED: [],
+            ChangeType.DELETED: [],
+        }
+        self.monitoring = False
+        self.monitor_thread: threading.Thread | None = None
+        self.monitored_paths: set[Path] = set()
+
+    def register_callback(
+        self, change_type: ChangeType, callback: Callable[[FileChangeEvent], None]
+    ) -> None:
+        """Register callback for specific change type."""
+        self.callbacks[change_type].append(callback)
+        logger.debug(f"Registered callback for {change_type.value} events")
+
+    def add_path(self, path: Path) -> None:
+        """Add path to monitoring."""
+        if path.is_dir():
+            self.monitored_paths.add(path)
+            logger.debug(f"Added directory to monitoring: {path}")
+        else:
+            logger.warning(f"Path is not a directory: {path}")
+
+    def remove_path(self, path: Path) -> None:
+        """Remove path from monitoring."""
+        if path in self.monitored_paths:
+            self.monitored_paths.remove(path)
+            logger.debug(f"Removed directory from monitoring: {path}")
+        else:
+            logger.warning(f"Path not currently monitored: {path}")
+
+    def get_monitored_files(self) -> set[Path]:
+        """Get all markdown files in monitored paths."""
+        files = set()
+        for path in self.monitored_paths:
+            if path.exists() and path.is_dir():
+                for file_path in path.rglob("*"):
+                    if (
+                        file_path.is_file()
+                        and file_path.suffix.lower() in self.MARKDOWN_EXTENSIONS
+                        and not self._should_ignore_path(file_path)
+                    ):
+                        files.add(file_path)
+        return files
+
+    def _should_ignore_path(self, path: Path) -> bool:
+        """Check if path should be ignored."""
+        path_str = str(path)
+        return any(pattern in path_str for pattern in self.ignore_patterns)
+
+    def start_monitoring(self) -> None:
+        """Start file monitoring in background thread."""
+        import threading
+
+        if self.monitoring:
+            logger.warning("File monitoring is already running")
+            return
+
+        self.monitoring = True
+        self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self.monitor_thread.start()
+        logger.info(f"Started file monitoring with {self.polling_interval}s interval")
+
+    def stop_monitoring(self) -> None:
+        """Stop file monitoring."""
+        if not self.monitoring:
+            logger.warning("File monitoring is not running")
+            return
+
+        logger.info("Stopping file monitoring...")
+        self.monitoring = False
+
+        if self.monitor_thread:
+            self.monitor_thread.join(timeout=10)
+            if self.monitor_thread.is_alive():
+                logger.warning("Monitor thread did not stop within timeout")
+            else:
+                logger.info("File monitoring stopped")
+
+        self.monitor_thread = None
+
+    def _monitor_loop(self) -> None:
+        """Main monitoring loop."""
+        logger.debug("File monitoring loop started")
+
+        while self.monitoring:
+            try:
+                self._scan_files()
+                time.sleep(self.polling_interval)
+            except Exception as e:
+                logger.error(f"Error in monitoring loop: {e}")
+                time.sleep(self.polling_interval)
+
+        logger.debug("File monitoring loop ended")
+
+    def _scan_files(self) -> None:
+        """Scan files for changes and emit events."""
+        current_files = self.get_monitored_files()
+        current_states = {path: FileState.from_path(path) for path in current_files}
+
+        # Check for deleted files
+        for path in set(self.file_states.keys()) - current_files:
+            if path in self.file_states:
+                deleted_state = FileState(path=path, exists=False)
+                change_type = deleted_state.detect_change_type(self.file_states[path])
+                if change_type == ChangeType.DELETED:
+                    self._emit_event(
+                        FileChangeEvent(
+                            path=path, change_type=change_type, timestamp=time.time()
+                        )
+                    )
+                del self.file_states[path]
+
+        # Check for added and modified files
+        for path, current_state in current_states.items():
+            previous_state = self.file_states.get(path)
+
+            if previous_state is None:
+                # New file
+                self._emit_event(
+                    FileChangeEvent(
+                        path=path, change_type=ChangeType.ADDED, timestamp=time.time()
+                    )
+                )
+            elif current_state.has_changed(previous_state):
+                change_type = current_state.detect_change_type(previous_state)
+                if change_type:
+                    self._emit_event(
+                        FileChangeEvent(
+                            path=path, change_type=change_type, timestamp=time.time()
+                        )
+                    )
+
+            self.file_states[path] = current_state
+
+    def _emit_event(self, event: FileChangeEvent) -> None:
+        """Emit file change event to registered callbacks."""
+        logger.debug(f"File change detected: {event}")
+
+        for callback in self.callbacks.get(event.change_type, []):
+            try:
+                callback(event)
+            except Exception as e:
+                logger.error(f"Error in file change callback: {e}")
+
+
+# ================================================================================
+# END COPIED CODE
+# ================================================================================
 
 
 class LightweightMonitorError(Exception):
@@ -232,7 +497,7 @@ class MarkdownFileWatcher:
     """
     Markdown file monitoring with event queue integration.
 
-    Wraps MarkdownFileMonitor and forwards events to internal EventQueue.
+    Wraps FileMonitor and forwards events to internal EventQueue.
     """
 
     def __init__(
@@ -253,7 +518,7 @@ class MarkdownFileWatcher:
         }
 
         # Create underlying monitor
-        self.monitor = MarkdownFileMonitor(
+        self.monitor = FileMonitor(
             polling_interval=polling_interval, ignore_patterns=self.ignore_patterns
         )
 
@@ -270,12 +535,14 @@ class MarkdownFileWatcher:
 
     def add_path(self, path: str | Path) -> None:
         """Add path to monitoring."""
-        self.monitor.add_path(path)
+        path_obj = Path(path) if isinstance(path, str) else path
+        self.monitor.add_path(path_obj)
         logger.debug(f"Added path to watcher: {path}")
 
     def remove_path(self, path: str | Path) -> None:
         """Remove path from monitoring."""
-        self.monitor.remove_path(path)
+        path_obj = Path(path) if isinstance(path, str) else path
+        self.monitor.remove_path(path_obj)
         logger.debug(f"Removed path from watcher: {path}")
 
     def start_monitoring(self) -> None:
@@ -338,6 +605,9 @@ class LightweightMonitor:
             "last_activity": None,
         }
 
+        # Status file for daemon communication
+        self.status_file = self.project_root / ".heimdall" / "monitor_status.json"
+
         # Subprocess configuration
         self.max_retries = 3
         self.retry_delay = 2.0  # seconds
@@ -380,6 +650,9 @@ class LightweightMonitor:
             started_time = time.time()
             self.started_at = started_time
             self.stats["started_at"] = started_time
+
+            # Write initial status file
+            self._write_status_file()
 
             logger.info("Lightweight monitoring started successfully")
             return True
@@ -430,9 +703,18 @@ class LightweightMonitor:
         logger.info("Entering lightweight monitoring daemon loop...")
 
         try:
+            status_update_counter = 0
+            status_update_interval = 10  # Update status every 10 seconds
+
             while self.running and not self.signal_handler.is_shutdown_requested():
                 # Simple heartbeat loop - actual work done in processing thread
                 time.sleep(1.0)
+
+                # Periodically update status file with current memory usage
+                status_update_counter += 1
+                if status_update_counter >= status_update_interval:
+                    self._write_status_file()
+                    status_update_counter = 0
 
         except KeyboardInterrupt:
             logger.info("Received keyboard interrupt")
@@ -695,3 +977,147 @@ class LightweightMonitor:
                 self.file_watcher.event_queue.qsize() if self.file_watcher else 0
             ),
         }
+
+    def _get_memory_usage(self) -> float | None:
+        """Get current memory usage in MB."""
+        try:
+            import psutil
+
+            process = psutil.Process(os.getpid())
+            return float(process.memory_info().rss / 1024 / 1024)
+        except (ImportError, psutil.NoSuchProcess, psutil.AccessDenied):
+            return None
+
+    def _get_cpu_percent(self) -> float | None:
+        """Get current CPU usage percentage."""
+        try:
+            import psutil
+
+            process = psutil.Process(os.getpid())
+            return float(process.cpu_percent())
+        except (ImportError, psutil.NoSuchProcess, psutil.AccessDenied):
+            return None
+
+    def _write_status_file(self) -> None:
+        """Write current status to shared JSON file for CLI communication."""
+        try:
+            import json
+
+            status_data = {
+                "started_at": self.stats["started_at"],
+                "pid": os.getpid(),
+                "is_running": self.running,
+                "uptime_seconds": time.time() - self.started_at
+                if self.started_at
+                else None,
+                "error_count": 0,  # Lightweight monitor doesn't track service-level errors
+                "last_error": None,
+                "restart_count": 0,  # Lightweight monitor doesn't track restarts
+                "files_monitored": len(self.file_watcher.get_monitored_files())
+                if self.file_watcher
+                else 0,
+                "sync_operations": self.stats["subprocess_calls"],
+                "last_sync_time": self.stats["last_activity"],
+                "memory_usage_mb": self._get_memory_usage(),
+                "cpu_percent": self._get_cpu_percent(),
+                "subprocess_calls": self.stats["subprocess_calls"],
+                "subprocess_errors": self.stats["subprocess_errors"],
+                "subprocess_retries": self.stats["subprocess_retries"],
+                "subprocess_timeouts": self.stats["subprocess_timeouts"],
+                "files_processed": self.stats["files_processed"],
+                "event_queue_size": self.file_watcher.event_queue.qsize()
+                if self.file_watcher
+                else 0,
+            }
+
+            # Ensure status directory exists
+            self.status_file.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(self.status_file, "w") as f:
+                json.dump(status_data, f, indent=2)
+
+            logger.debug(f"Status file updated: {self.status_file}")
+        except Exception as e:
+            logger.warning(f"Failed to write status file: {e}")
+
+
+def main() -> int:
+    """Main entry point for lightweight monitoring daemon."""
+    parser = argparse.ArgumentParser(
+        description="Lightweight file monitoring daemon with subprocess delegation"
+    )
+    parser.add_argument(
+        "--project-root", required=True, help="Root directory of the project"
+    )
+    parser.add_argument(
+        "--target-path", required=True, help="Path to monitor for file changes"
+    )
+    parser.add_argument(
+        "--lock-file", required=True, help="Path to singleton lock file"
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level",
+    )
+
+    args = parser.parse_args()
+
+    # Configure logging
+    logger.remove()  # Remove default handler
+
+    # Add stderr logging
+    logger.add(
+        sys.stderr,
+        level=args.log_level,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+    )
+
+    # Add file logging to monitor.log
+    log_file = Path(args.project_root) / ".heimdall" / "monitor.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    logger.add(
+        str(log_file),
+        level="DEBUG",  # Always log DEBUG and above to file
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+        rotation="10 MB",  # Rotate when file gets large
+        retention="7 days",  # Keep logs for 7 days
+    )
+
+    logger.info(
+        f"Starting lightweight monitoring daemon for project: {args.project_root}"
+    )
+
+    try:
+        # Create LightweightMonitor instance
+        monitor = LightweightMonitor(
+            project_root=Path(args.project_root),
+            target_path=Path(args.target_path),
+            lock_file=Path(args.lock_file),
+        )
+
+        # Start monitoring
+        success = monitor.start()
+        if not success:
+            logger.error("Failed to start lightweight monitoring")
+            return 1
+
+        logger.info("Lightweight monitoring started successfully")
+
+        # Run daemon loop
+        monitor.run_daemon_loop()
+
+        logger.info("Lightweight monitoring daemon exiting")
+        return 0
+
+    except KeyboardInterrupt:
+        logger.info("Received keyboard interrupt, shutting down...")
+        return 0
+    except Exception as e:
+        logger.error(f"Error in lightweight monitoring daemon: {e}")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

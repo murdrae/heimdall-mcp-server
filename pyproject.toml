@@ -77,6 +77,7 @@ test = [
 [project.scripts]
 heimdall = "heimdall.cli:main"
 heimdall-mcp = "heimdall.mcp_server:main_sync"
+heimdall-lightweight-monitor = "lightweight_monitor:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -84,6 +85,7 @@ include = ["cognitive_memory*", "heimdall*"]
 
 [tool.setuptools]
 include-package-data = true
+py-modules = ["lightweight_monitor"]
 
 [tool.setuptools.package-data]
 "*" = ["scripts/*"]

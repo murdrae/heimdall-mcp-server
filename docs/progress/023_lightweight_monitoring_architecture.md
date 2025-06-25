@@ -221,7 +221,7 @@ self.lightweight_monitor = LightweightMonitor(
 ```
 
 ### Step 6: Testing and Validation
-**Status**: Partially Completed (67% complete)
+**Status**: In Progress (40% complete)
 **Date Range**: [Day 3 - Afternoon to Day 4]
 
 #### Tasks Completed
@@ -236,15 +236,16 @@ self.lightweight_monitor = LightweightMonitor(
 - ✅ **Statistics tracking** - Subprocess calls, errors, retries, timeouts monitoring
 
 #### Current Work
-- Need to complete memory usage validation and load testing
+- ✅ **Memory and load tests created** - Created `test_lightweight_monitor_memory_and_load.py` with subprocess-based testing
+- ✅ **Code deduplication completed** - Eliminated duplicate file monitoring code, created shared `heimdall/monitoring/file_types.py`
+- ⏳ **Memory validation under investigation** - Tests show ~215MB usage, need to identify heavy imports causing bloat
 
-#### Next Tasks
-- All below tests implemented as end to end tests in tests/e2e, callable by pytest. Can safely assume they will run with heimdall and other dependencies available (simulating production scenario)
-- ⏳ Test memory usage stays under 50MB consistently (needs implementation)
-- ⏳ Test file change detection end-to-end with real file modifications (needs implementation)
-- ⏳ Test with multiple rapid file changes (needs implementation)
-- ⏳ Test across different project directories (partially covered, needs expansion)
-- ⏳ Load testing with concurrent file modifications (needs implementation)
+#### Remaining Tasks (NOT COMPLETE)
+- ❌ **Memory usage validation** - Tests created but showing 215MB usage, need to investigate and fix heavy imports
+- ❌ **File change detection validation** - Tests created but not validated to work correctly
+- ❌ **Load testing validation** - Tests created but not validated under real load conditions
+- ❌ **Multi-project validation** - Tests created but not validated for proper isolation
+- ❌ **Performance benchmarking** - No validation of actual performance improvements
 
 #### Implementation Details
 **Completed Validation:**

@@ -281,7 +281,7 @@ Files in this directory are automatically:
             }
             console.print(json.dumps(output_data, indent=2))
         else:
-            # Start monitoring service in daemon mode if enabled
+            # Start monitoring service if enabled
             try:
                 from cognitive_memory.core.config import CognitiveConfig
 
@@ -304,7 +304,6 @@ Files in this directory are automatically:
                                 "heimdall.cli",
                                 "monitor",
                                 "start",
-                                "--daemon",
                                 "--project-root",
                                 str(project_path),
                             ],

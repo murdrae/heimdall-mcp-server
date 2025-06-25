@@ -15,14 +15,14 @@ import psutil
 import pytest
 
 from cognitive_memory.core.config import CognitiveConfig
-from cognitive_memory.monitoring import (
-    ChangeType,
-    FileChangeEvent,
-)
 from heimdall.cognitive_system.monitoring_service import (
     MonitoringService,
     MonitoringServiceError,
     ServiceStatus,
+)
+from heimdall.monitoring.file_types import (
+    ChangeType,
+    FileChangeEvent,
 )
 
 
@@ -230,7 +230,7 @@ class TestMonitoringServiceLifecycle:
                 service.stop()
 
     @patch("memory_system.monitoring_service.initialize_system")
-    @patch("cognitive_memory.monitoring.create_default_registry")
+    @patch("heimdall.monitoring.loader_registry.create_default_registry")
     def test_service_start_success(self, mock_registry, mock_init_system, service):
         """Test successful service start."""
         # Mock dependencies
@@ -313,7 +313,9 @@ class TestMonitoringServiceLifecycle:
         with patch.object(service, "_is_service_running", return_value=False):
             with patch.object(service, "_write_pid_file"):
                 with patch.object(service, "_remove_pid_file"):
-                    with patch("cognitive_memory.monitoring.create_default_registry"):
+                    with patch(
+                        "heimdall.monitoring.loader_registry.create_default_registry"
+                    ):
                         success = service.restart()
 
                         assert success is True

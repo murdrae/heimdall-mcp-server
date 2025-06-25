@@ -1,7 +1,7 @@
 """
 Unit tests for file monitoring system.
 
-Tests the MarkdownFileMonitor, FileChangeEvent, and related components
+Tests the FileMonitor, FileChangeEvent, and related components
 for automatic file change detection.
 """
 
@@ -12,11 +12,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from cognitive_memory.monitoring import (
+from heimdall.monitoring.file_types import (
     ChangeType,
     FileChangeEvent,
+    FileMonitor,
     FileState,
-    MarkdownFileMonitor,
 )
 
 
@@ -150,12 +150,12 @@ class TestFileChangeEvent:
         assert str(timestamp) in str_repr
 
 
-class TestMarkdownFileMonitor:
-    """Test MarkdownFileMonitor class."""
+class TestFileMonitor:
+    """Test FileMonitor class."""
 
     def test_monitor_initialization(self):
         """Test monitor initialization with default parameters."""
-        monitor = MarkdownFileMonitor()
+        monitor = FileMonitor()
 
         assert monitor.polling_interval == 5.0
         assert ".git" in monitor.ignore_patterns
@@ -166,16 +166,14 @@ class TestMarkdownFileMonitor:
     def test_monitor_initialization_custom_params(self):
         """Test monitor initialization with custom parameters."""
         custom_ignore = {"custom_ignore"}
-        monitor = MarkdownFileMonitor(
-            polling_interval=2.0, ignore_patterns=custom_ignore
-        )
+        monitor = FileMonitor(polling_interval=2.0, ignore_patterns=custom_ignore)
 
         assert monitor.polling_interval == 2.0
         assert monitor.ignore_patterns == custom_ignore
 
     def test_add_file_path(self, tmp_path):
         """Test adding a single file to monitoring."""
-        monitor = MarkdownFileMonitor()
+        monitor = FileMonitor()
         test_file = tmp_path / "test.md"
         test_file.write_text("content")
 
@@ -186,7 +184,7 @@ class TestMarkdownFileMonitor:
 
     def test_add_directory_path(self, tmp_path):
         """Test adding a directory to monitoring."""
-        monitor = MarkdownFileMonitor()
+        monitor = FileMonitor()
 
         # Create some files
         (tmp_path / "test1.md").write_text("content1")
@@ -204,10 +202,10 @@ class TestMarkdownFileMonitor:
 
     def test_add_nonexistent_path(self, tmp_path):
         """Test adding non-existent path (should log warning)."""
-        monitor = MarkdownFileMonitor()
+        monitor = FileMonitor()
         nonexistent = tmp_path / "nonexistent"
 
-        with patch("cognitive_memory.monitoring.file_monitor.logger") as mock_logger:
+        with patch("heimdall.monitoring.file_types.logger") as mock_logger:
             monitor.add_path(nonexistent)
             mock_logger.warning.assert_called_once()
 
@@ -215,7 +213,7 @@ class TestMarkdownFileMonitor:
 
     def test_remove_path(self, tmp_path):
         """Test removing path from monitoring."""
-        monitor = MarkdownFileMonitor()
+        monitor = FileMonitor()
         test_file = tmp_path / "test.md"
         test_file.write_text("content")
 
@@ -228,36 +226,39 @@ class TestMarkdownFileMonitor:
 
     def test_register_callback(self):
         """Test callback registration."""
-        monitor = MarkdownFileMonitor()
+        monitor = FileMonitor()
         callback = Mock()
 
         monitor.register_callback(ChangeType.ADDED, callback)
 
-        assert callback in monitor._callbacks[ChangeType.ADDED]
+        assert callback in monitor.callbacks[ChangeType.ADDED]
 
-    def test_is_markdown_file(self):
-        """Test markdown file detection."""
-        monitor = MarkdownFileMonitor()
+    def test_markdown_file_detection(self):
+        """Test markdown file detection through extensions."""
+        monitor = FileMonitor()
 
-        assert monitor._is_markdown_file(Path("test.md"))
-        assert monitor._is_markdown_file(Path("test.markdown"))
-        assert monitor._is_markdown_file(Path("test.mdown"))
-        assert monitor._is_markdown_file(Path("test.mkd"))
-        assert not monitor._is_markdown_file(Path("test.txt"))
-        assert not monitor._is_markdown_file(Path("test.py"))
+        # Test markdown extensions
+        assert ".md" in monitor.MARKDOWN_EXTENSIONS
+        assert ".markdown" in monitor.MARKDOWN_EXTENSIONS
+        assert ".mdown" in monitor.MARKDOWN_EXTENSIONS
+        assert ".mkd" in monitor.MARKDOWN_EXTENSIONS
 
-    def test_should_ignore(self):
+        # Test non-markdown extensions
+        assert ".txt" not in monitor.MARKDOWN_EXTENSIONS
+        assert ".py" not in monitor.MARKDOWN_EXTENSIONS
+
+    def test_should_ignore_path(self):
         """Test ignore pattern matching."""
-        monitor = MarkdownFileMonitor(ignore_patterns={".git", "node_modules"})
+        monitor = FileMonitor(ignore_patterns={".git", "node_modules"})
 
-        assert monitor._should_ignore(".git")
-        assert monitor._should_ignore("node_modules")
-        assert monitor._should_ignore("some_node_modules_path")
-        assert not monitor._should_ignore("regular_file.md")
+        assert monitor._should_ignore_path(Path(".git"))
+        assert monitor._should_ignore_path(Path("node_modules"))
+        assert monitor._should_ignore_path(Path("some_node_modules_path"))
+        assert not monitor._should_ignore_path(Path("regular_file.md"))
 
     def test_scan_directory_files(self, tmp_path):
         """Test directory scanning for markdown files."""
-        monitor = MarkdownFileMonitor()
+        monitor = FileMonitor()
 
         # Create test structure
         (tmp_path / "test1.md").write_text("content")
@@ -283,7 +284,7 @@ class TestMarkdownFileMonitor:
 
     def test_get_monitored_files(self, tmp_path):
         """Test getting list of monitored files."""
-        monitor = MarkdownFileMonitor()
+        monitor = FileMonitor()
         test_file = tmp_path / "test.md"
         test_file.write_text("content")
 
@@ -294,12 +295,12 @@ class TestMarkdownFileMonitor:
         assert len(monitored) == 1
 
 
-class TestMarkdownFileMonitorIntegration:
+class TestFileMonitorIntegration:
     """Integration tests for file monitoring with actual file operations."""
 
     def test_file_monitoring_lifecycle(self, tmp_path):
         """Test complete file monitoring lifecycle."""
-        monitor = MarkdownFileMonitor(polling_interval=0.1)
+        monitor = FileMonitor(polling_interval=0.1)
         events = []
 
         def track_event(event):
@@ -343,7 +344,7 @@ class TestMarkdownFileMonitorIntegration:
 
     def test_monitoring_ignores_non_markdown(self, tmp_path):
         """Test that monitoring ignores non-markdown files."""
-        monitor = MarkdownFileMonitor(polling_interval=0.1)
+        monitor = FileMonitor(polling_interval=0.1)
         events = []
 
         def track_event(event):
@@ -373,7 +374,7 @@ class TestMarkdownFileMonitorIntegration:
 
     def test_monitoring_start_stop(self):
         """Test monitoring start and stop functionality."""
-        monitor = MarkdownFileMonitor(polling_interval=0.1)
+        monitor = FileMonitor(polling_interval=0.1)
 
         # Initially not monitoring
         assert not monitor._monitoring
@@ -396,7 +397,7 @@ class TestMarkdownFileMonitorIntegration:
 
     def test_callback_error_handling(self, tmp_path):
         """Test that callback errors don't crash monitoring."""
-        monitor = MarkdownFileMonitor(polling_interval=0.1)
+        monitor = FileMonitor(polling_interval=0.1)
 
         def failing_callback(event):
             raise RuntimeError("Callback error")
@@ -410,7 +411,7 @@ class TestMarkdownFileMonitorIntegration:
         monitor.register_callback(ChangeType.ADDED, working_callback)
         monitor.add_path(tmp_path)
 
-        with patch("cognitive_memory.monitoring.file_monitor.logger") as mock_logger:
+        with patch("heimdall.monitoring.file_types.logger") as mock_logger:
             monitor.start_monitoring()
 
             try:

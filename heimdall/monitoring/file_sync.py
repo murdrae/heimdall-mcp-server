@@ -12,8 +12,9 @@ from typing import Any
 
 from loguru import logger
 
-from ..core.interfaces import CognitiveSystem
-from .file_monitor import ChangeType, FileChangeEvent
+from cognitive_memory.core.interfaces import CognitiveSystem
+from heimdall.monitoring.file_types import ChangeType, FileChangeEvent
+
 from .loader_registry import LoaderRegistry
 
 

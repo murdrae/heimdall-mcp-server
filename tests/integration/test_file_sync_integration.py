@@ -14,9 +14,9 @@ import pytest
 from cognitive_memory.core.config import CognitiveConfig
 from cognitive_memory.core.interfaces import MemoryLoader
 from cognitive_memory.core.memory import CognitiveMemory
-from cognitive_memory.monitoring.file_monitor import ChangeType, FileChangeEvent
-from cognitive_memory.monitoring.file_sync import FileSyncHandler
-from cognitive_memory.monitoring.loader_registry import (
+from heimdall.monitoring.file_sync import FileSyncHandler
+from heimdall.monitoring.file_types import ChangeType, FileChangeEvent
+from heimdall.monitoring.loader_registry import (
     LoaderRegistry,
     create_default_registry,
 )

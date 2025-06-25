@@ -25,9 +25,6 @@ from cognitive_memory.core.config import (
     get_monitoring_config,
     get_project_paths,
 )
-from heimdall.monitoring.lightweight_monitor import (
-    LightweightMonitor,
-)
 
 
 class MonitoringServiceError(Exception):
@@ -95,8 +92,9 @@ class MonitoringService:
     Host-based monitoring service for cognitive memory system.
 
     Provides automatic file monitoring with project-local PID management,
-    including daemon mode, health checks, error recovery, and production logging.
-    Uses .heimdall/config.yaml for configuration instead of container environment variables.
+    running as a background daemon process with health checks, error recovery,
+    and production logging. Uses .heimdall/config.yaml for configuration instead
+    of container environment variables.
     """
 
     # PID_FILE now determined per-project
@@ -123,7 +121,6 @@ class MonitoringService:
         system_config = SystemConfig.from_env()
         self.config = system_config.cognitive
         self.status = ServiceStatus()
-        self.lightweight_monitor: LightweightMonitor | None = None
         self._shutdown_requested = False
         self._restart_attempts = 0
 
@@ -167,12 +164,11 @@ class MonitoringService:
 
         logger.info(f"Configuration validated - monitoring target: {target_path}")
 
-    def start(self, daemon_mode: bool = False) -> bool:
+    def start(self) -> bool:
         """
-        Start the monitoring service.
+        Start the monitoring service in daemon mode.
 
-        Args:
-            daemon_mode: Whether to run as background daemon process
+        The service always runs as a background daemon process using subprocess delegation.
 
         Returns:
             True if service started successfully, False otherwise
@@ -185,9 +181,6 @@ class MonitoringService:
 
             logger.info("Starting lightweight monitoring service...")
 
-            # Initialize lightweight monitoring
-            self._initialize_monitoring()
-
             # Update status
             self.status.started_at = time.time()
             self.status.pid = os.getpid()
@@ -196,41 +189,20 @@ class MonitoringService:
 
             # Write PID file and status
             self._write_pid_file()
-            self._write_status_file()
 
-            if daemon_mode:
-                # Start lightweight monitor and run daemon loop
-                if self.lightweight_monitor:
-                    success = self.lightweight_monitor.start()
-                    if success:
-                        logger.info(
-                            f"Lightweight monitoring service started in daemon mode (PID: {self.status.pid})"
-                        )
-                        self.lightweight_monitor.run_daemon_loop()
-                    else:
-                        logger.error(
-                            "Failed to start lightweight monitor in daemon mode"
-                        )
-                        return False
-                else:
-                    logger.error("Lightweight monitor not initialized")
-                    return False
+            # Start lightweight monitor as subprocess to avoid heavy memory footprint
+            success = self._start_lightweight_subprocess()
+            if success:
+                logger.info(
+                    "Lightweight monitoring service started as subprocess (daemon mode)"
+                )
+                # Main process can exit - subprocess runs as daemon
+                return success
             else:
-                # Start lightweight monitor for non-daemon mode
-                if self.lightweight_monitor:
-                    success = self.lightweight_monitor.start()
-                    if success:
-                        logger.info(
-                            f"Lightweight monitoring service started successfully (PID: {self.status.pid})"
-                        )
-                    else:
-                        logger.error("Failed to start lightweight monitor")
-                        return False
-                else:
-                    logger.error("Lightweight monitor not initialized")
-                    return False
-
-            return True
+                logger.error(
+                    "Failed to start lightweight monitor subprocess in daemon mode"
+                )
+                return False
 
         except Exception as e:
             logger.error(f"Failed to start monitoring service: {e}")
@@ -249,10 +221,12 @@ class MonitoringService:
             logger.info("Stopping monitoring service...")
             self._shutdown_requested = True
 
-            # Stop lightweight monitoring
-            if self.lightweight_monitor:
-                self.lightweight_monitor.stop()
-                logger.info("Lightweight monitoring stopped")
+            # Stop subprocess
+            if self._is_service_running():
+                success = self._stop_subprocess()
+                if not success:
+                    logger.warning("Failed to stop subprocess gracefully")
+                    return False
 
             # Update status
             self.status.is_running = False
@@ -298,14 +272,8 @@ class MonitoringService:
         Returns:
             Dictionary containing service status information
         """
-        # Try to read status from daemon's status file first
-        daemon_status = self._read_status_file()
-        if daemon_status and self._is_service_running():
-            # Use daemon's actual status data
-            return daemon_status
-
-        # Fallback: If daemon is running but we don't have local status, get daemon PID info
-        if self._is_service_running() and not self.status.is_running:
+        # Always read daemon PID from PID file for accurate status
+        if self._is_service_running():
             try:
                 with open(self.project_paths.pid_file) as f:
                     daemon_pid = int(f.read().strip())
@@ -322,17 +290,16 @@ class MonitoringService:
                     pass
 
             except (ValueError, FileNotFoundError, PermissionError):
-                pass
+                # If we can't read PID file but service appears running, mark as not running
+                self.status.is_running = False
+                self.status.pid = None
 
-        # Update monitored files count from lightweight monitor
-        if self.lightweight_monitor and self.lightweight_monitor.running:
-            monitor_status = self.lightweight_monitor.get_status()
-            self.status.files_monitored = monitor_status.get("files_monitored", 0)
-            # Update sync operations from subprocess calls
-            self.status.sync_operations = monitor_status.get("subprocess_calls", 0)
-            # Update last sync time from last activity
-            if monitor_status.get("last_activity"):
-                self.status.last_sync_time = monitor_status["last_activity"]
+        # Try to read status from daemon's status file
+        daemon_status = self._read_status_file()
+        if daemon_status and self.status.is_running:
+            # Use daemon's actual status data but ensure PID is from daemon
+            daemon_status["pid"] = self.status.pid
+            return daemon_status
 
         return self.status.to_dict()
 
@@ -404,25 +371,12 @@ class MonitoringService:
                 )
 
             # Check lightweight monitoring
-            if (
-                service_running
-                and self.lightweight_monitor
-                and self.lightweight_monitor.running
-            ):
+            if service_running:
                 health["checks"].append(
                     {
                         "name": "file_monitoring",
                         "status": "pass",
                         "message": "Lightweight file monitoring active",
-                    }
-                )
-            elif service_running:
-                health["status"] = "unhealthy"
-                health["checks"].append(
-                    {
-                        "name": "file_monitoring",
-                        "status": "fail",
-                        "message": "Lightweight monitoring not active",
                     }
                 )
             else:
@@ -470,12 +424,15 @@ class MonitoringService:
 
         return health
 
-    def _initialize_monitoring(self) -> None:
-        """Initialize lightweight monitoring with subprocess delegation."""
+    def _start_lightweight_subprocess(self) -> bool:
+        """
+        Start lightweight monitoring as subprocess to avoid heavy memory footprint.
+
+        Returns:
+            True if subprocess started successfully, False otherwise
+        """
         try:
-            logger.info(
-                "Initializing lightweight monitoring with subprocess delegation..."
-            )
+            import subprocess
 
             # Get target path from centralized configuration
             target_path = Path(self.monitoring_config["target_path"])
@@ -483,19 +440,74 @@ class MonitoringService:
             # Create lock file path
             lock_file = self.project_paths.heimdall_dir / "monitor.lock"
 
-            # Create lightweight monitor instance
-            self.lightweight_monitor = LightweightMonitor(
-                project_root=self.project_paths.project_root,
-                target_path=target_path,
-                lock_file=lock_file,
+            # Build subprocess command - use top-level entry point to avoid package imports
+            cmd = [
+                "heimdall-lightweight-monitor",
+                "--project-root",
+                str(self.project_paths.project_root),
+                "--target-path",
+                str(target_path),
+                "--lock-file",
+                str(lock_file),
+                "--log-level",
+                "INFO",
+            ]
+
+            logger.info(f"Starting lightweight monitoring subprocess: {' '.join(cmd)}")
+
+            # Start subprocess with proper detaching
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,  # Detach from parent process
+                cwd=self.project_paths.project_root,
             )
 
-            logger.info(f"Lightweight monitoring initialized for path: {target_path}")
+            # Give subprocess a moment to start and acquire lock
+            time.sleep(2.0)
+
+            # Check if subprocess is still running
+            if process.poll() is None:
+                # Subprocess is running, update PID file with subprocess PID
+                subprocess_pid = process.pid
+                self.status.pid = subprocess_pid
+
+                # Write PID file with subprocess PID
+                try:
+                    with open(self.project_paths.pid_file, "w") as f:
+                        f.write(str(subprocess_pid))
+                    logger.info(
+                        f"Updated PID file with subprocess PID: {subprocess_pid}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to update PID file: {e}")
+
+                logger.info(
+                    f"Lightweight monitoring subprocess started successfully (PID: {subprocess_pid})"
+                )
+                return True
+            else:
+                # Subprocess failed to start
+                try:
+                    stdout, stderr = process.communicate(timeout=1.0)
+                    logger.error(
+                        f"Subprocess failed to start. Exit code: {process.returncode}"
+                    )
+                    if stdout:
+                        logger.error(f"Subprocess stdout: {stdout.decode()}")
+                    if stderr:
+                        logger.error(f"Subprocess stderr: {stderr.decode()}")
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    logger.error("Subprocess startup check timed out")
+
+                return False
 
         except Exception as e:
-            raise MonitoringServiceError(
-                f"Failed to initialize lightweight monitoring: {e}"
-            ) from e
+            logger.error(f"Error starting lightweight monitoring subprocess: {e}")
+            return False
 
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
@@ -509,11 +521,62 @@ class MonitoringService:
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
 
-    def _run_daemon_loop(self) -> None:
-        """Run the main daemon loop (delegated to lightweight monitor)."""
-        logger.info("Daemon loop delegated to lightweight monitor...")
-        # The lightweight monitor handles its own daemon loop
-        # This method is kept for compatibility but actual loop is in lightweight_monitor.run_daemon_loop()
+    def _stop_subprocess(self) -> bool:
+        """
+        Stop the lightweight monitoring subprocess gracefully.
+
+        Returns:
+            True if subprocess stopped successfully, False otherwise
+        """
+        try:
+            # Get subprocess PID from PID file
+            if not self.project_paths.pid_file.exists():
+                logger.warning("PID file not found - subprocess may already be stopped")
+                return True
+
+            with open(self.project_paths.pid_file) as f:
+                subprocess_pid = int(f.read().strip())
+
+            logger.info(f"Stopping subprocess with PID: {subprocess_pid}")
+
+            # Check if process exists
+            if not psutil.pid_exists(subprocess_pid):
+                logger.info("Subprocess already stopped")
+                return True
+
+            # Send SIGTERM for graceful shutdown
+            try:
+                process = psutil.Process(subprocess_pid)
+                process.terminate()
+                logger.info("Sent SIGTERM to subprocess")
+
+                # Wait for graceful shutdown (up to 10 seconds)
+                try:
+                    process.wait(timeout=10.0)
+                    logger.info("Subprocess stopped gracefully")
+                    return True
+                except psutil.TimeoutExpired:
+                    logger.warning(
+                        "Subprocess did not stop gracefully, forcing termination"
+                    )
+                    process.kill()
+                    process.wait(timeout=5.0)
+                    logger.info("Subprocess force-killed")
+                    return True
+
+            except psutil.NoSuchProcess:
+                logger.info("Subprocess already stopped")
+                return True
+            except psutil.AccessDenied:
+                logger.error("Access denied when trying to stop subprocess")
+                return False
+
+        except (ValueError, FileNotFoundError, PermissionError) as e:
+            logger.error(f"Error reading PID file: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error stopping subprocess: {e}")
+            return False
 
     def _should_restart(self) -> bool:
         """Determine if service should attempt restart."""
@@ -576,29 +639,6 @@ class MonitoringService:
         except Exception as e:
             logger.warning(f"Failed to remove PID file: {e}")
 
-    def _write_status_file(self) -> None:
-        """Write current status to shared JSON file for CLI communication."""
-        try:
-            status_data = self.status.to_dict()
-            # Add files monitored count from lightweight monitor if available
-            if self.lightweight_monitor and self.lightweight_monitor.running:
-                monitor_status = self.lightweight_monitor.get_status()
-                status_data["files_monitored"] = monitor_status.get(
-                    "files_monitored", 0
-                )
-                status_data["subprocess_calls"] = monitor_status.get(
-                    "subprocess_calls", 0
-                )
-                status_data["subprocess_errors"] = monitor_status.get(
-                    "subprocess_errors", 0
-                )
-
-            with open(self.status_file, "w") as f:
-                json.dump(status_data, f, indent=2)
-            logger.debug(f"Status file updated: {self.status_file}")
-        except Exception as e:
-            logger.warning(f"Failed to write status file: {e}")
-
     def _read_status_file(self) -> dict[str, Any] | None:
         """Read status from shared JSON file."""
         try:
@@ -635,7 +675,6 @@ def main() -> int:
     )
     parser.add_argument("--status", action="store_true", help="Show service status")
     parser.add_argument("--health", action="store_true", help="Perform health check")
-    parser.add_argument("--daemon", action="store_true", help="Run in daemon mode")
     parser.add_argument("--json", action="store_true", help="Output in JSON format")
     parser.add_argument(
         "--project-root",
@@ -649,7 +688,7 @@ def main() -> int:
         service = MonitoringService(project_root=args.project_root)
 
         if args.start:
-            success = service.start(daemon_mode=args.daemon)
+            success = service.start()
             return 0 if success else 1
 
         elif args.stop:

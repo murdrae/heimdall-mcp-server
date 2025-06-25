@@ -154,7 +154,7 @@ def get_monitoring_target_path(project_root: Path | None = None) -> str:
             logger.warning(f"Failed to parse .heimdall/config.yaml: {e}")
 
     # Default fallback
-    return str((paths.project_root / "docs").resolve())
+    return str((paths.project_root / ".heimdall" / "docs").resolve())
 
 
 def get_monitoring_config(project_root: Path | None = None) -> dict[str, Any]:

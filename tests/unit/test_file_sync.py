@@ -10,9 +10,9 @@ from unittest.mock import Mock, patch
 
 from cognitive_memory.core.interfaces import CognitiveSystem, MemoryLoader
 from cognitive_memory.core.memory import CognitiveMemory
-from cognitive_memory.monitoring.file_monitor import ChangeType, FileChangeEvent
-from cognitive_memory.monitoring.file_sync import FileSyncError, FileSyncHandler
-from cognitive_memory.monitoring.loader_registry import LoaderRegistry
+from heimdall.monitoring.file_sync import FileSyncError, FileSyncHandler
+from heimdall.monitoring.file_types import ChangeType, FileChangeEvent
+from heimdall.monitoring.loader_registry import LoaderRegistry
 
 
 def create_mock_cognitive_system():
