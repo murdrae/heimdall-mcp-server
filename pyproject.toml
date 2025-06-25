@@ -45,6 +45,7 @@ dependencies = [
     "requests>=2.31.0",
     "prompt-toolkit>=3.0.0",
     "platformdirs>=3.0.0",
+    "portalocker>=2.7.0",
     # MCP protocol
     "mcp>=1.4.0",
     # Git operations

@@ -25,14 +25,8 @@ from cognitive_memory.core.config import (
     get_monitoring_config,
     get_project_paths,
 )
-from cognitive_memory.core.interfaces import CognitiveSystem
-from cognitive_memory.main import initialize_system
-from cognitive_memory.monitoring import (
-    ChangeType,
-    FileChangeEvent,
-    FileSyncHandler,
-    MarkdownFileMonitor,
-    create_default_registry,
+from heimdall.monitoring.lightweight_monitor import (
+    LightweightMonitor,
 )
 
 
@@ -129,9 +123,7 @@ class MonitoringService:
         system_config = SystemConfig.from_env()
         self.config = system_config.cognitive
         self.status = ServiceStatus()
-        self.cognitive_system: CognitiveSystem | None = None
-        self.file_monitor: MarkdownFileMonitor | None = None
-        self.sync_handler: FileSyncHandler | None = None
+        self.lightweight_monitor: LightweightMonitor | None = None
         self._shutdown_requested = False
         self._restart_attempts = 0
 
@@ -193,56 +185,50 @@ class MonitoringService:
 
             logger.info("Starting lightweight monitoring service...")
 
-            # Initialize ONLY monitoring components (no cognitive system yet)
+            # Initialize lightweight monitoring
             self._initialize_monitoring()
 
-            # Setup signal handlers
-            self._setup_signal_handlers()
+            # Update status
+            self.status.started_at = time.time()
+            self.status.pid = os.getpid()
+            self.status.is_running = True
+            self.status.restart_count = self._restart_attempts
+
+            # Write PID file and status
+            self._write_pid_file()
+            self._write_status_file()
 
             if daemon_mode:
-                # For daemon mode: fork FIRST, then start monitoring in child process
-                logger.info("Preparing to fork daemon process...")
-
-                # Update status before fork
-                self.status.started_at = time.time()
-                self.status.pid = os.getpid()
-                self.status.is_running = True
-                self.status.restart_count = self._restart_attempts
-
-                # Write temporary PID file before daemon fork
-                self._write_pid_file()
-                logger.info(
-                    f"Lightweight monitoring service starting daemon mode (PID: {self.status.pid})"
-                )
-
-                # Properly detach as daemon BEFORE starting monitoring threads
-                self._detach_daemon()
-
-                # NOW start monitoring in the daemon process (after fork)
-                if self.file_monitor:
-                    self.file_monitor.start_monitoring()
-
-                # Update status with daemon PID and write to file
-                self._write_status_file()
-
-                self._run_daemon_loop()
+                # Start lightweight monitor and run daemon loop
+                if self.lightweight_monitor:
+                    success = self.lightweight_monitor.start()
+                    if success:
+                        logger.info(
+                            f"Lightweight monitoring service started in daemon mode (PID: {self.status.pid})"
+                        )
+                        self.lightweight_monitor.run_daemon_loop()
+                    else:
+                        logger.error(
+                            "Failed to start lightweight monitor in daemon mode"
+                        )
+                        return False
+                else:
+                    logger.error("Lightweight monitor not initialized")
+                    return False
             else:
-                # For non-daemon mode: start monitoring normally
-                if self.file_monitor:
-                    self.file_monitor.start_monitoring()
-
-                # Update status
-                self.status.started_at = time.time()
-                self.status.pid = os.getpid()
-                self.status.is_running = True
-                self.status.restart_count = self._restart_attempts
-
-                # Write PID file and status for non-daemon mode
-                self._write_pid_file()
-                self._write_status_file()
-                logger.info(
-                    f"Lightweight monitoring service started successfully (PID: {self.status.pid})"
-                )
+                # Start lightweight monitor for non-daemon mode
+                if self.lightweight_monitor:
+                    success = self.lightweight_monitor.start()
+                    if success:
+                        logger.info(
+                            f"Lightweight monitoring service started successfully (PID: {self.status.pid})"
+                        )
+                    else:
+                        logger.error("Failed to start lightweight monitor")
+                        return False
+                else:
+                    logger.error("Lightweight monitor not initialized")
+                    return False
 
             return True
 
@@ -263,10 +249,10 @@ class MonitoringService:
             logger.info("Stopping monitoring service...")
             self._shutdown_requested = True
 
-            # Stop file monitoring
-            if self.file_monitor:
-                self.file_monitor.stop_monitoring()
-                logger.info("File monitoring stopped")
+            # Stop lightweight monitoring
+            if self.lightweight_monitor:
+                self.lightweight_monitor.stop()
+                logger.info("Lightweight monitoring stopped")
 
             # Update status
             self.status.is_running = False
@@ -338,9 +324,15 @@ class MonitoringService:
             except (ValueError, FileNotFoundError, PermissionError):
                 pass
 
-        # Update monitored files count
-        if self.file_monitor:
-            self.status.files_monitored = len(self.file_monitor.get_monitored_files())
+        # Update monitored files count from lightweight monitor
+        if self.lightweight_monitor and self.lightweight_monitor.running:
+            monitor_status = self.lightweight_monitor.get_status()
+            self.status.files_monitored = monitor_status.get("files_monitored", 0)
+            # Update sync operations from subprocess calls
+            self.status.sync_operations = monitor_status.get("subprocess_calls", 0)
+            # Update last sync time from last activity
+            if monitor_status.get("last_activity"):
+                self.status.last_sync_time = monitor_status["last_activity"]
 
         return self.status.to_dict()
 
@@ -393,49 +385,44 @@ class MonitoringService:
                     {"name": "pid_file", "status": "pass", "message": "PID file exists"}
                 )
 
-            # Check cognitive system (lazy loading approach)
+            # Check cognitive operations (subprocess delegation)
             if service_running:
                 health["checks"].append(
                     {
-                        "name": "cognitive_system",
+                        "name": "cognitive_operations",
                         "status": "pass",
-                        "message": "Cognitive system ready (lazy loading enabled)",
-                    }
-                )
-            elif self.cognitive_system:
-                health["checks"].append(
-                    {
-                        "name": "cognitive_system",
-                        "status": "pass",
-                        "message": "Cognitive system initialized",
+                        "message": "Cognitive operations available via subprocess delegation",
                     }
                 )
             else:
                 health["checks"].append(
                     {
-                        "name": "cognitive_system",
+                        "name": "cognitive_operations",
                         "status": "pass",
-                        "message": "Cognitive system not loaded (lazy loading)",
+                        "message": "Cognitive operations inactive (service not running)",
                     }
                 )
 
-            # Check file monitoring
-            # If service is running, assume file monitoring is active
-            if service_running:
+            # Check lightweight monitoring
+            if (
+                service_running
+                and self.lightweight_monitor
+                and self.lightweight_monitor.running
+            ):
                 health["checks"].append(
                     {
                         "name": "file_monitoring",
                         "status": "pass",
-                        "message": "File monitoring active (service running)",
+                        "message": "Lightweight file monitoring active",
                     }
                 )
-            elif not self.file_monitor or not self.file_monitor._monitoring:
+            elif service_running:
                 health["status"] = "unhealthy"
                 health["checks"].append(
                     {
                         "name": "file_monitoring",
                         "status": "fail",
-                        "message": "File monitoring not active",
+                        "message": "Lightweight monitoring not active",
                     }
                 )
             else:
@@ -443,19 +430,21 @@ class MonitoringService:
                     {
                         "name": "file_monitoring",
                         "status": "pass",
-                        "message": "File monitoring active",
+                        "message": "File monitoring inactive (service not running)",
                     }
                 )
 
-            # Check resource usage
+            # Check resource usage (lowered threshold for lightweight monitor)
             memory_usage = self.status._get_memory_usage()
-            if memory_usage and memory_usage > 500:  # 500 MB threshold
+            if (
+                memory_usage and memory_usage > 100
+            ):  # 100 MB threshold for lightweight monitor
                 health["status"] = "warning"
                 health["checks"].append(
                     {
                         "name": "memory_usage",
                         "status": "warn",
-                        "message": f"High memory usage: {memory_usage:.1f} MB",
+                        "message": f"High memory usage for lightweight monitor: {memory_usage:.1f} MB",
                     }
                 )
             else:
@@ -481,92 +470,32 @@ class MonitoringService:
 
         return health
 
-    def _initialize_cognitive_system(self) -> None:
-        """Initialize the cognitive system."""
-        try:
-            logger.info("Initializing cognitive system...")
-            self.cognitive_system = initialize_system("default")
-            logger.info("Cognitive system initialized successfully")
-        except Exception as e:
-            raise MonitoringServiceError(
-                f"Failed to initialize cognitive system: {e}"
-            ) from e
-
     def _initialize_monitoring(self) -> None:
-        """Initialize lightweight file monitoring components (no cognitive system)."""
+        """Initialize lightweight monitoring with subprocess delegation."""
         try:
-            logger.info("Initializing lightweight monitoring components...")
+            logger.info(
+                "Initializing lightweight monitoring with subprocess delegation..."
+            )
 
             # Get target path from centralized configuration
-            target_path = self.monitoring_config["target_path"]
+            target_path = Path(self.monitoring_config["target_path"])
 
-            # Create file monitor using centralized config
-            self.file_monitor = MarkdownFileMonitor(
-                polling_interval=self.monitoring_config["interval_seconds"],
-                ignore_patterns=set(self.monitoring_config["ignore_patterns"]),
-            )
+            # Create lock file path
+            lock_file = self.project_paths.heimdall_dir / "monitor.lock"
 
-            # Add target path to monitoring
-            self.file_monitor.add_path(target_path)
-
-            # Register sync callbacks (sync handler will be created lazily)
-            self.file_monitor.register_callback(
-                ChangeType.ADDED, self._handle_file_change
-            )
-            self.file_monitor.register_callback(
-                ChangeType.MODIFIED, self._handle_file_change
-            )
-            self.file_monitor.register_callback(
-                ChangeType.DELETED, self._handle_file_change
+            # Create lightweight monitor instance
+            self.lightweight_monitor = LightweightMonitor(
+                project_root=self.project_paths.project_root,
+                target_path=target_path,
+                lock_file=lock_file,
             )
 
             logger.info(f"Lightweight monitoring initialized for path: {target_path}")
 
         except Exception as e:
-            raise MonitoringServiceError(f"Failed to initialize monitoring: {e}") from e
-
-    def _handle_file_change(self, event: FileChangeEvent) -> None:
-        """Handle file change events with lazy loading of cognitive system."""
-        try:
-            logger.info(f"Processing file change: {event}")
-
-            # Lazy load cognitive system and sync handler only when needed
-            if not self.cognitive_system:
-                logger.info("Lazy loading cognitive system for file processing...")
-                self._initialize_cognitive_system()
-
-            if not self.sync_handler:
-                logger.info("Initializing sync handler for file processing...")
-                loader_registry = create_default_registry()
-                if self.cognitive_system:
-                    self.sync_handler = FileSyncHandler(
-                        cognitive_system=self.cognitive_system,
-                        loader_registry=loader_registry,
-                    )
-
-            # Process the file change
-            if self.sync_handler:
-                success = self.sync_handler.handle_file_change(event)
-            else:
-                success = False
-
-            if success:
-                self.status.sync_operations += 1
-                self.status.last_sync_time = time.time()
-                logger.info(f"Successfully processed file change: {event.path}")
-            else:
-                self.status.error_count += 1
-                logger.error(f"Failed to process file change: {event.path}")
-
-            # Update status file after processing
-            self._write_status_file()
-
-        except Exception as e:
-            self.status.error_count += 1
-            self.status.last_error = str(e)
-            logger.error(f"Error handling file change {event}: {e}")
-            # Update status file with error info
-            self._write_status_file()
+            raise MonitoringServiceError(
+                f"Failed to initialize lightweight monitoring: {e}"
+            ) from e
 
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
@@ -581,27 +510,10 @@ class MonitoringService:
         signal.signal(signal.SIGINT, signal_handler)
 
     def _run_daemon_loop(self) -> None:
-        """Run the main daemon loop."""
-        logger.info("Entering daemon mode...")
-
-        try:
-            while not self._shutdown_requested:
-                # Sleep for a short interval
-                time.sleep(1.0)
-
-                # Check if we need to restart on error
-                if self.status.error_count > 0 and self._should_restart():
-                    logger.warning("Error threshold reached, attempting restart...")
-                    if not self._attempt_restart():
-                        logger.error("Restart failed, exiting...")
-                        break
-
-        except KeyboardInterrupt:
-            logger.info("Received keyboard interrupt, shutting down...")
-        except Exception as e:
-            logger.error(f"Daemon loop error: {e}")
-        finally:
-            self.stop()
+        """Run the main daemon loop (delegated to lightweight monitor)."""
+        logger.info("Daemon loop delegated to lightweight monitor...")
+        # The lightweight monitor handles its own daemon loop
+        # This method is kept for compatibility but actual loop is in lightweight_monitor.run_daemon_loop()
 
     def _should_restart(self) -> bool:
         """Determine if service should attempt restart."""
@@ -668,10 +580,17 @@ class MonitoringService:
         """Write current status to shared JSON file for CLI communication."""
         try:
             status_data = self.status.to_dict()
-            # Add files monitored count if available
-            if self.file_monitor:
-                status_data["files_monitored"] = len(
-                    self.file_monitor.get_monitored_files()
+            # Add files monitored count from lightweight monitor if available
+            if self.lightweight_monitor and self.lightweight_monitor.running:
+                monitor_status = self.lightweight_monitor.get_status()
+                status_data["files_monitored"] = monitor_status.get(
+                    "files_monitored", 0
+                )
+                status_data["subprocess_calls"] = monitor_status.get(
+                    "subprocess_calls", 0
+                )
+                status_data["subprocess_errors"] = monitor_status.get(
+                    "subprocess_errors", 0
                 )
 
             with open(self.status_file, "w") as f:
@@ -701,49 +620,7 @@ class MonitoringService:
         except Exception as e:
             logger.warning(f"Failed to remove status file: {e}")
 
-    def _detach_daemon(self) -> None:
-        """Properly detach the process as a daemon."""
-        try:
-            # First fork
-            pid = os.fork()
-            if pid > 0:
-                # Parent process exits
-                sys.exit(0)
-        except OSError as e:
-            logger.error(f"First fork failed: {e}")
-            sys.exit(1)
-
-        # Decouple from parent environment but stay in project directory
-        # Don't change to root directory - stay in project directory for file access
-        os.setsid()
-        os.umask(0)
-
-        try:
-            # Second fork
-            pid = os.fork()
-            if pid > 0:
-                # Second parent exits
-                sys.exit(0)
-        except OSError as e:
-            logger.error(f"Second fork failed: {e}")
-            sys.exit(1)
-
-        # Redirect standard file descriptors
-        sys.stdout.flush()
-        sys.stderr.flush()
-
-        # Redirect stdin/stdout/stderr to /dev/null to prevent hanging
-        with open(os.devnull) as devnull_r, open(os.devnull, "w") as devnull_w:
-            os.dup2(devnull_r.fileno(), sys.stdin.fileno())
-            os.dup2(devnull_w.fileno(), sys.stdout.fileno())
-            os.dup2(devnull_w.fileno(), sys.stderr.fileno())
-
-        # Update PID file and status file with new daemon PID
-        self.status.pid = os.getpid()
-        self._write_pid_file()
-        self._write_status_file()
-
-        logger.info(f"Daemon detached successfully (PID: {self.status.pid})")
+    # Daemon forking logic removed - lightweight monitor handles process management
 
 
 def main() -> int:
