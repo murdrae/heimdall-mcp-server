@@ -373,3 +373,46 @@ def system_status(
     except Exception as e:
         console.print(f"❌ Error getting system status: {e}", style="bold red")
         raise typer.Exit(1) from e
+
+
+def remove_file_cmd(
+    file_path: str = typer.Argument(
+        ..., help="Path to file whose memories should be removed"
+    ),
+    config: str | None = typer.Option(None, help="Path to configuration file"),
+) -> None:
+    """Remove all memories associated with a deleted file."""
+    try:
+        # Initialize cognitive system
+        if config:
+            cognitive_system = initialize_with_config(config)
+        else:
+            cognitive_system = initialize_system("default")
+
+        # Create operations instance and delete memories
+        ops = CognitiveOperations(cognitive_system)
+        result = ops.delete_memories_by_source_path(file_path)
+
+        if result["success"]:
+            console.print(
+                f"✅ Removed {result['deleted_count']} memories for: {file_path}",
+                style="bold green",
+            )
+            if result["processing_time"] > 0:
+                console.print(f"⏱️  Processing time: {result['processing_time']:.3f}s")
+        else:
+            console.print(
+                f"❌ Failed to remove memories for {file_path}: {result['error']}",
+                style="bold red",
+            )
+            raise typer.Exit(1)
+
+        # Cleanup
+        graceful_shutdown(cognitive_system)
+
+    except InitializationError as e:
+        console.print(f"❌ Failed to initialize system: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    except Exception as e:
+        console.print(f"❌ Error removing memories: {e}", style="bold red")
+        raise typer.Exit(1) from e

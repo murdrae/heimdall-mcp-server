@@ -22,6 +22,7 @@ from heimdall.cli_commands.cognitive_commands import (
     load_git_patterns,
     load_memories,
     recall_memories,
+    remove_file_cmd,
     store_experience,
     system_status,
 )
@@ -95,6 +96,7 @@ app.command("recall")(recall_memories)
 app.command("load")(load_memories)
 app.command("git-load")(load_git_patterns)
 app.command("status")(system_status)
+app.command("remove-file")(remove_file_cmd)
 
 # Register health and shell commands
 app.command("doctor")(health_check)

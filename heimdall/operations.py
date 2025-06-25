@@ -605,3 +605,35 @@ class CognitiveOperations:
                     "error": str(e),
                     "dry_run": dry_run,
                 }
+
+    def delete_memories_by_source_path(self, source_path: str) -> dict[str, Any]:
+        """
+        Delete all memories associated with a specific source path.
+
+        Args:
+            source_path: Path to the file whose memories should be removed
+
+        Returns:
+            Dict containing:
+            - success: bool - True if deletion completed successfully
+            - deleted_count: int - Number of memories deleted
+            - processing_time: float - Time taken in seconds
+            - error: str | None - Error message if failed
+        """
+        try:
+            results = self.cognitive_system.delete_memories_by_source_path(source_path)
+
+            return {
+                "success": True,
+                "deleted_count": results.get("deleted_count", 0),
+                "processing_time": results.get("processing_time", 0.0),
+                "error": None,
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "deleted_count": 0,
+                "processing_time": 0.0,
+                "error": str(e),
+            }
