@@ -603,6 +603,15 @@ class LightweightMonitor:
             "subprocess_retries": 0,
             "subprocess_timeouts": 0,
             "last_activity": None,
+            "subprocess_execution_times": [],  # Track execution times for averages
+            "last_subprocess_error": None,
+        }
+
+        # Current processing state
+        self.current_processing: dict[str, Any] = {
+            "file_path": None,
+            "started_at": None,
+            "change_type": None,
         }
 
         # Status file for daemon communication
@@ -639,17 +648,23 @@ class LightweightMonitor:
             # Start file monitoring
             self.file_watcher.start_monitoring()
 
+            # Update state (MUST be before starting processing thread)
+            self.running = True
+            started_time = time.time()
+            self.started_at = started_time
+            self.stats["started_at"] = started_time
+
             # Start event processing thread
             self.processing_thread = threading.Thread(
                 target=self._event_processing_loop, name="EventProcessor", daemon=True
             )
             self.processing_thread.start()
 
-            # Update state
-            self.running = True
-            started_time = time.time()
-            self.started_at = started_time
-            self.stats["started_at"] = started_time
+            # Give processing thread a moment to start
+            time.sleep(0.5)
+
+            # Perform initial scan of existing files (after processing thread is ready)
+            self._perform_initial_scan()
 
             # Write initial status file
             self._write_status_file()
@@ -758,6 +773,57 @@ class LightweightMonitor:
 
         logger.debug("Event processing loop ended")
 
+    def _perform_initial_scan(self) -> None:
+        """
+        Perform initial scan of existing files and queue them for processing.
+
+        This method is called during startup to ensure all existing markdown files
+        in the monitored directories are processed as if they were newly added.
+        """
+        if not self.file_watcher:
+            logger.warning("File watcher not initialized, skipping initial scan")
+            return
+
+        try:
+            # Get all existing markdown files in monitored paths
+            existing_files = self.file_watcher.get_monitored_files()
+
+            logger.info(
+                f"Starting initial scan - found {len(existing_files)} existing files to process"
+            )
+
+            # Create ADDED events for all existing files
+            initial_scan_time = time.time()
+            queued_count = 0
+
+            for file_path in existing_files:
+                # Create file change event for existing file
+                event = FileChangeEvent(
+                    path=file_path,
+                    change_type=ChangeType.ADDED,
+                    timestamp=initial_scan_time,
+                )
+
+                # Add to event queue (no deduplication needed for initial scan)
+                added = self.file_watcher.event_queue.put(event, deduplicate=False)
+                if added:
+                    queued_count += 1
+                    logger.debug(f"Queued existing file for processing: {file_path}")
+                else:
+                    logger.warning(f"Failed to queue existing file: {file_path}")
+
+            # Log current queue size after initial scan
+            final_queue_size = self.file_watcher.event_queue.qsize()
+            logger.info(
+                f"Initial scan completed - queued {queued_count}/{len(existing_files)} files for processing"
+            )
+            logger.info(
+                f"Event queue size after initial scan: {final_queue_size} items"
+            )
+
+        except Exception as e:
+            logger.error(f"Error during initial file scan: {e}")
+
     def _handle_file_change_subprocess(self, event: FileChangeEvent) -> bool:
         """
         Handle file change by delegating to CLI subprocess with retry logic.
@@ -771,18 +837,46 @@ class LightweightMonitor:
         try:
             logger.info(f"Processing file change via subprocess: {event}")
 
+            # Set current processing state
+            self.current_processing = {
+                "file_path": str(event.path),
+                "started_at": time.time(),
+                "change_type": event.change_type.value,
+            }
+
             # Map change type to CLI command
             cmd = self._build_subprocess_command(event)
             if not cmd:
+                # Clear processing state on error
+                self.current_processing = {
+                    "file_path": None,
+                    "started_at": None,
+                    "change_type": None,
+                }
                 return False
 
             # Execute subprocess with retry logic
-            return self._execute_subprocess_with_retry(cmd, event)
+            success = self._execute_subprocess_with_retry(cmd, event)
+
+            # Clear processing state when done
+            self.current_processing = {
+                "file_path": None,
+                "started_at": None,
+                "change_type": None,
+            }
+
+            return success
 
         except Exception as e:
             logger.error(
                 f"Error handling file change subprocess for event {event}: {e}"
             )
+            # Clear processing state on error
+            self.current_processing = {
+                "file_path": None,
+                "started_at": None,
+                "change_type": None,
+            }
             return False
 
     def _build_subprocess_command(self, event: FileChangeEvent) -> list[str] | None:
@@ -853,6 +947,15 @@ class LightweightMonitor:
                         f"(attempt {attempt + 1}): {' '.join(cmd)}"
                     )
                     self._log_subprocess_output(result, success=True)
+
+                    # Track successful execution time
+                    self.stats["subprocess_execution_times"].append(execution_time)
+                    # Keep only last 100 execution times for average calculation
+                    if len(self.stats["subprocess_execution_times"]) > 100:
+                        self.stats["subprocess_execution_times"] = self.stats[
+                            "subprocess_execution_times"
+                        ][-100:]
+
                     return True
                 else:
                     error_msg = (
@@ -862,6 +965,9 @@ class LightweightMonitor:
                     logger.warning(error_msg)
                     self._log_subprocess_output(result, success=False)
                     last_error = f"Exit code {result.returncode}: {result.stderr.strip() if result.stderr else 'No stderr'}"
+
+                    # Store last error for status reporting
+                    self.stats["last_subprocess_error"] = last_error
 
                     # Check if this is a permanent failure (don't retry)
                     if self._is_permanent_failure(result.returncode, result.stderr):
@@ -877,6 +983,9 @@ class LightweightMonitor:
                     self.stats["subprocess_timeouts"] or 0
                 ) + 1
                 last_error = "Subprocess timeout"
+
+                # Store timeout as last error
+                self.stats["last_subprocess_error"] = last_error
 
                 # Timeout is usually not worth retrying immediately
                 if attempt < self.max_retries:
@@ -1003,16 +1112,73 @@ class LightweightMonitor:
         try:
             import json
 
+            # Calculate average execution time
+            avg_execution_time = None
+            if self.stats["subprocess_execution_times"]:
+                avg_execution_time = sum(
+                    self.stats["subprocess_execution_times"]
+                ) / len(self.stats["subprocess_execution_times"])
+
+            # Calculate successful calls
+            successful_calls = (self.stats["subprocess_calls"] or 0) - (
+                self.stats["subprocess_errors"] or 0
+            )
+
             status_data = {
+                # Core service info
+                "service": {
+                    "started_at": self.stats["started_at"],
+                    "pid": os.getpid(),
+                    "is_running": self.running,
+                    "uptime_seconds": time.time() - self.started_at
+                    if self.started_at
+                    else None,
+                },
+                # File monitoring info
+                "monitoring": {
+                    "files_monitored": len(self.file_watcher.get_monitored_files())
+                    if self.file_watcher
+                    else 0,
+                    "target_paths": [str(self.target_path)],
+                },
+                # Processing queue info
+                "processing": {
+                    "event_queue_size": self.file_watcher.event_queue.qsize()
+                    if self.file_watcher
+                    else 0,
+                    "files_processed": self.stats["files_processed"],
+                    "last_activity": self.stats["last_activity"],
+                    "current_processing": self.current_processing.copy(),
+                },
+                # Subprocess performance
+                "subprocess": {
+                    "total_calls": self.stats["subprocess_calls"],
+                    "successful_calls": successful_calls,
+                    "failed_calls": self.stats["subprocess_errors"],
+                    "retry_attempts": self.stats["subprocess_retries"],
+                    "timeout_count": self.stats["subprocess_timeouts"],
+                    "average_execution_time": avg_execution_time,
+                    "last_error": self.stats["last_subprocess_error"],
+                },
+                # System resources
+                "resources": {
+                    "memory_usage_mb": self._get_memory_usage(),
+                    "cpu_percent": self._get_cpu_percent(),
+                },
+                # Legacy fields for backward compatibility (deprecated)
                 "started_at": self.stats["started_at"],
                 "pid": os.getpid(),
                 "is_running": self.running,
                 "uptime_seconds": time.time() - self.started_at
                 if self.started_at
                 else None,
-                "error_count": 0,  # Lightweight monitor doesn't track service-level errors
-                "last_error": None,
-                "restart_count": 0,  # Lightweight monitor doesn't track restarts
+                "error_count": self.stats[
+                    "subprocess_errors"
+                ],  # Now meaningful instead of hardcoded 0
+                "last_error": self.stats[
+                    "last_subprocess_error"
+                ],  # Now meaningful instead of hardcoded None
+                "restart_count": 0,  # Service-level info, not available in monitor
                 "files_monitored": len(self.file_watcher.get_monitored_files())
                 if self.file_watcher
                 else 0,
@@ -1020,14 +1186,6 @@ class LightweightMonitor:
                 "last_sync_time": self.stats["last_activity"],
                 "memory_usage_mb": self._get_memory_usage(),
                 "cpu_percent": self._get_cpu_percent(),
-                "subprocess_calls": self.stats["subprocess_calls"],
-                "subprocess_errors": self.stats["subprocess_errors"],
-                "subprocess_retries": self.stats["subprocess_retries"],
-                "subprocess_timeouts": self.stats["subprocess_timeouts"],
-                "files_processed": self.stats["files_processed"],
-                "event_queue_size": self.file_watcher.event_queue.qsize()
-                if self.file_watcher
-                else 0,
             }
 
             # Ensure status directory exists

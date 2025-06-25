@@ -62,29 +62,8 @@ class ServiceStatus:
             "files_monitored": self.files_monitored,
             "sync_operations": self.sync_operations,
             "last_sync_time": self.last_sync_time,
-            "memory_usage_mb": self._get_memory_usage(),
-            "cpu_percent": self._get_cpu_percent(),
+            # Resource usage removed - now handled by daemon status
         }
-
-    def _get_memory_usage(self) -> float | None:
-        """Get current memory usage in MB."""
-        try:
-            if self.pid:
-                process = psutil.Process(self.pid)
-                return float(process.memory_info().rss / 1024 / 1024)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-        return None
-
-    def _get_cpu_percent(self) -> float | None:
-        """Get current CPU usage percentage."""
-        try:
-            if self.pid:
-                process = psutil.Process(self.pid)
-                return float(process.cpu_percent())
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-        return None
 
 
 class MonitoringService:
@@ -299,6 +278,16 @@ class MonitoringService:
         if daemon_status and self.status.is_running:
             # Use daemon's actual status data but ensure PID is from daemon
             daemon_status["pid"] = self.status.pid
+
+            # If using new structured format, merge with service info
+            if "service" in daemon_status:
+                # Add service-level management info to structured status
+                daemon_status["service_management"] = {
+                    "restart_count": self.status.restart_count,
+                    "service_errors": self.status.error_count,
+                    "service_last_error": self.status.last_error,
+                }
+
             return daemon_status
 
         return self.status.to_dict()
@@ -388,27 +377,95 @@ class MonitoringService:
                     }
                 )
 
-            # Check resource usage (lowered threshold for lightweight monitor)
-            memory_usage = self.status._get_memory_usage()
-            if (
-                memory_usage and memory_usage > 100
-            ):  # 100 MB threshold for lightweight monitor
-                health["status"] = "warning"
-                health["checks"].append(
-                    {
-                        "name": "memory_usage",
-                        "status": "warn",
-                        "message": f"High memory usage for lightweight monitor: {memory_usage:.1f} MB",
-                    }
-                )
+            # Enhanced health checks using structured status data
+            daemon_status = self._read_status_file()
+            if daemon_status and service_running:
+                # Check processing queue backlog
+                if "processing" in daemon_status:
+                    queue_size = daemon_status["processing"]["event_queue_size"]
+                    if queue_size > 50:
+                        health["status"] = "warning"
+                        health["checks"].append(
+                            {
+                                "name": "processing_queue",
+                                "status": "warn",
+                                "message": f"Large processing queue: {queue_size} items",
+                            }
+                        )
+                    else:
+                        health["checks"].append(
+                            {
+                                "name": "processing_queue",
+                                "status": "pass",
+                                "message": f"Processing queue: {queue_size} items",
+                            }
+                        )
+
+                # Check subprocess performance
+                if "subprocess" in daemon_status:
+                    subproc = daemon_status["subprocess"]
+                    if subproc["total_calls"] > 0:
+                        failure_rate = (
+                            subproc["failed_calls"] / subproc["total_calls"]
+                        ) * 100
+                        if failure_rate > 20:
+                            health["status"] = "warning"
+                            health["checks"].append(
+                                {
+                                    "name": "subprocess_performance",
+                                    "status": "warn",
+                                    "message": f"High subprocess failure rate: {failure_rate:.1f}%",
+                                }
+                            )
+                        else:
+                            health["checks"].append(
+                                {
+                                    "name": "subprocess_performance",
+                                    "status": "pass",
+                                    "message": f"Subprocess success rate: {100 - failure_rate:.1f}%",
+                                }
+                            )
+
+                # Check resource usage with structured data
+                if "resources" in daemon_status:
+                    memory_usage = daemon_status["resources"]["memory_usage_mb"]
+                    if (
+                        memory_usage and memory_usage > 100
+                    ):  # 100 MB threshold for lightweight monitor
+                        health["status"] = "warning"
+                        health["checks"].append(
+                            {
+                                "name": "memory_usage",
+                                "status": "warn",
+                                "message": f"High memory usage for lightweight monitor: {memory_usage:.1f} MB",
+                            }
+                        )
+                    else:
+                        health["checks"].append(
+                            {
+                                "name": "memory_usage",
+                                "status": "pass",
+                                "message": f"Memory usage: {memory_usage:.1f} MB"
+                                if memory_usage
+                                else "Memory usage: unknown",
+                            }
+                        )
+                else:
+                    # Fallback when structured data not available
+                    health["checks"].append(
+                        {
+                            "name": "memory_usage",
+                            "status": "pass",
+                            "message": "Memory usage: not available (daemon status missing structured data)",
+                        }
+                    )
             else:
+                # Fallback when daemon status not available
                 health["checks"].append(
                     {
                         "name": "memory_usage",
                         "status": "pass",
-                        "message": f"Memory usage: {memory_usage:.1f} MB"
-                        if memory_usage
-                        else "Memory usage: unknown",
+                        "message": "Memory usage: not available (daemon not running)",
                     }
                 )
 
@@ -704,17 +761,96 @@ def main() -> int:
             if args.json:
                 print(json.dumps(status, indent=2))
             else:
-                print(
-                    f"Service Status: {'Running' if status['is_running'] else 'Stopped'}"
-                )
-                if status["pid"]:
-                    print(f"PID: {status['pid']}")
-                if status["uptime_seconds"]:
-                    print(f"Uptime: {status['uptime_seconds']:.1f} seconds")
-                print(f"Files Monitored: {status['files_monitored']}")
-                print(f"Sync Operations: {status['sync_operations']}")
-                if status["error_count"] > 0:
-                    print(f"Errors: {status['error_count']}")
+                # Check if using new structured format
+                if "service" in status:
+                    # New structured format
+                    svc = status["service"]
+                    mon = status["monitoring"]
+                    proc = status["processing"]
+                    subproc = status["subprocess"]
+                    res = status["resources"]
+
+                    print(
+                        f"Service Status: {'Running' if svc['is_running'] else 'Stopped'}"
+                    )
+                    if svc["pid"]:
+                        print(f"PID: {svc['pid']}")
+                    if svc["uptime_seconds"]:
+                        print(f"Uptime: {svc['uptime_seconds']:.1f} seconds")
+
+                    print("\nFile Monitoring:")
+                    print(f"  Files Monitored: {mon['files_monitored']}")
+                    print(f"  Target Paths: {', '.join(mon['target_paths'])}")
+
+                    print("\nProcessing Queue:")
+                    print(f"  Queue Size: {proc['event_queue_size']}")
+                    print(f"  Files Processed: {proc['files_processed']}")
+                    if proc["current_processing"]["file_path"]:
+                        current = proc["current_processing"]
+                        processing_time = (
+                            time.time() - current["started_at"]
+                            if current["started_at"]
+                            else 0
+                        )
+                        print(
+                            f"  Currently Processing: {current['file_path']} ({current['change_type']}) - {processing_time:.1f}s"
+                        )
+                    else:
+                        print("  Currently Processing: None")
+
+                    print("\nSubprocess Performance:")
+                    print(f"  Total Calls: {subproc['total_calls']}")
+                    print(f"  Successful: {subproc['successful_calls']}")
+                    print(f"  Failed: {subproc['failed_calls']}")
+                    if subproc["total_calls"] > 0:
+                        success_rate = (
+                            subproc["successful_calls"] / subproc["total_calls"]
+                        ) * 100
+                        print(f"  Success Rate: {success_rate:.1f}%")
+                    if subproc["retry_attempts"] > 0:
+                        print(f"  Retries: {subproc['retry_attempts']}")
+                    if subproc["timeout_count"] > 0:
+                        print(f"  Timeouts: {subproc['timeout_count']}")
+                    if subproc["average_execution_time"]:
+                        print(
+                            f"  Avg Execution Time: {subproc['average_execution_time']:.2f}s"
+                        )
+                    if subproc["last_error"]:
+                        print(f"  Last Error: {subproc['last_error']}")
+
+                    print("\nSystem Resources:")
+                    if res["memory_usage_mb"]:
+                        print(f"  Memory Usage: {res['memory_usage_mb']:.1f} MB")
+                    if res["cpu_percent"]:
+                        print(f"  CPU Usage: {res['cpu_percent']:.1f}%")
+
+                    # Show warnings for queue backlog
+                    if proc["event_queue_size"] > 30:
+                        print(
+                            f"\n⚠️  Warning: Large processing queue ({proc['event_queue_size']} items)"
+                        )
+                    if subproc["failed_calls"] > 0 and subproc["total_calls"] > 0:
+                        failure_rate = (
+                            subproc["failed_calls"] / subproc["total_calls"]
+                        ) * 100
+                        if failure_rate > 10:
+                            print(
+                                f"⚠️  Warning: High failure rate ({failure_rate:.1f}%)"
+                            )
+
+                else:
+                    # Legacy format fallback
+                    print(
+                        f"Service Status: {'Running' if status['is_running'] else 'Stopped'}"
+                    )
+                    if status["pid"]:
+                        print(f"PID: {status['pid']}")
+                    if status["uptime_seconds"]:
+                        print(f"Uptime: {status['uptime_seconds']:.1f} seconds")
+                    print(f"Files Monitored: {status['files_monitored']}")
+                    print(f"Sync Operations: {status['sync_operations']}")
+                    if status["error_count"] > 0:
+                        print(f"Errors: {status['error_count']}")
             return 0
 
         elif args.health:
