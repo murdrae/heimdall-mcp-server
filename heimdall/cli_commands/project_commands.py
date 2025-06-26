@@ -1177,9 +1177,7 @@ def _execute_mcp_setup() -> list[str]:
             console.print(f"   🔧 Configuring {config.name}...")
 
             try:
-                success = install_mcp_interactive(
-                    platform_id, scope="project", force=False
-                )
+                success = install_mcp_interactive(platform_id, force=False)
                 if success:
                     console.print(f"   ✅ {config.name} configured successfully")
                     configured_platforms.append(config.name)

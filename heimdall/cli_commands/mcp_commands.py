@@ -67,6 +67,13 @@ PLATFORMS = {
         method="cli_command",
         detection_folders=[],
     ),
+    "gemini": PlatformConfig(
+        name="Gemini CLI",
+        config_file=".gemini/settings.json",
+        server_key="mcpServers",
+        method="json_modify",
+        detection_folders=[],  # Detect via CLI only, not folder
+    ),
 }
 
 
@@ -87,23 +94,35 @@ def detect_platforms() -> list[str]:
     detected = []
     current_dir = Path.cwd()
 
+    # Command mapping for CLI-based platforms
+    cli_commands = {
+        "claude-code": "claude",
+        "gemini": "gemini",
+        "cursor": "cursor",
+        "vscode": "code",
+    }
+
     for platform_id, config in PLATFORMS.items():
-        if platform_id == "claude-code":
-            # Check if claude command is available
+        # Check CLI availability for platforms that have CLI commands
+        if platform_id in cli_commands:
             try:
                 result = subprocess.run(
-                    ["claude", "--version"], capture_output=True, text=True, timeout=5
+                    [cli_commands[platform_id], "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 if result.returncode == 0:
                     detected.append(platform_id)
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
-        else:
-            # Check for detection folders
-            for folder in config.detection_folders:
-                if (current_dir / folder).exists():
+
+        # Also check for detection folders (for project-specific detection)
+        for folder in config.detection_folders:
+            if (current_dir / folder).exists():
+                if platform_id not in detected:
                     detected.append(platform_id)
-                    break
+                break
 
     return detected
 
@@ -227,9 +246,7 @@ def modify_json_config(
         raise Exception(f"Failed to modify config: {e}") from e
 
 
-def execute_claude_mcp_add(
-    server_config: ServerConfig, scope: str, force: bool = False
-) -> None:
+def execute_claude_mcp_add(server_config: ServerConfig, force: bool = False) -> None:
     """Execute 'claude mcp add' command."""
     try:
         # Check if claude CLI is available
@@ -266,7 +283,7 @@ def execute_claude_mcp_add(
                 pass
 
         # Build the command array
-        cmd = ["claude", "mcp", "add", server_config.name, "--scope", scope]
+        cmd = ["claude", "mcp", "add", server_config.name, "--scope", "project"]
 
         # Add environment variables
         for key, value in server_config.env.items():
@@ -287,7 +304,7 @@ def execute_claude_mcp_add(
 
         if result.returncode == 0:
             console.print(
-                f"✅ Successfully added MCP server to Claude Code ({scope} scope)"
+                "✅ Successfully added MCP server to Claude Code (project scope)"
             )
             if result.stdout.strip():
                 console.print(f"   Output: {result.stdout.strip()}")
@@ -322,10 +339,7 @@ def generate_config_snippet(
 
 def install_mcp(
     platform: str = typer.Argument(
-        ..., help="Platform: vscode, cursor, visual-studio, claude-code"
-    ),
-    scope: str = typer.Option(
-        "project", help="Scope: project, user (claude-code only)"
+        ..., help="Platform: vscode, cursor, visual-studio, claude-code, gemini"
     ),
     force: bool = typer.Option(False, help="Overwrite existing configuration"),
 ) -> None:
@@ -340,13 +354,6 @@ def install_mcp(
         server_config = get_server_config()
 
         console.print(f"🔗 Installing MCP server for {platform_config.name}")
-
-        # Validate scope for non-Claude platforms
-        if platform != "claude-code" and scope != "project":
-            console.print(
-                f"⚠️  Scope '{scope}' only applies to Claude Code. Using project-local config."
-            )
-            scope = "project"
 
         if platform_config.method == "json_modify":
             config_path = find_config_file(platform_config)
@@ -370,7 +377,7 @@ def install_mcp(
                 raise typer.Exit(1)
 
         elif platform_config.method == "cli_command":
-            execute_claude_mcp_add(server_config, scope, force)
+            execute_claude_mcp_add(server_config, force)
 
             # Verify installation
             status = check_installation_status(platform, platform_config)
@@ -657,7 +664,7 @@ def generate_mcp(
                 "• This will configure Claude Code for project-local MCP access"
             )
             console.print(
-                "• Use --scope user for global configuration across all projects"
+                "• Project-local configuration (isolates MCP to current project)"
             )
 
             if output:
@@ -723,9 +730,7 @@ def get_mcp_platform_info() -> dict[str, dict]:
     return platform_info
 
 
-def install_mcp_interactive(
-    platform_id: str, scope: str = "project", force: bool = False
-) -> bool:
+def install_mcp_interactive(platform_id: str, force: bool = False) -> bool:
     """Install MCP for a platform with minimal console output for interactive use."""
     try:
         if platform_id not in PLATFORMS:
@@ -745,7 +750,7 @@ def install_mcp_interactive(
                 return False
 
         elif platform_config.method == "cli_command":
-            execute_claude_mcp_add(server_config, scope, force)
+            execute_claude_mcp_add(server_config, force)
             # Verify installation
             status = check_installation_status(platform_id, platform_config)
             return status == "✅ Installed"
