@@ -57,18 +57,17 @@ graph TB
         ENCODER[Multi-Dimensional Encoder]
         STORAGE[Hierarchical Memory Storage]
         RETRIEVAL[Contextual Retrieval Engine]
-        MONITOR[Lightweight File Monitor]
+    end
+
+    subgraph "Process Coordination Layer"
+        DAEMON[Monitor Daemon<br/>File Watching]
+        SUBPROCESS[CLI Subprocess Delegation<br/>Memory Operations]
     end
 
     subgraph "Storage Infrastructure"
         QDRANT[Shared Qdrant Instance<br/>Project-Scoped Collections]
         SQLITE[SQLite Persistence<br/>Metadata & Connections]
         MODELS[ONNX Model Cache<br/>Local Embeddings]
-    end
-
-    subgraph "Process Management"
-        DAEMON[Monitor Daemon<br/>File Watching]
-        SUBPROCESS[CLI Subprocesses<br/>Memory Operations]
     end
 
     CLI --> OPS
@@ -85,7 +84,6 @@ graph TB
     RETRIEVAL --> QDRANT
     RETRIEVAL --> SQLITE
 
-    MONITOR --> DAEMON
     DAEMON --> SUBPROCESS
     SUBPROCESS --> CLI
 
@@ -126,15 +124,19 @@ graph LR
 
 ## Lightweight File Monitoring Architecture
 
+- **File Monitoring Architecture**: `docs/monitoring-architecture.md` - Lightweight subprocess delegation patterns
+
 The system implements a memory-efficient file monitoring architecture using subprocess delegation to eliminate memory leaks and optimize resource usage. The monitoring process remains lightweight by delegating cognitive operations to isolated CLI subprocesses.
 
 ### Architecture Components
 
 #### Lightweight Monitor Process
-- **LightweightMonitor**: Core monitoring daemon with minimal memory footprint (<50MB target)
+- `lightweight_monitor.py`
+- **LightweightMonitor**: Core monitoring daemon with minimal memory footprint (~25MB target)
 - **MarkdownFileWatcher**: Polls `.heimdall/docs` directory for markdown file changes
 - **EventQueue**: Thread-safe queue with event deduplication and batching
 - **SingletonLock**: File-based process coordination preventing multiple monitor instances
+- Updates periodically `.heimdall/monitor_status.json` with stats
 
 #### Subprocess Delegation Pattern
 - **CLI Subprocess Execution**: Heavy cognitive operations run as isolated `heimdall` command processes
@@ -150,6 +152,7 @@ The system implements a memory-efficient file monitoring architecture using subp
 
 ### CLI Integration
 
+- `heimdall/cognitive_system/monitoring_service.py`
 The monitoring service integrates with the unified CLI architecture:
 
 ```bash
@@ -207,7 +210,7 @@ The architecture prioritizes memory efficiency through several mechanisms:
 Daemon Process → File Watcher → Event Queue → Subprocess Coordinator → CLI Commands
      ↓               ↓              ↓              ↓                    ↓
 Lightweight    File Changes   Event Batching   Command Mapping    Memory Operations
-(<50MB)        Detection      & Deduplication   & Execution        (Isolated Process)
+(<25MB)        Detection      & Deduplication   & Execution        (Isolated Process)
 ```
 
 ### Extensibility Framework
@@ -402,22 +405,17 @@ heimdall/
 │   ├── health_commands.py        # Health checks and shell access
 │   ├── qdrant_commands.py        # Qdrant service management
 │   ├── monitor_commands.py       # File monitoring service
-│   └── project_commands.py       # Project collection management
-└── cognitive_system/          # Service management utilities
-    ├── service_manager.py        # Docker/Qdrant service management
-    ├── monitoring_service.py     # Automatic file monitoring service
-    ├── health_checker.py         # System health validation
-    └── service_health.py         # Health check system for monitoring
-
-interfaces/
-├── cli.py                     # Legacy CognitiveCLI (deprecated)
-├── mcp_server.py             # Legacy MCP server (deprecated)
-└── mcp_tools/                # Individual MCP tool implementations
-
-scripts/
-├── setup_project_memory.sh    # Project isolation setup
-├── load_project_content.sh    # Content loading automation
-└── claude_mcp_wrapper.sh      # Claude Code MCP integration
+│   ├── project_commands.py       # Project collection management
+│   └── mcp_commands.py           # MCP integration management
+├── cognitive_system/          # Service management utilities
+│   ├── service_manager.py        # Docker/Qdrant service management
+│   ├── monitoring_service.py     # Automatic file monitoring service
+│   ├── health_checker.py         # System health validation
+│   └── service_health.py         # Health check system for monitoring
+└── monitoring/                # File synchronization support
+    ├── file_sync.py              # Generic file synchronization handler
+    ├── file_types.py             # File type detection utilities
+    └── loader_registry.py        # MemoryLoader management and discovery
 ```
 
 ### Phase 2: Cognitive Enhancement (Weeks 5-8)
@@ -544,16 +542,16 @@ logger.error("Qdrant connection failed", error=str(e))
 │                    heimdall [command]                          │
 ├─────────────────────────────────────────────────────────────────┤
 │ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
-│ │   qdrant    │ │   project   │ │   monitor   │ │   doctor    │ │
-│ │ start/stop  │ │ init/list   │ │ start/stop  │ │ health      │ │
-│ │   status    │ │   clean     │ │   status    │ │ checks      │ │
-│ │   logs      │ │             │ │             │ │             │ │
+│ │   qdrant    │ │   project   │ │   monitor   │ │     mcp     │ │
+│ │ start/stop  │ │ init/list   │ │ start/stop  │ │install/list │ │
+│ │   status    │ │   clean     │ │   status    │ │remove/status│ │
+│ │   logs      │ │             │ │             │ │  generate   │ │
 │ └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
 │ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ │
-│ │    store    │ │   recall    │ │    load     │ │    shell    │ │
-│ │ experience  │ │  memories   │ │   files     │ │ interactive │ │
-│ │             │ │             │ │  git-load   │ │    REPL     │ │
-│ │             │ │             │ │             │ │             │ │
+│ │    store    │ │   recall    │ │    load     │ │   doctor    │ │
+│ │ experience  │ │  memories   │ │   files     │ │ health      │ │
+│ │             │ │             │ │  git-load   │ │ checks      │ │
+│ │             │ │             │ │             │ │   shell     │ │
 │ └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
          │
@@ -643,136 +641,12 @@ $ heimdall recall "machine learning patterns"
 ### Setup Automation Infrastructure
 
 #### Unified CLI Architecture
-```python
-# heimdall/cli.py
-import typer
-from typing import Optional
 
-app = typer.Typer(help="Heimdall Cognitive Memory System")
-
-# Import and register command modules
-from heimdall.cli_commands import (
-    cognitive_commands,
-    health_commands,
-    qdrant_commands,
-    monitor_commands,
-    project_commands
-)
-
-# Register cognitive operations
-app.command("store")(cognitive_commands.store)
-app.command("recall")(cognitive_commands.recall)
-app.command("load")(cognitive_commands.load)
-app.command("git-load")(cognitive_commands.git_load)
-app.command("status")(cognitive_commands.status)
-
-# Register health and shell commands
-app.command("doctor")(health_commands.doctor)
-app.command("shell")(health_commands.shell)
-
-# Register service management commands
-qdrant_app = typer.Typer(help="Qdrant vector database management")
-app.add_typer(qdrant_app, name="qdrant")
-qdrant_app.command("start")(qdrant_commands.qdrant_start)
-qdrant_app.command("stop")(qdrant_commands.qdrant_stop)
-qdrant_app.command("status")(qdrant_commands.qdrant_status)
-qdrant_app.command("logs")(qdrant_commands.qdrant_logs)
-
-# Register monitoring commands
-monitor_app = typer.Typer(help="File monitoring service management")
-app.add_typer(monitor_app, name="monitor")
-monitor_app.command("start")(monitor_commands.monitor_start)
-monitor_app.command("stop")(monitor_commands.monitor_stop)
-monitor_app.command("restart")(monitor_commands.monitor_restart)
-monitor_app.command("status")(monitor_commands.monitor_status)
-monitor_app.command("health")(monitor_commands.monitor_health)
-
-# Register project commands
-project_app = typer.Typer(help="Project memory management")
-app.add_typer(project_app, name="project")
-project_app.command("init")(project_commands.project_init)
-project_app.command("list")(project_commands.project_list)
-project_app.command("clean")(project_commands.project_clean)
-```
+- **Unified CLI Architecture**: `docs/arch-docs/unified-cli-architecture.md` - Operations layer design and interface separation
 
 #### Service Management Flow
-```
+
 Experience Input → Multi-dimensional Encoding → Vector Storage (Qdrant)
                                               → Metadata Storage (SQLite)
                                               → Connection Graph Updates
                                               → Available for Retrieval
-```
-
-#### How Components Work Together
-1. **Setup Phase**: System creates shared data directories, initializes project-scoped collections, starts shared Qdrant service as needed
-2. **Runtime Architecture**: Dual entry points - `heimdall` command for terminal use, `heimdall-mcp` for AI integration
-3. **Persistent Storage**: Memories survive restarts via shared Qdrant instance and local metadata files
-4. **AI System Integration**: LLMs connect via standalone MCP server for real-time memory operations, context preservation, serendipitous discovery
-5. **Process Management**: Lightweight monitoring delegates to CLI subprocesses for memory operations
-
-**API Operations**:
-- `store_experience(text, context)` - Form new memory
-- `retrieve_memories(query, types=['core', 'peripheral', 'bridge'])` - Cognitive retrieval
-- `get_memory_stats()` - System state and metrics
-- `consolidate_memories()` - Trigger episodic→semantic consolidation
-
-**Project Structure**:
-```
-cognitive-memory/
-├── .env                      # Environment configuration
-├── .pre-commit-config.yaml   # Git hook configuration
-├── pyproject.toml           # Python project settings
-├── CLAUDE.md               # Project instructions for AI assistants
-├── cognitive_memory/        # Core cognitive system
-│   ├── core/               # System interfaces and orchestration
-│   ├── encoding/           # ONNX-based embedding and dimension extraction
-│   ├── storage/            # Qdrant + SQLite persistence layer
-│   ├── retrieval/          # Memory activation and bridge discovery
-│   ├── git_analysis/       # Git commit processing and analysis
-│   ├── loaders/            # Content ingestion (markdown, git)
-│   └── monitoring/         # File change detection
-├── heimdall/               # Unified CLI and MCP interfaces
-│   ├── cli.py             # Main heimdall command entry point
-│   ├── operations.py      # Pure operations layer (business logic)
-│   ├── mcp_server.py      # Standalone MCP server (heimdall-mcp)
-│   ├── interactive_shell.py # Interactive memory operations
-│   ├── display_utils.py   # Rich terminal formatting utilities
-│   ├── cli_commands/      # Modular CLI command implementations
-│   ├── cognitive_system/  # Service management utilities
-│   └── monitoring/        # Lightweight file monitoring
-├── docker/                 # Container infrastructure
-│   └── docker-compose.template.yml # Shared Qdrant service
-├── scripts/               # Automation and setup utilities
-│   ├── setup_claude_code_mcp.sh   # Claude Code integration
-│   ├── post_commit_hook.py        # Git hook integration
-│   └── git_hook_installer.py      # Git hook management
-├── docs/                  # Architecture and usage documentation
-│   ├── arch-docs/         # Technical architecture specifications
-│   ├── progress/          # Development progress tracking
-│   └── monitoring-architecture.md # File monitoring details
-└── tests/                 # Comprehensive test suite
-    ├── unit/              # Component-level tests
-    ├── integration/       # Cross-component integration tests
-    └── e2e/               # End-to-end system tests
-```
-
-## Conclusion
-
-This technical specification provides the architectural foundation for the Heimdall cognitive memory system, balancing advanced cognitive capabilities with practical engineering constraints. The operations-first architecture enables clean separation of concerns, making the system maintainable and extensible for future interface additions.
-
-The chosen technology stack (Shared Qdrant + ONNX Runtime + NumPy + SQLite) provides optimal cognitive fidelity, deployment efficiency, and operational simplicity. The unified CLI architecture with subprocess delegation ensures memory efficiency while maintaining comprehensive functionality.
-
-## Detailed Implementation Documentation
-
-For specific implementation details and development progress, refer to the following specialized documents:
-
-### Architecture Details
-- **Unified CLI Architecture**: `docs/arch-docs/unified-cli-architecture.md` - Operations layer design and interface separation
-- **File Monitoring Architecture**: `docs/monitoring-architecture.md` - Lightweight subprocess delegation patterns
-
-### Implementation Progress
-- **Shared Qdrant Migration**: `docs/progress/021_shared_qdrant_architecture.md` - Project isolation via collections
-- **CLI Consolidation**: `docs/progress/022_unified_cli_architecture.md` - Operations-first design implementation
-- **Lightweight Monitoring**: `docs/progress/023_lightweight_monitoring_architecture.md` - Memory-efficient file monitoring
-
-These documents provide comprehensive technical details, implementation decisions, and development milestones for each architectural component.

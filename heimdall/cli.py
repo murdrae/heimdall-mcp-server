@@ -32,6 +32,13 @@ from heimdall.cli_commands.git_hook_commands import (
     git_hook_uninstall,
 )
 from heimdall.cli_commands.health_commands import health_check, interactive_shell
+from heimdall.cli_commands.mcp_commands import (
+    generate_mcp,
+    install_mcp,
+    list_mcp,
+    remove_mcp,
+    status_mcp,
+)
 from heimdall.cli_commands.monitor_commands import (
     monitor_health,
     monitor_restart,
@@ -83,6 +90,9 @@ app.add_typer(project_app, name="project")
 git_hook_app = typer.Typer(help="Git hook management for automatic memory processing")
 app.add_typer(git_hook_app, name="git-hook")
 
+mcp_app = typer.Typer(help="🔗 MCP integration management")
+app.add_typer(mcp_app, name="mcp")
+
 serve_app = typer.Typer(help="Start interface servers")
 app.add_typer(serve_app, name="serve")
 
@@ -124,6 +134,13 @@ project_app.command("clean")(project_clean)
 git_hook_app.command("install")(git_hook_install)
 git_hook_app.command("uninstall")(git_hook_uninstall)
 git_hook_app.command("status")(git_hook_status)
+
+# Register MCP commands
+mcp_app.command("install")(install_mcp)
+mcp_app.command("list")(list_mcp)
+mcp_app.command("remove")(remove_mcp)
+mcp_app.command("status")(status_mcp)
+mcp_app.command("generate")(generate_mcp)
 
 
 def _setup_early_logging() -> None:

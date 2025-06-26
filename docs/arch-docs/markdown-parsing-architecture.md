@@ -95,46 +95,16 @@ relevance_score = (
 - L1(Dev Commands) ──0.42(assoc)──► L0(pytest)
 - L2(venv command) ──0.56(seq)──► L2(pip install)
 
-## Configuration Integration
-
-Extend existing `CognitiveConfig` in `config.py`:
-
-```python
-# Markdown parsing parameters
-max_tokens_per_chunk: int = 250
-code_block_lines: int = 8
-strength_floor: float = 0.15
-
-# Base connection weights
-hierarchical_weight: float = 0.80
-sequential_weight: float = 0.70
-associative_weight: float = 0.50
-
-# Relevance scoring weights (must sum to 1.0)
-semantic_alpha: float = 0.45
-lexical_beta: float = 0.25
-structural_gamma: float = 0.15
-explicit_delta: float = 0.15
-```
-
 ## CLI Interface
 
 Content loading is integrated with the unified CLI:
 
 ```bash
-# Parse single markdown file
-heimdall load ./CLAUDE.md
-
-# Parse with custom parameters
-heimdall load ./docs/api.md --dry-run
-
-# Batch parse directory
-heimdall load ./docs/ --recursive
+heimdall load
 ```
 
-## Implementation Status
+## Implementation Overview
 
-### ✅ Completed: Modular Component Architecture
 The markdown processing system has been refactored into specialized components:
 
 1. **ContentAnalyzer**: Linguistic analysis, POS tagging, content classification
@@ -144,40 +114,24 @@ The markdown processing system has been refactored into specialized components:
 5. **ChunkProcessor**: Document chunking, grouping, and consolidation
 6. **MarkdownMemoryLoader**: Main coordinator delegating to specialized components
 
-### ✅ Completed: Connection Building
 1. **Semantic Analysis**: Cosine similarity computation using spaCy
 2. **Lexical Analysis**: Jaccard coefficient implementation
 3. **Structural Analysis**: Document proximity scoring
 4. **Connection Storage**: SQLite memory_connections table integration
 
-### ✅ Completed: Integration & Validation
 1. **Memory Ingestion**: Fully integrated with existing storage layer
 2. **Configuration**: Extended CognitiveConfig with parsing parameters
 3. **Test Coverage**: 53/53 tests passing with comprehensive validation
 4. **CLI Enhancement**: Batch processing and dry-run mode available
 
-## Quality Validation
-
-### Test Harness
-- **QA Set**: 30-40 natural language queries about markdown content
-- **Success Metric**: Top-5 retrieval contains correct answer
-- **Activation Metrics**: BFS spread efficiency (10-60 nodes optimal)
-
-### Example Test Queries for CLAUDE.md
-- "How do I run tests?" → Should activate L2(pytest command)
-- "What is the vector database?" → Should activate L0(Qdrant concept)
-- "Development workflow steps?" → Should activate L1(Dev Commands section)
 
 ## Dependencies
 
 ### Requirements Status
 
-✅ **Already Installed and Configured**:
 - spacy (with en_core_web_md model)
 - vaderSentiment
 - All dependencies integrated in modular architecture
-
-✅ **Component Dependencies**:
 - ContentAnalyzer: spacy, vaderSentiment
 - DocumentParser: markdown, re
 - MemoryFactory: Custom content assembly logic
@@ -324,20 +278,3 @@ ConnectionExtractor → Memory Relationships
     ↓
 Return: (memories, connections)
 ```
-
-### Benefits of Modular Architecture
-
-1. **Single Responsibility**: Each component has a clear, focused purpose
-2. **Testability**: Components can be tested independently with mocks
-3. **Maintainability**: Changes to one component don't affect others
-4. **Reusability**: Components can be reused in different contexts
-5. **Extensibility**: New components can be added without affecting existing ones
-6. **Code Quality**: Eliminates duplication and reduces complexity
-
-### Backward Compatibility
-
-The refactoring maintains full backward compatibility:
-- Public API of MarkdownMemoryLoader remains unchanged
-- All existing tests continue to pass (53/53)
-- Integration points with CognitiveSystem unchanged
-- Configuration parameters remain the same
