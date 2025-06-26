@@ -1,10 +1,11 @@
 # Heimdall MCP Server - Your AI Coding Assistant's Long-Term Memory
 
-[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://pypi.org/project/heimdall-mcp/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](hhttps://github.com/lcbcFoo/heimdall-mcp-server/blob/main/README.mdttps://opensource.org/licenses/Apache-2.0)
-[![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://www.docker.com/)
 [![MCP Protocol](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io/)
 [![Heimdall Demo Video](https://img.shields.io/badge/YouTube-red)](https://youtu.be/7X1gntAXsao)
+![PyPI - Version](https://img.shields.io/pypi/v/heimdall-mcp)
+
 
 **The Problem:** Your AI coding assistant has short-lived memory. Every chat session starts from a blank slate.
 
@@ -23,96 +24,94 @@ https://github.com/user-attachments/assets/120b3d32-72d1-4d42-b3ab-285e8a711981
 
 ## 🚀 Getting Started
 
-**Prerequisites**: Docker and Docker Compose must be installed and running.
+**Prerequisites**: Python 3.10+ and Docker (for Qdrant vector database).
 
-Heimdall is designed to be set up on a per-project basis. Run these commands from the root directory of your code repository.
+Heimdall provides a unified `heimdall` CLI that manages everything from project setup to MCP integration.
 
-### 1. Clone the repository
+### 1. Install Heimdall
 
 ```bash
-git clone https://github.com/lcbcFoo/heimdall-mcp-server.git
-# Cloned to /path/to/heimdall-mcp-server
+pip install heimdall-mcp
 ```
 
-### 2. Navigate to Your Project
+This installs the `heimdall` command-line tool with all necessary dependencies.
+
+### 2. Initialize Your Project
+
+Navigate to your project directory and set up Heimdall:
 
 ```bash
 cd /path/to/your/project
+
+# Initialize project memory (starts Qdrant, creates collections, sets up config)
+heimdall project init
 ```
 
-### 3. Run the Setup Script
+This single command interactively builds up everything asking user preferences:
+- ✅ Starts Qdrant vector database automatically
+- ✅ Creates project-specific memory collections
+- ✅ Sets up `.heimdall/` configuration directory
+- ✅ Downloads required AI models
+- ✅ File monitoring
+- ✅ Git hooks
+- ✅ MCP integration
 
-This command deploys project-isolated Docker containers for the Heimdall server and its Qdrant vector database.
+**Note: this creates a `.heimdall/` directory in your project for configuration - you should NOT commit this - add to .gitignore!**
+
+## Load Project Knowledge
+
+**Recommended: Use automatic file monitoring** and place files in `.heimdall/docs/`:
 
 ```bash
-# For integration with Claude Code, just run:
-/path/to/heimdall-mcp-server/setup_claude_code_mcp.sh
+# Copy or symlink your documentation to the monitored directory
+ln -r -s my-project-docs ./.heimdall/docs/project-docs
 
-# For a generic setup with other models
-# /path/to/heimdall-mcp-server/scripts/setup_project_memory.sh
-# This will put the MCP server docker up, you will then need to configure the Coding Assistant you are using.
+# Start automatic monitoring (files are loaded instantly when changed)
+heimdall monitor start
 ```
-**Note: this creates a `.heimdall-mcp` directory in your project - DON'T COMMIT IT! I highly recommend adding it to .gitignore**
 
-### 4. Load Project Knowledge
+**Alternative: Manual loading** for one-time imports:
 
-Populate the `.heimdall-mcp/` directory (created by the above scripts) with your project's documentation (e.g., Markdown files).
-
-You can create inner directories or create symbolic links to an existing docs folder (ln -r -s).
-
-When you have populated the directory with docs, run the loading script. (it can take some time...)
-
-```Bash
-# Example: Symlink your existing architecture docs
-# ln -s docs/architecture .heimdall-mcp/arch-docs
-
-# This script indexes your docs and the full git history
-/path/to/heimdall-mcp-server/scripts/load_project_content.sh
+```bash
+# Load documentation and files manually
+heimdall load docs/ --recursive
+heimdall load README.md
 ```
 
 Your project's memory is now active and ready for your LLM.
 
-#### Automatic File Change detection
+#### Real-time Git Integration
 
-After this point, if you add/change/remove md files on that directory the system will automatically detect and update memories.
-
-### 5. Real-time Git Integration
-
-`load_project_content.sh` loads git history, but Heimdall also supports automatically updates to memories when you make commits via git hooks
-
-#### Automatic Git Hook (Recommended)
+You can parse your entire git history with:
 
 ```bash
-# Install the post-commit hook (run from your project directory)
-/path/to/heimdall-mcp-server/scripts/git-hook-installer.sh --install
+# Load git commit history
+heimdall git-load .
 ```
 
-**Note**: If you have other post-commit git-hook configured, it will be saved as backup and still be executed before Heimdall MCP hook.
-
-With post-commit git hooks configured, new memories are recovered from commits automatically. To remove:
+You can also install git hooks for automatic memory updates on commits:
 
 ```bash
-/path/to/heimdall-mcp-server/scripts/git-hook-installer.sh --uninstall
+# Install the post-commit hook (Python-based, cross-platform)
+heimdall git-hooks install
 ```
 
-#### Manual Updates
+**Note**: If you have existing post-commit hooks, they'll be safely chained and preserved - but proceed carefully.
 
-If you prefer to not have automatic updates using git hooks, you still can periodically use:
-
-```bash
-# Load only new commits since last update
-/path/to/heimdall-mcp-server/scripts/load_project_content.sh --git-only
-```
 
 ## 🧹 Cleanup
 
-To remove Heimdall from a project, use the cleanup script instead of `rm -rf`:
+To remove Heimdall from a project:
 
 ```bash
-/path/to/heimdall-mcp-server/scripts/cleanup_memory.sh --project
+# Navigate to the project you want to clean up
+cd /path/to/project
+
+# Cleanup data, remove collections, uninstall git hooks
+memory_system project clean
 ```
 
-This handles Docker permission issues automatically.
+This cleanly removes project-specific data while preserving the shared Qdrant instance for other projects.
 
 ## ⚙️ How It Works Under the Hood
 
@@ -128,8 +127,8 @@ graph TD
 
         %% 1. Application Interface Layer
         subgraph Application Interface
-            MCP_Server["MCP Server (interfaces/mcp_server.py)"]
-            CLI["CognitiveCLI (interfaces/cli.py)"]
+            MCP_Server["MCP Server (heimdall-mcp)"]
+            CLI["CognitiveCLI (heimdall/cli.py)"]
             style MCP_Server fill:#b2ebf2,stroke:#00acc1,color:#212121
             style CLI fill:#b2ebf2,stroke:#00acc1,color:#212121
         end
@@ -209,14 +208,87 @@ You can instruct your LLM to use the following four tools to interact with its m
 
 To maximize the effectiveness of Heimdall:
 
-  * **Provide Quality Documentation:** The more detailed your markdown files in `.heimdall-mcp/`, the better the context. Think architecture decision records, style guides, and API documentation.
-  * **Don't mix progress status documents:** Avoid feeding progress or status documents into the memory system. Prefer using meaningful git commit messages. The system deals better with ranking newer commits than identifying outdated docs.
+  * **Provide Quality Documentation:** Think architecture decision records, style guides, and API documentation.
+  * **Keep documents updated:** Heilmdall will use documents in `.heimdall/docs` to provide memories - if they are outdated, so will be the memories. We suggest you use symbolic links to your actual docs directory in `.heimdall/docs` so Heimdall automatically refreshes memories with latest document versions.
   * **Maintain Good Git Hygiene:** Write clear and descriptive commit messages. A message like `feat(api): add user authentication endpoint` is far more valuable than `more stuff`.
+  * **Set Up Automation:** Use `heimdall monitor start` and `heimdall git-hooks install` for hands-free memory updates.
   * **Guide Your Assistant:** Use a system prompt (like a `CLAUDE.md` file) to instruct your LLM on *how* and *when* to use the available memory tools.
+
+## 🛠️ Command Reference
+
+### Core Commands
+
+| Command | Description |
+| :------ | :---------- |
+| `heimdall store <text>` | Store experience in cognitive memory |
+| `heimdall recall <query>` | Retrieve relevant memories based on query |
+| `heimdall load <path>` | Load files/directories into memory |
+| `heimdall git-load [repo]` | Load git commit patterns into memory |
+| `heimdall status` | Show system status and memory statistics |
+| `heimdall remove-file <path>` | Remove memories for deleted file |
+| `heimdall doctor` | Run comprehensive health checks |
+| `heimdall shell` | Start interactive memory shell |
+
+### Project Management
+
+| Command | Description |
+| :------ | :---------- |
+| `heimdall project init` | Initialize project memory with interactive setup |
+| `heimdall project list` | List all projects in shared Qdrant instance |
+| `heimdall project clean` | Remove project collections and cleanup |
+
+### Vector Database (Qdrant)
+
+| Command | Description |
+| :------ | :---------- |
+| `heimdall qdrant start` | Start Qdrant vector database service |
+| `heimdall qdrant stop` | Stop Qdrant service |
+| `heimdall qdrant status` | Check Qdrant service status |
+| `heimdall qdrant logs` | View Qdrant service logs |
+
+### File Monitoring
+
+| Command | Description |
+| :------ | :---------- |
+| `heimdall monitor start` | Start automatic file monitoring service |
+| `heimdall monitor stop` | Stop file monitoring service |
+| `heimdall monitor restart` | Restart monitoring service |
+| `heimdall monitor status` | Check monitoring service status |
+| `heimdall monitor health` | Detailed monitoring health check |
+
+### Git Integration
+
+| Command | Description |
+| :------ | :---------- |
+| `heimdall git-hook install` | Install post-commit hook for automatic memory processing |
+| `heimdall git-hook uninstall` | Remove Heimdall git hooks |
+| `heimdall git-hook status` | Check git hook installation status |
+
+### MCP Integration
+
+| Command | Description |
+| :------ | :---------- |
+| `heimdall mcp install <platform>` | Install MCP server for platform (vscode, cursor, claude-code, visual-studio) |
+| `heimdall mcp remove <platform>` | Remove MCP integration from platform |
+| `heimdall mcp status` | Show installation status for all platforms |
+| `heimdall mcp list` | List available platforms and installation status |
+| `heimdall mcp generate <platform>` | Generate configuration snippets for manual installation |
+
+#### Platforms
+
+Heimdall MCP server is compatible with any platform that supports STDIO MCP servers. The following platforms are supported for automatic installation using `heimdall mcp` commands.
+
+- `vscode` - Visual Studio Code
+- `cursor` - Cursor IDE
+- `claude-code` - Claude Code
+- `visual-studio` - Visual Studio
 
 ## Technology Stack:
 
+- Python 3.10
 - Vector Storage: Qdrant
+- Mmeory information and metadata: SQLite
+- Embeddings: all-MiniLM-L6-v2
 - Sentiment analysis: NRCLex emotion lexicon
 - Semantic analysis: spaCy
 - Integration: Model Context Protocol (MCP)
@@ -226,7 +298,9 @@ To maximize the effectiveness of Heimdall:
   * [x] ~~Git `post-commit` hook for automatic, real-time memory updates~~ ✅ **Completed**
   * [x] ~~Watcher to auto-detect and load new documents in the `.heimdall-mcp` directory.~~ ✅ **Completed**
   * [x] ~~Release v0.1.0 publicly~~ ✅ **Completed**
-  * [ ] Simplify installation
+  * [x] ~~Heimdall pip package available~~ ✅ **Completed**
+  * [x] ~~Simplify installation~~ ✅ **Completed**
+  * [ ] Delete memories support (manually or by context - for md docs already supported)
 
 ## License
 

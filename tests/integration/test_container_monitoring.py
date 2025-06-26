@@ -14,7 +14,10 @@ from unittest.mock import Mock, patch
 import pytest
 
 from cognitive_memory.core.config import CognitiveConfig
-from memory_system.monitoring_service import MonitoringService, MonitoringServiceError
+from heimdall.cognitive_system.monitoring_service import (
+    MonitoringService,
+    MonitoringServiceError,
+)
 
 
 class TestContainerEnvironmentIntegration:
@@ -156,7 +159,7 @@ class TestContainerServiceLifecycle:
                 service.stop()
 
     @patch("memory_system.monitoring_service.initialize_system")
-    @patch("cognitive_memory.monitoring.create_default_registry")
+    @patch("heimdall.monitoring.loader_registry.create_default_registry")
     def test_container_service_startup_sequence(
         self, mock_registry, mock_init_system, container_service
     ):

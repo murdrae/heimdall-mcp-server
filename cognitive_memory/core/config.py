@@ -5,17 +5,219 @@ This module provides centralized configuration management using environment
 variables and .env files as specified in the technical architecture.
 """
 
+import hashlib
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import yaml
 from dotenv import load_dotenv
 from loguru import logger
 
 if TYPE_CHECKING:
     from .memory import CognitiveMemory
+
+
+def get_project_id(path: str | Path | None = None) -> str:
+    """
+    Generate project ID from directory path.
+
+    Creates a deterministic project identifier in the format: {repo_name}_{hash8}
+    where hash8 is the first 8 characters of the SHA256 hash of the absolute path.
+
+    Args:
+        path: Directory path to generate ID from. If None, uses current working directory.
+
+    Returns:
+        str: Project ID in format "repo_name_hash8"
+    """
+    if path is None:
+        path = Path.cwd()
+    else:
+        path = Path(path)
+
+    # Use absolute path for consistent hashing
+    abs_path = path.resolve()
+
+    # Generate hash from absolute path
+    path_hash = hashlib.sha256(str(abs_path).encode()).hexdigest()[:8]
+
+    # Extract repo name from directory
+    repo_name = abs_path.name
+
+    # Sanitize repo name for collection naming (replace non-alphanumeric with underscore)
+    repo_name = re.sub(r"[^a-zA-Z0-9]", "_", repo_name)
+
+    return f"{repo_name}_{path_hash}"
+
+
+@dataclass
+class ProjectPaths:
+    """Project-specific file paths for monitoring service."""
+
+    def __init__(self, project_root: Path | None = None):
+        """
+        Initialize project paths.
+
+        Args:
+            project_root: Root directory of the project. If None, uses current working directory.
+        """
+        self.project_root = project_root or Path.cwd()
+        self.heimdall_dir = self.project_root / ".heimdall"
+        self.config_file = self.heimdall_dir / "config.yaml"
+        self.pid_file = self.heimdall_dir / "monitor.pid"
+        self.log_file = self.heimdall_dir / "monitor.log"
+
+        # Ensure .heimdall directory exists
+        self.heimdall_dir.mkdir(exist_ok=True)
+
+    def cleanup_stale_pid(self) -> bool:
+        """
+        Clean up stale PID file if process is no longer running.
+
+        Returns:
+            True if PID file was stale and removed, False otherwise
+        """
+        if not self.pid_file.exists():
+            return False
+
+        try:
+            import psutil
+
+            pid = int(self.pid_file.read_text().strip())
+            if not psutil.pid_exists(pid):
+                logger.info(f"Removing stale PID file for non-existent process {pid}")
+                self.pid_file.unlink()
+                return True
+        except (ValueError, PermissionError, ImportError) as e:
+            logger.warning(f"Error checking PID file: {e}")
+            # Remove corrupted PID file
+            try:
+                self.pid_file.unlink()
+                return True
+            except PermissionError:
+                pass
+
+        return False
+
+
+def get_project_paths(project_root: Path | None = None) -> ProjectPaths:
+    """
+    Get standardized project paths.
+
+    Args:
+        project_root: Root directory of the project. If None, uses current working directory.
+
+    Returns:
+        ProjectPaths: Object containing all project-specific paths
+    """
+    return ProjectPaths(project_root)
+
+
+def get_monitoring_target_path(project_root: Path | None = None) -> str:
+    """
+    Get monitoring target path from various sources with centralized priority logic.
+
+    Priority order:
+    1. MONITORING_TARGET_PATH environment variable (highest priority - CLI override)
+    2. .heimdall/config.yaml monitoring.target_path
+    3. Default to ./docs relative to project root
+
+    Args:
+        project_root: Root directory of the project. If None, uses current working directory.
+
+    Returns:
+        str: Absolute path to monitor
+    """
+    paths = get_project_paths(project_root)
+
+    # Environment variable takes highest priority (for CLI override)
+    env_target = os.getenv("MONITORING_TARGET_PATH")
+    if env_target:
+        return str(Path(env_target).resolve())
+
+    # Check .heimdall/config.yaml
+    if paths.config_file.exists():
+        try:
+            config_data = yaml.safe_load(paths.config_file.read_text())
+            if config_data and isinstance(config_data, dict):
+                monitoring = config_data.get("monitoring", {})
+                if isinstance(monitoring, dict) and "target_path" in monitoring:
+                    target_path = monitoring["target_path"]
+                    if not os.path.isabs(target_path):
+                        # Resolve relative paths against project root
+                        target_path = str((paths.project_root / target_path).resolve())
+                    return str(target_path)
+        except Exception as e:
+            logger.warning(f"Failed to parse .heimdall/config.yaml: {e}")
+
+    # Default fallback
+    return str((paths.project_root / ".heimdall" / "docs").resolve())
+
+
+def get_monitoring_config(project_root: Path | None = None) -> dict[str, Any]:
+    """
+    Get comprehensive monitoring configuration with centralized logic.
+
+    Args:
+        project_root: Root directory of the project. If None, uses current working directory.
+
+    Returns:
+        dict: Monitoring configuration with target_path, interval_seconds, ignore_patterns
+    """
+    paths = get_project_paths(project_root)
+
+    # Default configuration
+    config = {
+        "target_path": get_monitoring_target_path(project_root),
+        "interval_seconds": 5.0,
+        "ignore_patterns": [".git", "node_modules", "__pycache__", ".pytest_cache"],
+    }
+
+    # Environment overrides (highest priority)
+    env_interval = os.getenv("MONITORING_INTERVAL_SECONDS")
+    if env_interval:
+        try:
+            config["interval_seconds"] = float(env_interval)
+        except (ValueError, TypeError):
+            logger.warning("Invalid MONITORING_INTERVAL_SECONDS value, using default")
+
+    env_patterns = os.getenv("MONITORING_IGNORE_PATTERNS")
+    if env_patterns:
+        config["ignore_patterns"] = [p.strip() for p in env_patterns.split(",")]
+
+    # Check .heimdall/config.yaml for additional settings
+    if paths.config_file.exists():
+        try:
+            config_data = yaml.safe_load(paths.config_file.read_text())
+            if config_data and isinstance(config_data, dict):
+                monitoring = config_data.get("monitoring", {})
+                if isinstance(monitoring, dict):
+                    # Only override if not already set by environment
+                    if "interval_seconds" in monitoring and not os.getenv(
+                        "MONITORING_INTERVAL_SECONDS"
+                    ):
+                        try:
+                            config["interval_seconds"] = float(
+                                monitoring["interval_seconds"]
+                            )
+                        except (ValueError, TypeError):
+                            logger.warning("Invalid interval_seconds in config.yaml")
+
+                    if "ignore_patterns" in monitoring and not os.getenv(
+                        "MONITORING_IGNORE_PATTERNS"
+                    ):
+                        patterns = monitoring["ignore_patterns"]
+                        if isinstance(patterns, list):
+                            config["ignore_patterns"] = patterns
+        except Exception as e:
+            logger.warning(
+                f"Failed to parse monitoring config from .heimdall/config.yaml: {e}"
+            )
+
+    return config
 
 
 def detect_container_environment() -> bool:
@@ -41,14 +243,84 @@ def detect_container_environment() -> bool:
 
 def detect_project_config() -> dict[str, str] | None:
     """
-    Detect project-specific configuration from Docker Compose file.
+    Detect project-specific configuration from .heimdall/config.yaml or legacy Docker Compose.
 
-    Looks for .heimdall-mcp/docker-compose.yml in current directory
-    and extracts Qdrant port mapping if found.
+    Looks for:
+    1. .heimdall/config.yaml (new format)
+    2. .heimdall-mcp/docker-compose.yml (legacy format)
 
     Returns:
         dict with project config overrides, or None if no project setup found
     """
+    # Check for new .heimdall/config.yaml format first
+    heimdall_config = Path(".heimdall/config.yaml")
+    if heimdall_config.exists():
+        try:
+            config_data = yaml.safe_load(heimdall_config.read_text())
+            if config_data and isinstance(config_data, dict):
+                # Convert YAML config to environment variable format
+                env_overrides = {}
+
+                # Map qdrant_url to QDRANT_URL
+                if "qdrant_url" in config_data:
+                    env_overrides["QDRANT_URL"] = config_data["qdrant_url"]
+
+                # Map monitoring settings
+                if "monitoring" in config_data and isinstance(
+                    config_data["monitoring"], dict
+                ):
+                    monitoring = config_data["monitoring"]
+                    if "target_path" in monitoring:
+                        env_overrides["MONITORING_TARGET_PATH"] = monitoring[
+                            "target_path"
+                        ]
+                    if "interval_seconds" in monitoring:
+                        env_overrides["MONITORING_INTERVAL_SECONDS"] = str(
+                            monitoring["interval_seconds"]
+                        )
+                    if "enabled" in monitoring:
+                        env_overrides["MONITORING_ENABLED"] = str(
+                            monitoring["enabled"]
+                        ).lower()
+
+                # Map database settings
+                if "database" in config_data and isinstance(
+                    config_data["database"], dict
+                ):
+                    database = config_data["database"]
+                    if "path" in database:
+                        env_overrides["SQLITE_PATH"] = database["path"]
+
+                # Map logging settings
+                if "logging" in config_data and isinstance(
+                    config_data["logging"], dict
+                ):
+                    logging_config = config_data["logging"]
+                    if "level" in logging_config:
+                        # Convert common logging level names to loguru format
+                        level = logging_config["level"].lower()
+                        level_mapping = {
+                            "warn": "WARNING",
+                            "warning": "WARNING",
+                            "info": "INFO",
+                            "debug": "DEBUG",
+                            "error": "ERROR",
+                            "critical": "CRITICAL",
+                        }
+                        env_overrides["LOG_LEVEL"] = level_mapping.get(
+                            level, level.upper()
+                        )
+
+                if env_overrides:
+                    logger.debug(
+                        f"Loaded project config from .heimdall/config.yaml: {list(env_overrides.keys())}"
+                    )
+                    return env_overrides
+
+        except Exception as e:
+            logger.warning(f"Failed to parse .heimdall/config.yaml: {e}")
+
+    # Fall back to legacy Docker Compose detection
     compose_file = Path(".heimdall-mcp/docker-compose.yml")
     if not compose_file.exists():
         return None
@@ -61,7 +333,9 @@ def detect_project_config() -> dict[str, str] | None:
         if port_match:
             external_port = port_match.group(1)
             project_config = {"QDRANT_URL": f"http://localhost:{external_port}"}
-            logger.debug(f"Detected project-specific Qdrant port: {external_port}")
+            logger.debug(
+                f"Detected project-specific Qdrant port from docker-compose: {external_port}"
+            )
             return project_config
 
     except Exception as e:
@@ -124,12 +398,28 @@ class DatabaseConfig:
         )
 
 
+def _get_default_model_cache_dir() -> str:
+    """Get default model cache directory using standard data dirs."""
+    from heimdall.cognitive_system.data_dirs import (
+        get_models_data_dir,
+        initialize_shared_environment,
+    )
+
+    # Always initialize shared environment first
+    initialize_shared_environment()
+
+    # Note: Model availability will be checked by health checker
+    # Don't download here to allow health checker to provide better feedback
+
+    return str(get_models_data_dir())
+
+
 @dataclass
 class EmbeddingConfig:
     """Configuration for embedding models."""
 
     model_name: str = "all-MiniLM-L6-v2"
-    model_cache_dir: str = "./data/models"
+    model_cache_dir: str = field(default_factory=_get_default_model_cache_dir)
     embedding_dimension: int = 384  # Sentence-BERT semantic embedding dimension
     batch_size: int = 32
     device: str = "auto"  # auto, cpu, cuda
@@ -139,7 +429,9 @@ class EmbeddingConfig:
         """Create configuration from environment variables."""
         return cls(
             model_name=os.getenv("SENTENCE_BERT_MODEL", cls.model_name),
-            model_cache_dir=os.getenv("MODEL_CACHE_DIR", cls.model_cache_dir),
+            model_cache_dir=os.getenv(
+                "MODEL_CACHE_DIR", _get_default_model_cache_dir()
+            ),
             embedding_dimension=int(
                 os.getenv("EMBEDDING_DIMENSION", str(cls.embedding_dimension))
             ),
@@ -497,6 +789,9 @@ class SystemConfig:
     max_memory_usage_mb: int = 1024
     cleanup_interval_hours: int = 24
 
+    # Project identification
+    project_id: str = ""
+
     @classmethod
     def from_env(cls, env_file: str | None = None) -> "SystemConfig":
         """Create complete system configuration from environment."""
@@ -517,6 +812,9 @@ class SystemConfig:
                     os.environ[key] = value
                     logger.debug(f"Using project-specific config: {key}={value}")
 
+        # Generate project ID for this configuration
+        project_id = get_project_id()
+
         return cls(
             qdrant=QdrantConfig.from_env(),
             database=DatabaseConfig.from_env(),
@@ -526,6 +824,7 @@ class SystemConfig:
             debug=os.getenv("DEBUG", "false").lower() == "true",
             max_memory_usage_mb=int(os.getenv("MAX_MEMORY_USAGE_MB", "1024")),
             cleanup_interval_hours=int(os.getenv("CLEANUP_INTERVAL_HOURS", "24")),
+            project_id=project_id,
         )
 
     def validate(self) -> bool:
@@ -710,6 +1009,7 @@ class SystemConfig:
                 "debug": self.debug,
                 "max_memory_usage_mb": self.max_memory_usage_mb,
                 "cleanup_interval_hours": self.cleanup_interval_hours,
+                "project_id": self.project_id,
             },
         }
 

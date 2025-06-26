@@ -11,7 +11,7 @@ import pytest
 
 from cognitive_memory.core.interfaces import MemoryLoader
 from cognitive_memory.core.memory import CognitiveMemory
-from cognitive_memory.monitoring.loader_registry import (
+from heimdall.monitoring.loader_registry import (
     LoaderRegistry,
     create_default_registry,
 )

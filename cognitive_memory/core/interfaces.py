@@ -310,3 +310,22 @@ class CognitiveSystem(ABC):
             Dictionary containing deletion results and statistics
         """
         pass
+
+    @abstractmethod
+    def atomic_reload_memories_from_source(
+        self, loader: MemoryLoader, source_path: str, **kwargs: Any
+    ) -> dict[str, Any]:
+        """
+        Atomically reload memories from a source by deleting existing ones first.
+
+        This ensures consistency by treating delete+reload as a single operation.
+
+        Args:
+            loader: MemoryLoader instance to use
+            source_path: Path to the source content
+            **kwargs: Additional parameters for the loader
+
+        Returns:
+            Dictionary containing combined operation results and statistics
+        """
+        pass

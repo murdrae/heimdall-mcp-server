@@ -95,46 +95,16 @@ relevance_score = (
 - L1(Dev Commands) ──0.42(assoc)──► L0(pytest)
 - L2(venv command) ──0.56(seq)──► L2(pip install)
 
-## Configuration Integration
-
-Extend existing `CognitiveConfig` in `config.py`:
-
-```python
-# Markdown parsing parameters
-max_tokens_per_chunk: int = 250
-code_block_lines: int = 8
-strength_floor: float = 0.15
-
-# Base connection weights
-hierarchical_weight: float = 0.80
-sequential_weight: float = 0.70
-associative_weight: float = 0.50
-
-# Relevance scoring weights (must sum to 1.0)
-semantic_alpha: float = 0.45
-lexical_beta: float = 0.25
-structural_gamma: float = 0.15
-explicit_delta: float = 0.15
-```
-
 ## CLI Interface
 
-New command: `memory_system parse-md <file_path>`
+Content loading is integrated with the unified CLI:
 
 ```bash
-# Parse single markdown file
-memory_system parse-md ./CLAUDE.md
-
-# Parse with custom parameters
-memory_system parse-md ./docs/api.md --chunk-size 300 --dry-run
-
-# Batch parse directory
-memory_system parse-md ./docs/ --recursive
+heimdall load
 ```
 
-## Implementation Status
+## Implementation Overview
 
-### ✅ Completed: Modular Component Architecture
 The markdown processing system has been refactored into specialized components:
 
 1. **ContentAnalyzer**: Linguistic analysis, POS tagging, content classification
@@ -144,40 +114,24 @@ The markdown processing system has been refactored into specialized components:
 5. **ChunkProcessor**: Document chunking, grouping, and consolidation
 6. **MarkdownMemoryLoader**: Main coordinator delegating to specialized components
 
-### ✅ Completed: Connection Building
 1. **Semantic Analysis**: Cosine similarity computation using spaCy
 2. **Lexical Analysis**: Jaccard coefficient implementation
 3. **Structural Analysis**: Document proximity scoring
 4. **Connection Storage**: SQLite memory_connections table integration
 
-### ✅ Completed: Integration & Validation
 1. **Memory Ingestion**: Fully integrated with existing storage layer
 2. **Configuration**: Extended CognitiveConfig with parsing parameters
 3. **Test Coverage**: 53/53 tests passing with comprehensive validation
 4. **CLI Enhancement**: Batch processing and dry-run mode available
 
-## Quality Validation
-
-### Test Harness
-- **QA Set**: 30-40 natural language queries about markdown content
-- **Success Metric**: Top-5 retrieval contains correct answer
-- **Activation Metrics**: BFS spread efficiency (10-60 nodes optimal)
-
-### Example Test Queries for CLAUDE.md
-- "How do I run tests?" → Should activate L2(pytest command)
-- "What is the vector database?" → Should activate L0(Qdrant concept)
-- "Development workflow steps?" → Should activate L1(Dev Commands section)
 
 ## Dependencies
 
 ### Requirements Status
 
-✅ **Already Installed and Configured**:
 - spacy (with en_core_web_md model)
 - vaderSentiment
 - All dependencies integrated in modular architecture
-
-✅ **Component Dependencies**:
 - ContentAnalyzer: spacy, vaderSentiment
 - DocumentParser: markdown, re
 - MemoryFactory: Custom content assembly logic
@@ -222,12 +176,12 @@ Each loader implements the same interface contract, ensuring consistent integrat
 
 ### CLI Integration
 
-New command integrates with existing `memory_system` CLI:
+Content loading integrates with the unified CLI:
 ```bash
-memory_system load <source_path> [--loader-type=markdown] [--dry-run]
+heimdall load <source_path> [--dry-run]
 ```
 
-The command delegates to `CognitiveSystem.load_memories_from_source()` with appropriate loader instance, maintaining architectural consistency.
+The command delegates to `CognitiveOperations.load_memories()` with appropriate loader instance, maintaining architectural consistency.
 
 ## Architectural Benefits
 
@@ -239,112 +193,18 @@ The command delegates to `CognitiveSystem.load_memories_from_source()` with appr
 
 This architecture maintains the system's interface-driven design principles while adding structured content ingestion capabilities that integrate seamlessly with existing cognitive processing and storage layers.
 
-## Automatic File Change Monitoring
+## File Monitoring Integration
 
-### Overview
+The markdown processing architecture integrates with the lightweight file monitoring system described in `docs/monitoring-architecture.md`. The monitoring system automatically detects markdown file changes and delegates processing to the `heimdall load` command, which uses the MemoryLoader architecture described in this document.
 
-The system includes comprehensive automatic markdown file change monitoring that synchronizes markdown files with cognitive memory in real-time. The monitoring system detects markdown file additions, modifications, and deletions, automatically updating the memory system to reflect file system changes.
+### Integration Points
 
-### Architecture Components
+- **File Detection**: Lightweight monitor detects markdown file changes
+- **Processing Delegation**: Monitor executes `heimdall load <file>` as subprocess
+- **Memory Loading**: CLI command uses MarkdownMemoryLoader for content processing
+- **Atomic Operations**: File changes trigger delete+reload pattern for consistency
 
-#### Markdown File Monitoring
-- **MarkdownFileMonitor**: Polling-based detection specifically for markdown files (`.md`, `.markdown`, `.mdown`, `.mkd`)
-- **FileState Tracking**: Monitors file mtime, size, and existence with change detection logic
-- **FileChangeEvent System**: Observer pattern with ChangeType enum (ADDED, MODIFIED, DELETED)
-- **Cross-platform Compatibility**: Reliable polling approach that works on all operating systems
-
-#### Generic Synchronization Layer
-- **FileSyncHandler**: Generic file change synchronization using MemoryLoader interface pattern
-- **LoaderRegistry**: Manages and discovers MemoryLoader implementations for different file types
-- **Atomic Operations**: Delete+reload pattern with transaction-like error handling for consistency
-- **File Type Detection**: Automatic loader selection via `get_supported_extensions()` and `validate_source()`
-
-#### Production Service Integration
-- **Container Integration**: Monitoring runs as built-in service within existing `heimdall-mcp` containers
-- **Process Management**: Python multiprocessing with PID file tracking and signal handling
-- **Health Monitoring**: Service status included in container health check system
-- **Resource Management**: Memory/CPU monitoring with configurable thresholds
-
-### Configuration Options
-
-`CognitiveConfig` provides monitoring parameters:
-
-```python
-# File monitoring configuration
-monitoring_enabled: bool = True
-monitoring_interval_seconds: float = 5.0
-monitoring_batch_size: int = 10
-monitoring_ignore_patterns: Set[str] = {'.git', 'node_modules', '__pycache__'}
-
-# File synchronization configuration
-sync_enabled: bool = True
-sync_atomic_operations: bool = True
-sync_continue_on_error: bool = True
-sync_max_retry_attempts: int = 3
-sync_retry_delay_seconds: float = 1.0
-```
-
-### Memory Source Path Querying
-
-SQLite persistence provides source path querying capabilities:
-
-- **`get_memories_by_source_path()`**: Efficiently query memories by source file path
-- **`delete_memories_by_source_path()`**: Atomic deletion of all memories from a specific file
-- **JSON Indexing**: Performance-optimized indexes on `context_metadata.source_path` field
-- **Partial Indexing**: Only indexes rows where source_path exists for efficiency
-
-### CLI Integration
-
-```bash
-# Monitoring service management
-memory_system monitor start        # Start monitoring service
-memory_system monitor stop         # Stop monitoring service
-memory_system monitor restart      # Restart monitoring service
-memory_system monitor status       # Check service status
-memory_system monitor health       # Detailed health check
-
-# Health check integration
-memory_system doctor               # Includes monitoring service validation
-```
-
-### Data Flow
-
-```
-Container Startup → MonitoringService (daemon) → MarkdownFileMonitor (polling) → FileSyncHandler → CognitiveSystem
-                                ↓                                                      ↓
-File System Changes → FileChangeEvent → FileSyncHandler → LoaderRegistry → MemoryLoader → Memory Operations
-                                ↓
-Container Health Check ← Service Status ← Error Recovery ← Statistics Tracking
-```
-
-### File Change Detection Behavior
-
-**Initial Scan Behavior**: When the monitoring service starts, it performs an initial directory scan to populate its internal file state tracking (`_file_states` dictionary) but **does NOT generate ADDED events for pre-existing files**. This means:
-
-- ✅ **Existing files are tracked** for future change detection (modifications/deletions)
-- ❌ **Existing files are NOT processed** into memory during container startup
-- ✅ **New files created after startup** will trigger ADDED events and be processed
-- ✅ **Modified files** will trigger MODIFIED events and be reprocessed (delete + reload)
-- ✅ **Deleted files** will trigger DELETED events and have their memories removed
-
-**File State Persistence**: File states are stored only in memory and are **not persisted** across container restarts. Each container restart requires a fresh initial scan.
-
-**Memory Awareness**: The monitoring system is **purely file-based** and has no awareness of existing memories in the cognitive system. It only tracks file system state (mtime, size, existence) and does not query or consider what memories may already exist for tracked files.
-
-**Implications for Container Restarts**:
-- Pre-existing markdown files will be tracked but not reprocessed after container restart
-- Only files that change after the container starts will trigger memory synchronization
-- To ensure all markdown files are loaded into memory, use manual loading commands before enabling monitoring
-
-### Component Interaction
-
-The monitoring system uses a three-layer architecture:
-
-1. **Detection Layer**: MarkdownFileMonitor watches for markdown file changes using polling
-2. **Coordination Layer**: FileSyncHandler receives change events and orchestrates sync operations
-3. **Loading Layer**: LoaderRegistry auto-selects appropriate MemoryLoader for file-to-memory conversion
-
-This separation allows markdown-specific file monitoring while maintaining generic, extensible memory loading capabilities for future file types.
+For complete file monitoring details, see `docs/monitoring-architecture.md`.
 
 ## Modular Component Architecture
 
@@ -418,20 +278,3 @@ ConnectionExtractor → Memory Relationships
     ↓
 Return: (memories, connections)
 ```
-
-### Benefits of Modular Architecture
-
-1. **Single Responsibility**: Each component has a clear, focused purpose
-2. **Testability**: Components can be tested independently with mocks
-3. **Maintainability**: Changes to one component don't affect others
-4. **Reusability**: Components can be reused in different contexts
-5. **Extensibility**: New components can be added without affecting existing ones
-6. **Code Quality**: Eliminates duplication and reduces complexity
-
-### Backward Compatibility
-
-The refactoring maintains full backward compatibility:
-- Public API of MarkdownMemoryLoader remains unchanged
-- All existing tests continue to pass (53/53)
-- Integration points with CognitiveSystem unchanged
-- Configuration parameters remain the same

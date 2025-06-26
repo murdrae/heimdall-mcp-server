@@ -36,23 +36,24 @@ class CollectionConfig:
 class QdrantCollectionManager:
     """Manages Qdrant collections for hierarchical memory storage."""
 
-    def __init__(self, client: QdrantClient, vector_size: int):
-        """Initialize collection manager."""
+    def __init__(self, client: QdrantClient, vector_size: int, project_id: str):
+        """Initialize collection manager with project-scoped collections."""
         self.client = client
         self.vector_size = vector_size
+        self.project_id = project_id
         self.collections = {
             0: CollectionConfig(
-                name="cognitive_concepts",
+                name=f"{project_id}_concepts",
                 vector_size=vector_size,
                 distance=Distance.COSINE,
             ),
             1: CollectionConfig(
-                name="cognitive_contexts",
+                name=f"{project_id}_contexts",
                 vector_size=vector_size,
                 distance=Distance.COSINE,
             ),
             2: CollectionConfig(
-                name="cognitive_episodes",
+                name=f"{project_id}_episodes",
                 vector_size=vector_size,
                 distance=Distance.COSINE,
             ),
@@ -110,7 +111,7 @@ class QdrantCollectionManager:
         return self.collections[level].name
 
     def delete_all_collections(self) -> bool:
-        """Delete all collections (used for cleanup)."""
+        """Delete all collections for this project (used for cleanup)."""
         try:
             for config in self.collections.values():
                 if self._collection_exists(config.name):
@@ -119,6 +120,140 @@ class QdrantCollectionManager:
             return True
         except Exception as e:
             logger.error("Failed to delete collections", error=str(e))
+            return False
+
+    def list_project_collections(self) -> list[str]:
+        """List all collections for this project."""
+        try:
+            all_collections = self.client.get_collections().collections
+            project_collections = [
+                c.name
+                for c in all_collections
+                if c.name.startswith(f"{self.project_id}_")
+            ]
+            return project_collections
+        except Exception as e:
+            logger.error("Failed to list project collections", error=str(e))
+            return []
+
+    def get_all_projects(self) -> set[str]:
+        """Discover all project IDs from existing collections."""
+        try:
+            all_collections = self.client.get_collections().collections
+            projects = set()
+            for collection in all_collections:
+                project_id = self._extract_project_id_from_collection(collection.name)
+                if project_id:
+                    projects.add(project_id)
+            return projects
+        except Exception as e:
+            logger.error("Failed to discover projects", error=str(e))
+            return set()
+
+    def _extract_project_id_from_collection(self, collection_name: str) -> str | None:
+        """
+        Extract and validate project ID from collection name.
+
+        Expected format: {project_id}_{memory_level}
+        where project_id must end with an 8-character hexadecimal hash.
+
+        Args:
+            collection_name: Collection name to parse
+
+        Returns:
+            Valid project ID if found, None otherwise
+        """
+        if not collection_name or "_" not in collection_name:
+            return None
+
+        parts = collection_name.split("_")
+
+        # Must have at least 2 parts and last part must be valid memory level
+        if len(parts) < 2 or parts[-1] not in ["concepts", "contexts", "episodes"]:
+            return None
+
+        # Rejoin all parts except the last one to get potential project_id
+        potential_project_id = "_".join(parts[:-1])
+
+        # Validate project ID format: must end with 8-character hex hash
+        if self._validate_project_id_format(potential_project_id):
+            return potential_project_id
+
+        return None
+
+    def _validate_project_id_format(self, project_id: str) -> bool:
+        """
+        Validate project ID format for security and consistency.
+
+        Expected format: {repo_name}_{hash8}
+        where hash8 is exactly 8 hexadecimal characters.
+
+        Args:
+            project_id: Project ID to validate
+
+        Returns:
+            True if project ID matches expected format
+        """
+        if not project_id or "_" not in project_id:
+            return False
+
+        # Split into parts and check last part is 8-char hex hash
+        parts = project_id.split("_")
+        if len(parts) < 2:
+            return False
+
+        # Last part must be exactly 8-character hexadecimal hash
+        hash_part = parts[-1]
+        if len(hash_part) != 8:
+            return False
+
+        # Validate hexadecimal format
+        try:
+            int(hash_part, 16)
+        except ValueError:
+            return False
+
+        # Validate repo_name part (everything except hash)
+        repo_name = "_".join(parts[:-1])
+        if not repo_name or len(repo_name) == 0:
+            return False
+
+        # Repo name should only contain alphanumeric and underscores (per config.py sanitization)
+        import re
+
+        if not re.match(r"^[a-zA-Z0-9_]+$", repo_name):
+            return False
+
+        return True
+
+    @classmethod
+    def delete_project_collections(cls, client: QdrantClient, project_id: str) -> bool:
+        """Delete all collections for a specific project."""
+        try:
+            all_collections = client.get_collections().collections
+            deleted_count = 0
+            for collection in all_collections:
+                if collection.name.startswith(f"{project_id}_"):
+                    client.delete_collection(collection.name)
+                    logger.info(
+                        "Deleted project collection",
+                        project_id=project_id,
+                        collection=collection.name,
+                    )
+                    deleted_count += 1
+
+            logger.info(
+                "Project collections cleanup completed",
+                project_id=project_id,
+                deleted_count=deleted_count,
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                "Failed to delete project collections",
+                project_id=project_id,
+                error=str(e),
+            )
             return False
 
 
@@ -245,6 +380,7 @@ class HierarchicalMemoryStorage(VectorStorage):
     def __init__(
         self,
         vector_size: int,
+        project_id: str,
         host: str | None = None,
         port: int | None = None,
         grpc_port: int | None = None,
@@ -255,12 +391,13 @@ class HierarchicalMemoryStorage(VectorStorage):
         Initialize hierarchical memory storage.
 
         Args:
+            vector_size: Dimension of embedding vectors (from configuration)
+            project_id: Project identifier for collection namespacing
             host: Qdrant server host (defaults to config)
             port: Qdrant HTTP port (defaults to config)
             grpc_port: Qdrant gRPC port (defaults to config port + 1)
             prefer_grpc: Whether to prefer gRPC connection
             timeout: Connection timeout in seconds (defaults to config)
-            vector_size: Dimension of embedding vectors (from configuration)
         """
         # Use defaults from config if not provided
         default_config = QdrantConfig()
@@ -269,6 +406,7 @@ class HierarchicalMemoryStorage(VectorStorage):
         self.grpc_port = grpc_port or (self.port + 1)
         self.timeout = timeout or default_config.timeout
         self.vector_size = vector_size
+        self.project_id = project_id
 
         # Initialize Qdrant client
         try:
@@ -291,7 +429,9 @@ class HierarchicalMemoryStorage(VectorStorage):
             raise
 
         # Initialize collection manager and search engine
-        self.collection_manager = QdrantCollectionManager(self.client, vector_size)
+        self.collection_manager = QdrantCollectionManager(
+            self.client, vector_size, project_id
+        )
         self.search_engine = VectorSearchEngine(self.client, self.collection_manager)
 
         # Initialize collections
@@ -459,7 +599,7 @@ class HierarchicalMemoryStorage(VectorStorage):
                 info = self.client.get_collection(collection_name)
                 stats[f"level_{level}"] = {
                     "collection_name": collection_name,
-                    "vectors_count": info.vectors_count,
+                    "vectors_count": info.points_count,  # Use points_count as vectors_count
                     "indexed_vectors_count": info.indexed_vectors_count,
                     "points_count": info.points_count,
                     "segments_count": info.segments_count,
@@ -509,6 +649,7 @@ class HierarchicalMemoryStorage(VectorStorage):
 
 def create_hierarchical_storage(
     vector_size: int,
+    project_id: str,
     host: str | None = None,
     port: int | None = None,
     grpc_port: int | None = None,
@@ -518,17 +659,19 @@ def create_hierarchical_storage(
     Factory function to create hierarchical memory storage.
 
     Args:
+        vector_size: Dimension of embedding vectors (from configuration)
+        project_id: Project identifier for collection namespacing
         host: Qdrant server host (defaults to config)
         port: Qdrant HTTP port (defaults to config)
         grpc_port: Qdrant gRPC port (defaults to config port + 1)
         prefer_grpc: Whether to prefer gRPC connection
-        vector_size: Dimension of embedding vectors (from configuration)
 
     Returns:
         HierarchicalMemoryStorage: Configured storage instance
     """
     return HierarchicalMemoryStorage(
         vector_size=vector_size,
+        project_id=project_id,
         host=host,
         port=port,
         grpc_port=grpc_port,

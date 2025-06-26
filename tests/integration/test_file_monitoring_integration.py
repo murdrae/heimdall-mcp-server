@@ -14,10 +14,10 @@ from unittest.mock import patch
 import pytest
 
 from cognitive_memory.core.config import CognitiveConfig, SystemConfig
-from cognitive_memory.monitoring import (
+from heimdall.monitoring.file_types import (
     ChangeType,
+    FileMonitor,
     FileState,
-    MarkdownFileMonitor,
 )
 
 
@@ -28,7 +28,7 @@ class TestFileMonitoringConfiguration:
         """Test creating monitor with default configuration."""
         config = CognitiveConfig()
 
-        monitor = MarkdownFileMonitor(
+        monitor = FileMonitor(
             polling_interval=config.monitoring_interval_seconds,
             ignore_patterns=config.monitoring_ignore_patterns,
         )
@@ -49,7 +49,7 @@ class TestFileMonitoringConfiguration:
         ):
             config = CognitiveConfig.from_env()
 
-            monitor = MarkdownFileMonitor(
+            monitor = FileMonitor(
                 polling_interval=config.monitoring_interval_seconds,
                 ignore_patterns=config.monitoring_ignore_patterns,
             )
@@ -85,7 +85,7 @@ class TestFileMonitoringRealWorldScenarios:
 
     def test_monitoring_project_directory(self, tmp_path):
         """Test monitoring a typical project directory structure."""
-        monitor = MarkdownFileMonitor(polling_interval=0.1)
+        monitor = FileMonitor(polling_interval=0.1)
         events = []
 
         def track_events(event):
@@ -148,7 +148,7 @@ class TestFileMonitoringRealWorldScenarios:
 
     def test_monitoring_large_directory_structure(self, tmp_path):
         """Test monitoring with many files and subdirectories."""
-        monitor = MarkdownFileMonitor(polling_interval=0.1)
+        monitor = FileMonitor(polling_interval=0.1)
         events = []
 
         def count_events(event):
@@ -191,7 +191,7 @@ class TestFileMonitoringRealWorldScenarios:
 
     def test_concurrent_file_modifications(self, tmp_path):
         """Test monitoring with rapid file changes."""
-        monitor = MarkdownFileMonitor(polling_interval=0.05)  # Very fast polling
+        monitor = FileMonitor(polling_interval=0.05)  # Very fast polling
         events = []
         event_lock = threading.Lock()
 
@@ -225,7 +225,7 @@ class TestFileMonitoringRealWorldScenarios:
 
     def test_monitoring_with_permission_errors(self, tmp_path):
         """Test monitoring behavior with permission denied scenarios."""
-        monitor = MarkdownFileMonitor(polling_interval=0.1)
+        monitor = FileMonitor(polling_interval=0.1)
         events = []
 
         def track_events(event):
@@ -237,7 +237,7 @@ class TestFileMonitoringRealWorldScenarios:
         test_file = tmp_path / "test.md"
         test_file.write_text("initial content")
 
-        with patch("cognitive_memory.monitoring.file_monitor.logger") as mock_logger:
+        with patch("heimdall.monitoring.file_types.logger") as mock_logger:
             monitor.add_path(tmp_path)
 
             # Simulate permission error during file state creation
@@ -272,7 +272,7 @@ class TestFileMonitoringErrorRecovery:
 
     def test_monitor_thread_error_recovery(self, tmp_path):
         """Test that monitor recovers from thread errors."""
-        monitor = MarkdownFileMonitor(polling_interval=0.1)
+        monitor = FileMonitor(polling_interval=0.1)
         events = []
 
         def track_events(event):
@@ -293,9 +293,7 @@ class TestFileMonitoringErrorRecovery:
             return original_poll()
 
         with patch.object(monitor, "_poll_changes", side_effect=failing_poll):
-            with patch(
-                "cognitive_memory.monitoring.file_monitor.logger"
-            ) as mock_logger:
+            with patch("heimdall.monitoring.file_types.logger") as mock_logger:
                 monitor.start_monitoring()
 
                 try:
@@ -315,7 +313,7 @@ class TestFileMonitoringErrorRecovery:
 
     def test_graceful_shutdown_with_active_monitoring(self, tmp_path):
         """Test graceful shutdown during active monitoring."""
-        monitor = MarkdownFileMonitor(polling_interval=0.1)
+        monitor = FileMonitor(polling_interval=0.1)
         monitor.add_path(tmp_path)
         monitor.start_monitoring()
 
@@ -339,7 +337,7 @@ class TestFileMonitoringErrorRecovery:
 
     def test_multiple_start_stop_cycles(self, tmp_path):
         """Test multiple start/stop cycles."""
-        monitor = MarkdownFileMonitor(polling_interval=0.1)
+        monitor = FileMonitor(polling_interval=0.1)
         monitor.add_path(tmp_path)
 
         for cycle in range(3):
