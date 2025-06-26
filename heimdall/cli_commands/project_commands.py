@@ -45,6 +45,13 @@ def project_init(
     skip_git_hooks: bool = typer.Option(
         False, "--skip-git-hooks", help="Force disable git hooks installation"
     ),
+    # MCP integration control
+    setup_mcp: bool = typer.Option(
+        False, "--setup-mcp", help="Force enable MCP integration setup"
+    ),
+    skip_mcp: bool = typer.Option(
+        False, "--skip-mcp", help="Force disable MCP integration setup"
+    ),
 ) -> None:
     """Initialize project-specific collections and setup."""
     try:
@@ -66,6 +73,13 @@ def project_init(
         if setup_git_hooks and skip_git_hooks:
             console.print(
                 "❌ Cannot specify both --setup-git-hooks and --skip-git-hooks",
+                style="bold red",
+            )
+            raise typer.Exit(1)
+
+        if setup_mcp and skip_mcp:
+            console.print(
+                "❌ Cannot specify both --setup-mcp and --skip-mcp",
                 style="bold red",
             )
             raise typer.Exit(1)
@@ -328,11 +342,15 @@ Files in this directory are automatically:
         user_wants_git_hooks = _determine_git_hooks_choice(
             setup_git_hooks, skip_git_hooks, non_interactive, project_path
         )
+        user_wants_mcp = _determine_mcp_setup_choice(
+            setup_mcp, skip_mcp, non_interactive
+        )
 
         if json_output:
             # Execute user-selected features for JSON mode too
             git_history_loaded = False
             git_hooks_installed = False
+            mcp_configured_platforms = []
 
             if user_wants_git_history:
                 git_history_loaded = _execute_git_history_loading(project_path)
@@ -343,6 +361,9 @@ Files in this directory are automatically:
             if user_wants_monitoring:
                 _execute_monitoring_service_startup(project_path)
 
+            if user_wants_mcp:
+                mcp_configured_platforms = _execute_mcp_setup()
+
             output_data = {
                 "project_id": project_id,
                 "project_root": str(project_path),
@@ -352,12 +373,14 @@ Files in this directory are automatically:
                 "monitoring_enabled": user_wants_monitoring,
                 "git_history_loaded": git_history_loaded,
                 "git_hooks_installed": git_hooks_installed,
+                "mcp_configured_platforms": mcp_configured_platforms,
             }
             console.print(json.dumps(output_data, indent=2))
         else:
             # Execute user-selected features
             git_history_loaded = False
             git_hooks_installed = False
+            mcp_configured_platforms = []
 
             # Load git history if requested
             if user_wants_git_history:
@@ -370,6 +393,10 @@ Files in this directory are automatically:
             # Start monitoring service if requested
             if user_wants_monitoring:
                 _execute_monitoring_service_startup(project_path)
+
+            # Setup MCP integration if requested
+            if user_wants_mcp:
+                mcp_configured_platforms = _execute_mcp_setup()
 
             console.print("✅ Project initialization complete!", style="bold green")
 
@@ -385,6 +412,11 @@ Files in this directory are automatically:
                 "Collections",
                 f"{project_id}_concepts, {project_id}_contexts, {project_id}_episodes",
             )
+
+            # Add MCP platforms if any were configured
+            if mcp_configured_platforms:
+                info_table.add_row("MCP Platforms", ", ".join(mcp_configured_platforms))
+
             console.print(info_table)
 
     except Exception as e:
@@ -521,21 +553,32 @@ def project_list(
 
 
 def project_clean(
-    project_id: str = typer.Argument(
-        ..., help="Project ID to clean (use 'list' command to see available projects)"
-    ),
     confirm: bool = typer.Option(False, "--yes", help="Skip confirmation prompt"),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
     dry_run: bool = typer.Option(
         False, "--dry-run", help="Show what would be deleted without actually deleting"
     ),
+    project_root: str | None = typer.Option(
+        None, help="Project root directory (defaults to current directory)"
+    ),
 ) -> None:
-    """Remove project collections from shared Qdrant instance."""
+    """Remove project collections and setup from current directory."""
     try:
         from qdrant_client import QdrantClient
 
-        from cognitive_memory.core.config import QdrantConfig
+        from cognitive_memory.core.config import QdrantConfig, get_project_id
         from heimdall.cognitive_system.service_manager import QdrantManager
+
+        # Determine project root and generate project ID
+        if project_root:
+            project_path = Path(project_root).resolve()
+        else:
+            project_path = Path.cwd()
+
+        project_id = get_project_id(project_path)
+
+        console.print(f"🗑️ Cleaning project: {project_id}")
+        console.print(f"📁 Project root: {project_path}")
 
         # Check Qdrant status
         manager = QdrantManager()
@@ -632,35 +675,72 @@ def project_clean(
                     )
                     console.print(f"❌ Failed to delete {collection.name}: {e}")
 
-            # Check for .heimdall directory after successful collection deletion
+            # Check for .heimdall directory and git hooks after successful collection deletion
             heimdall_dir_removed = False
             heimdall_dir_error = None
-            heimdall_dir = Path.cwd() / ".heimdall"
+            git_hooks_removed = False
+            git_hooks_error = None
 
-            if heimdall_dir.exists() and heimdall_dir.is_dir() and deleted_collections:
-                # Only ask if we successfully deleted some collections
-                if not confirm:  # If --yes wasn't used, ask for confirmation
-                    console.print(f"\n📁 Found .heimdall directory: {heimdall_dir}")
-                    remove_heimdall = typer.confirm(
-                        "Do you want to remove the .heimdall directory as well?"
-                    )
-                else:
-                    # If --yes was used, also remove .heimdall directory
-                    remove_heimdall = True
+            heimdall_dir = project_path / ".heimdall"
 
-                if remove_heimdall:
+            if (
+                deleted_collections
+            ):  # Only clean up if we successfully deleted some collections
+                # Remove git hooks if they exist
+                if (project_path / ".git").exists():
                     try:
-                        import shutil
+                        from heimdall.cli_commands.git_hook_commands import (
+                            uninstall_hook,
+                        )
 
-                        shutil.rmtree(heimdall_dir)
-                        heimdall_dir_removed = True
-                        console.print(f"✅ Removed .heimdall directory: {heimdall_dir}")
+                        if not confirm:  # If --yes wasn't used, ask for confirmation
+                            console.print(f"\n🪝 Found git repository: {project_path}")
+                            remove_hooks = typer.confirm(
+                                "Do you want to remove Heimdall git hooks as well?"
+                            )
+                        else:
+                            # If --yes was used, also remove git hooks
+                            remove_hooks = True
+
+                        if remove_hooks:
+                            git_hooks_removed = uninstall_hook(
+                                project_path, dry_run=False
+                            )
+                            if git_hooks_removed:
+                                console.print("✅ Removed Heimdall git hooks")
                     except Exception as e:
-                        heimdall_dir_error = str(e)
+                        git_hooks_error = str(e)
                         console.print(
-                            f"❌ Failed to remove .heimdall directory: {e}",
+                            f"❌ Failed to remove git hooks: {e}",
                             style="bold red",
                         )
+
+                # Remove .heimdall directory
+                if heimdall_dir.exists() and heimdall_dir.is_dir():
+                    if not confirm:  # If --yes wasn't used, ask for confirmation
+                        console.print(f"\n📁 Found .heimdall directory: {heimdall_dir}")
+                        remove_heimdall = typer.confirm(
+                            "Do you want to remove the .heimdall directory as well?"
+                        )
+                    else:
+                        # If --yes was used, also remove .heimdall directory
+                        remove_heimdall = True
+
+                    if remove_heimdall:
+                        try:
+                            import shutil
+
+                            shutil.rmtree(heimdall_dir)
+                            heimdall_dir_removed = True
+                            console.print(
+                                f"✅ Removed .heimdall directory: {heimdall_dir}"
+                            )
+                        except Exception as e:
+                            heimdall_dir_error = str(e)
+                            console.print(
+                                f"❌ Failed to remove .heimdall directory: {e}",
+                                style="bold red",
+                            )
 
             if json_output:
                 result = {
@@ -671,6 +751,8 @@ def project_clean(
                     "total_failed": len(failed_collections),
                     "heimdall_dir_removed": heimdall_dir_removed,
                     "heimdall_dir_error": heimdall_dir_error,
+                    "git_hooks_removed": git_hooks_removed,
+                    "git_hooks_error": git_hooks_error,
                 }
                 console.print(json.dumps(result, indent=2))
             else:
@@ -990,3 +1072,138 @@ def _execute_monitoring_service_startup(project_path: Path) -> None:
 
     except Exception as e:
         console.print(f"⚠️ Failed to start monitoring: {e}", style="bold yellow")
+
+
+def _determine_mcp_setup_choice(
+    setup_mcp: bool, skip_mcp: bool, non_interactive: bool
+) -> bool:
+    """
+    Determine user's choice for MCP integration setup.
+
+    Args:
+        setup_mcp: Force enable MCP setup
+        skip_mcp: Force disable MCP setup
+        non_interactive: Skip prompts, use defaults
+
+    Returns:
+        True if user wants MCP integration setup
+    """
+    # Use explicit flags if provided
+    if setup_mcp:
+        return True
+    if skip_mcp:
+        return False
+
+    # Use defaults for non-interactive mode
+    if non_interactive:
+        return True  # Default: enable MCP setup (non-intrusive)
+
+    # Check if any platforms are detected
+    from heimdall.cli_commands.mcp_commands import get_mcp_platform_info
+
+    platform_info = get_mcp_platform_info()
+
+    if not platform_info:
+        # No platforms detected, show guide and don't prompt
+        from heimdall.cli_commands.mcp_commands import show_mcp_setup_guide
+
+        show_mcp_setup_guide()
+        return False
+
+    # Show detected platforms
+    console.print("", end="")  # Empty line for spacing
+    console.print("🔗 Detected IDE platforms for MCP integration:", style="bold blue")
+
+    for _platform_id, info in platform_info.items():
+        config = info["config"]
+        status = info["status"]
+        console.print(f"   • {config.name}: {status}")
+
+    # Interactive prompt
+    return bool(
+        typer.confirm(
+            "Configure MCP integration for detected IDE platforms?",
+            default=True,
+        )
+    )
+
+
+def _execute_mcp_setup() -> list[str]:
+    """
+    Execute MCP setup for detected platforms.
+
+    Returns:
+        List of successfully configured platform names
+    """
+    configured_platforms: list[str] = []
+
+    try:
+        from heimdall.cli_commands.mcp_commands import (
+            PLATFORMS,
+            get_mcp_platform_info,
+            install_mcp_interactive,
+        )
+
+        platform_info = get_mcp_platform_info()
+
+        if not platform_info:
+            console.print(
+                "⚠️ No IDE platforms detected for MCP setup", style="bold yellow"
+            )
+            return configured_platforms
+
+        console.print("🔗 Setting up MCP integration...", style="bold blue")
+
+        # Filter platforms that need setup
+        platforms_needing_setup = [
+            (platform_id, info)
+            for platform_id, info in platform_info.items()
+            if info["needs_setup"]
+        ]
+
+        if not platforms_needing_setup:
+            console.print(
+                "✅ All detected platforms already configured", style="bold green"
+            )
+            # Still return all detected platforms as they're configured
+            configured_platforms = [
+                PLATFORMS[platform_id].name for platform_id in platform_info.keys()
+            ]
+            return configured_platforms
+
+        # Setup each platform that needs it
+        for platform_id, info in platforms_needing_setup:
+            config = info["config"]
+            console.print(f"   🔧 Configuring {config.name}...")
+
+            try:
+                success = install_mcp_interactive(
+                    platform_id, scope="project", force=False
+                )
+                if success:
+                    console.print(f"   ✅ {config.name} configured successfully")
+                    configured_platforms.append(config.name)
+                else:
+                    console.print(f"   ⚠️ Failed to configure {config.name}")
+            except Exception as e:
+                console.print(f"   ❌ Error configuring {config.name}: {e}")
+
+        # Add already configured platforms to the list
+        for _platform_id, info in platform_info.items():
+            if not info["needs_setup"]:
+                configured_platforms.append(info["config"].name)
+
+        if configured_platforms:
+            console.print(
+                f"✅ MCP integration completed for {len(configured_platforms)} platform(s)",
+                style="bold green",
+            )
+            console.print(
+                "   💡 Restart your IDE to load the new MCP server", style="dim"
+            )
+
+        return configured_platforms
+
+    except Exception as e:
+        console.print(f"❌ Error setting up MCP integration: {e}", style="bold red")
+        return configured_platforms

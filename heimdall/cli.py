@@ -153,16 +153,31 @@ def _setup_early_logging() -> None:
     try:
         # Detect project config and apply environment overrides
         import os
+        import sys
 
         from cognitive_memory.core.config import LoggingConfig, detect_project_config
         from cognitive_memory.core.logging_setup import setup_logging
 
-        project_config = detect_project_config()
-        if project_config:
-            # Apply project config to environment variables
-            for key, value in project_config.items():
-                if key not in os.environ:  # Only set if not already defined
-                    os.environ[key] = value
+        # For project init commands, default to WARN level to reduce noise
+        is_project_init = len(sys.argv) >= 3 and sys.argv[1:3] == ["project", "init"]
+
+        # Set default logging level to WARN if not already configured
+        # Note: detect_project_config looks for LOG_LEVEL, not HEIMDALL_LOG_LEVEL
+        if "LOG_LEVEL" not in os.environ and "HEIMDALL_LOG_LEVEL" not in os.environ:
+            if is_project_init:
+                # During project init, ensure WARNING level to reduce initialization noise
+                os.environ["LOG_LEVEL"] = "WARNING"
+            else:
+                # Try to detect project config first
+                project_config = detect_project_config()
+                if project_config:
+                    # Apply project config to environment variables
+                    for key, value in project_config.items():
+                        if key not in os.environ:  # Only set if not already defined
+                            os.environ[key] = value
+                else:
+                    # No project config found, default to WARNING for all commands
+                    os.environ["LOG_LEVEL"] = "WARNING"
 
         # Create logging config using the environment (including project overrides)
         logging_config = LoggingConfig.from_env()

@@ -700,3 +700,79 @@ def generate_mcp(
     except Exception as e:
         console.print(f"❌ Error generating config: {e}", style="bold red")
         raise typer.Exit(1) from e
+
+
+# Helper functions for interactive MCP setup (used by project_init)
+
+
+def get_mcp_platform_info() -> dict[str, dict]:
+    """Get platform detection and installation status information."""
+    detected_platforms = detect_platforms()
+    platform_info = {}
+
+    for platform_id in detected_platforms:
+        config = PLATFORMS[platform_id]
+        status = check_installation_status(platform_id, config)
+
+        platform_info[platform_id] = {
+            "config": config,
+            "status": status,
+            "needs_setup": status not in ["✅ Installed"],
+        }
+
+    return platform_info
+
+
+def install_mcp_interactive(
+    platform_id: str, scope: str = "project", force: bool = False
+) -> bool:
+    """Install MCP for a platform with minimal console output for interactive use."""
+    try:
+        if platform_id not in PLATFORMS:
+            return False
+
+        platform_config = PLATFORMS[platform_id]
+        server_config = get_server_config()
+
+        if platform_config.method == "json_modify":
+            config_path = find_config_file(platform_config)
+            if config_path:
+                modify_json_config(config_path, server_config, platform_config, force)
+                # Verify installation
+                status = check_installation_status(platform_id, platform_config)
+                return status == "✅ Installed"
+            else:
+                return False
+
+        elif platform_config.method == "cli_command":
+            execute_claude_mcp_add(server_config, scope, force)
+            # Verify installation
+            status = check_installation_status(platform_id, platform_config)
+            return status == "✅ Installed"
+
+        return False
+
+    except Exception:
+        return False
+
+
+def show_mcp_setup_guide() -> None:
+    """Show a brief guide for MCP setup when no platforms are detected."""
+    console.print("\n💡 MCP Integration Setup Guide:", style="bold blue")
+    console.print(
+        "   MCP allows IDE integration with Heimdall's cognitive memory tools."
+    )
+    console.print("   \n   Supported platforms:")
+
+    for _platform_id, config in PLATFORMS.items():
+        if config.detection_folders:
+            folders = ", ".join(config.detection_folders)
+            console.print(
+                f"   • {config.name}: Create {folders} folder in your project"
+            )
+        else:
+            console.print(f"   • {config.name}: Install Claude CLI")
+
+    console.print(
+        "   \n   After setting up your IDE, run: heimdall mcp install <platform>"
+    )
