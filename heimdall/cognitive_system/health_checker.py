@@ -534,123 +534,101 @@ class HealthChecker:
     ) -> HealthCheck:
         """Check monitoring service status and health."""
         try:
-            # Only check monitoring service if enabled
-            from cognitive_memory.core.config import CognitiveConfig
+            # Use the same health check logic as the monitor_health command
+            from heimdall.cognitive_system.monitoring_service import (
+                MonitoringService,
+                MonitoringServiceError,
+            )
 
-            config = CognitiveConfig.from_env()
+            service = MonitoringService()
+            health = service.health_check()
 
-            if not config.monitoring_enabled:
+            if health["status"] == "healthy":
+                details = None
+                if verbose:
+                    details = {
+                        "health_checks": len(health["checks"]),
+                        "checks": health["checks"],
+                    }
+
                 return HealthCheck(
                     name="Monitoring Service",
                     status=HealthResult.HEALTHY,
-                    message="Monitoring is disabled (no check needed)",
-                    details={"monitoring_enabled": False},
+                    message="Monitoring service is healthy",
+                    details=details,
                 )
 
-            # Check if monitoring service should be running based on environment
-            target_path = os.environ.get("MONITORING_TARGET_PATH")
-            if not target_path:
-                return HealthCheck(
-                    name="Monitoring Service",
-                    status=HealthResult.HEALTHY,
-                    message="Monitoring target path not configured (optional)",
-                    details={"target_path_configured": False},
-                )
-
-            # Import and check monitoring service
-            try:
-                from .service_health import ServiceHealthChecker
-
-                health_checker = ServiceHealthChecker(config)
-                health_result = health_checker.check_all()
-
-                if health_result["status"] == "healthy":
-                    details = None
-                    if verbose:
-                        details = {
-                            "target_path": target_path,
-                            "monitoring_enabled": config.monitoring_enabled,
-                            "health_checks": len(health_result["checks"]),
-                            "summary": health_result["summary"],
-                        }
-
-                    return HealthCheck(
-                        name="Monitoring Service",
-                        status=HealthResult.HEALTHY,
-                        message=f"Monitoring service is healthy (target: {os.path.basename(target_path)})",
-                        details=details,
-                    )
-
-                elif health_result["status"] == "warning":
-                    failed_checks = [
-                        check["name"]
-                        for check in health_result["checks"]
-                        if check["status"] == "warn"
-                    ]
-                    return HealthCheck(
-                        name="Monitoring Service",
-                        status=HealthResult.WARNING,
-                        message=f"Monitoring service has warnings: {', '.join(failed_checks)}",
-                        details=health_result if verbose else None,
-                    )
-
-                else:  # unhealthy
-                    failed_checks = [
-                        check["name"]
-                        for check in health_result["checks"]
-                        if check["status"] == "fail"
-                    ]
-
-                    if fix_issues:
-                        # Attempt to restart monitoring service
-                        try:
-                            from .monitoring_service import MonitoringService
-
-                            service = MonitoringService()
-
-                            # Try to restart the service
-                            success = service.restart()
-
-                            if success:
-                                return HealthCheck(
-                                    name="Monitoring Service",
-                                    status=HealthResult.HEALTHY,
-                                    message="Fixed: Restarted monitoring service",
-                                    fix_attempted=True,
-                                    fix_successful=True,
-                                )
-                            else:
-                                return HealthCheck(
-                                    name="Monitoring Service",
-                                    status=HealthResult.CRITICAL,
-                                    message=f"Failed to restart monitoring service: {', '.join(failed_checks)}",
-                                    fix_attempted=True,
-                                    fix_successful=False,
-                                )
-                        except Exception as restart_error:
-                            return HealthCheck(
-                                name="Monitoring Service",
-                                status=HealthResult.CRITICAL,
-                                message=f"Failed to restart monitoring: {str(restart_error)}",
-                                fix_attempted=True,
-                                fix_successful=False,
-                            )
-                    else:
-                        return HealthCheck(
-                            name="Monitoring Service",
-                            status=HealthResult.CRITICAL,
-                            message=f"Monitoring service is unhealthy: {', '.join(failed_checks)}",
-                            details=health_result if verbose else None,
-                        )
-
-            except ImportError:
+            elif health["status"] == "warning":
+                failed_checks = [
+                    check["name"]
+                    for check in health["checks"]
+                    if check["status"] == "warn"
+                ]
                 return HealthCheck(
                     name="Monitoring Service",
                     status=HealthResult.WARNING,
-                    message="Monitoring service components not available",
-                    details={"import_error": "service_health or monitoring_service"},
+                    message=f"Monitoring service has warnings: {', '.join(failed_checks)}",
+                    details=health["checks"] if verbose else None,
                 )
 
+            else:  # unhealthy
+                failed_checks = [
+                    check["name"]
+                    for check in health["checks"]
+                    if check["status"] == "fail"
+                ]
+
+                if fix_issues:
+                    # Attempt to restart monitoring service
+                    try:
+                        success = service.restart()
+
+                        if success:
+                            return HealthCheck(
+                                name="Monitoring Service",
+                                status=HealthResult.HEALTHY,
+                                message="Fixed: Restarted monitoring service",
+                                fix_attempted=True,
+                                fix_successful=True,
+                            )
+                        else:
+                            return HealthCheck(
+                                name="Monitoring Service",
+                                status=HealthResult.CRITICAL,
+                                message=f"Failed to restart monitoring service: {', '.join(failed_checks)}",
+                                fix_attempted=True,
+                                fix_successful=False,
+                            )
+                    except Exception as restart_error:
+                        return HealthCheck(
+                            name="Monitoring Service",
+                            status=HealthResult.CRITICAL,
+                            message=f"Failed to restart monitoring: {str(restart_error)}",
+                            fix_attempted=True,
+                            fix_successful=False,
+                        )
+                else:
+                    return HealthCheck(
+                        name="Monitoring Service",
+                        status=HealthResult.CRITICAL,
+                        message=f"Monitoring service is unhealthy: {', '.join(failed_checks)}",
+                        details=health["checks"] if verbose else None,
+                    )
+
+        except MonitoringServiceError as e:
+            return HealthCheck(
+                name="Monitoring Service",
+                status=HealthResult.WARNING,
+                message=f"Monitoring service error: {str(e)}",
+                details={"error": str(e)},
+            )
+        except ImportError:
+            return HealthCheck(
+                name="Monitoring Service",
+                status=HealthResult.WARNING,
+                message="Monitoring service components not available",
+                details={"import_error": "monitoring_service"},
+            )
         except Exception as e:
             return HealthCheck(
                 name="Monitoring Service",
@@ -752,12 +730,7 @@ class HealthChecker:
     ) -> HealthCheck:
         """Check configuration files and environment variables."""
         try:
-            issues = []
-
-            # Check .env file (not required in containers)
-            env_file = Path(".env")
-            if not env_file.exists() and not self._is_container:
-                issues.append("No .env file found (using defaults)")
+            issues: list[str] = []
 
             # Check required environment variables
             from cognitive_memory.core.config import SystemConfig
