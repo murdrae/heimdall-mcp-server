@@ -49,7 +49,7 @@ heimdall project init
 
 This single command interactively builds up everything asking user preferences:
 - ✅ Starts Qdrant vector database automatically
-- ✅ Creates project-specific memory collections 
+- ✅ Creates project-specific memory collections
 - ✅ Sets up `.heimdall/` configuration directory
 - ✅ Downloads required AI models
 - ✅ File monitoring
@@ -279,7 +279,7 @@ To maximize the effectiveness of Heimdall:
 Heimdall MCP server is compatible with any platform that supports STDIO MCP servers. The following platforms are supported for automatic installation using `heimdall mcp` commands.
 
 - `vscode` - Visual Studio Code
-- `cursor` - Cursor IDE  
+- `cursor` - Cursor IDE
 - `claude-code` - Claude Code
 - `visual-studio` - Visual Studio
 
