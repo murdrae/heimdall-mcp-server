@@ -282,14 +282,15 @@ class HeimdallMCPServer:
             result = self.operations.store_experience(text=text, context=context)
 
             if result["success"]:
-                # Get hierarchy level and memory type from result
+                # Get hierarchy level, memory type, and memory ID from result
                 hierarchy_level = result["hierarchy_level"]
                 memory_type = result["memory_type"]
+                memory_id = result["memory_id"]
 
                 level_names = {0: "L0 (Concept)", 1: "L1 (Context)", 2: "L2 (Episode)"}
                 level_name = level_names.get(hierarchy_level, f"L{hierarchy_level}")
 
-                response = f"✓ Stored: {level_name}, {memory_type}"
+                response = f"✓ Stored: {level_name}, {memory_type}, ID: {memory_id}"
 
                 return [TextContent(type="text", text=response)]
             else:
@@ -395,7 +396,10 @@ class HeimdallMCPServer:
             )
 
             if result["success"]:
-                response = f"✓ Lesson recorded: {lesson_type}, {importance}"
+                memory_id = result["memory_id"]
+                response = (
+                    f"✓ Lesson recorded: {lesson_type}, {importance}, ID: {memory_id}"
+                )
 
                 return [TextContent(type="text", text=response)]
             else:
