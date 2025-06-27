@@ -436,3 +436,221 @@ def remove_file_cmd(
     except Exception as e:
         console.print(f"❌ Error removing memories: {e}", style="bold red")
         raise typer.Exit(1) from e
+
+
+def delete_memory_cmd(
+    memory_id: str = typer.Argument(..., help="Memory ID to delete"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be deleted without deleting"
+    ),
+    no_confirm: bool = typer.Option(
+        False, "--no-confirm", help="Skip confirmation prompt"
+    ),
+    config: str | None = typer.Option(
+        None, help="Path to .env configuration file to override default settings"
+    ),
+) -> None:
+    """Delete a single memory by its ID."""
+    try:
+        # Initialize cognitive system
+        if config:
+            cognitive_system = initialize_with_config(config)
+        else:
+            cognitive_system = initialize_system("default")
+
+        # Create operations instance
+        ops = CognitiveOperations(cognitive_system)
+
+        # First, run dry-run to show what would be deleted
+        preview_result = ops.delete_memory_by_id(memory_id, dry_run=True)
+
+        if not preview_result["success"]:
+            console.print(f"❌ {preview_result['error']}", style="bold red")
+            raise typer.Exit(1)
+
+        if preview_result["deleted_count"] == 0:
+            console.print(
+                f"📭 No memory found with ID: {memory_id}", style="bold yellow"
+            )
+            graceful_shutdown(cognitive_system)
+            return
+
+        # Show preview information
+        preview = preview_result.get("preview", {})
+        console.print(f"🎯 Found memory: [bold cyan]{memory_id}[/bold cyan]")
+
+        # Create preview table
+        preview_table = Table(title="Memory Preview")
+        preview_table.add_column("Property", style="cyan")
+        preview_table.add_column("Value", style="white")
+
+        preview_table.add_row("Content", preview.get("content", "N/A"))
+        preview_table.add_row("Level", f"L{preview.get('hierarchy_level', 'N/A')}")
+        preview_table.add_row("Tags", ", ".join(preview.get("tags", [])) or "None")
+        preview_table.add_row("Source", preview.get("source_path", "N/A"))
+
+        console.print(preview_table)
+
+        if dry_run:
+            console.print("🔍 DRY RUN - Memory would be deleted", style="bold blue")
+            graceful_shutdown(cognitive_system)
+            return
+
+        # Confirmation prompt
+        if not no_confirm:
+            confirm = typer.confirm("Are you sure you want to delete this memory?")
+            if not confirm:
+                console.print("⚠️ Deletion cancelled", style="bold yellow")
+                graceful_shutdown(cognitive_system)
+                return
+
+        # Perform actual deletion
+        result = ops.delete_memory_by_id(memory_id, dry_run=False)
+
+        if result["success"]:
+            console.print(
+                f"✅ Deleted memory: {memory_id}",
+                style="bold green",
+            )
+            if result["processing_time"] > 0:
+                console.print(f"⏱️  Processing time: {result['processing_time']:.3f}s")
+
+            if result.get("vector_deletion_failures", 0) > 0:
+                console.print(
+                    "⚠️ Warning: Vector deletion failed but metadata was removed",
+                    style="bold yellow",
+                )
+        else:
+            console.print(
+                f"❌ Failed to delete memory {memory_id}: {result['error']}",
+                style="bold red",
+            )
+            raise typer.Exit(1)
+
+        # Cleanup
+        graceful_shutdown(cognitive_system)
+
+    except InitializationError as e:
+        console.print(f"❌ Failed to initialize system: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    except Exception as e:
+        console.print(f"❌ Error deleting memory: {e}", style="bold red")
+        raise typer.Exit(1) from e
+
+
+def delete_memories_by_tags_cmd(
+    tags: list[str] = typer.Option(
+        ..., "--tag", help="Tags to match (can be specified multiple times)"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be deleted without deleting"
+    ),
+    no_confirm: bool = typer.Option(
+        False, "--no-confirm", help="Skip confirmation prompt"
+    ),
+    config: str | None = typer.Option(
+        None, help="Path to .env configuration file to override default settings"
+    ),
+) -> None:
+    """Delete all memories that have any of the specified tags."""
+    try:
+        # Initialize cognitive system
+        if config:
+            cognitive_system = initialize_with_config(config)
+        else:
+            cognitive_system = initialize_system("default")
+
+        # Create operations instance
+        ops = CognitiveOperations(cognitive_system)
+
+        # First, run dry-run to show what would be deleted
+        preview_result = ops.delete_memories_by_tags(tags, dry_run=True)
+
+        if not preview_result["success"]:
+            console.print(f"❌ {preview_result['error']}", style="bold red")
+            raise typer.Exit(1)
+
+        if preview_result["deleted_count"] == 0:
+            console.print(
+                f"📭 No memories found with tags: {', '.join(tags)}",
+                style="bold yellow",
+            )
+            graceful_shutdown(cognitive_system)
+            return
+
+        # Show preview information
+        console.print(
+            f"🏷️  Found {preview_result['deleted_count']} memories with tags: [bold cyan]{', '.join(tags)}[/bold cyan]"
+        )
+
+        # Show preview of memories to be deleted
+        preview_memories = preview_result.get("preview", [])
+        if preview_memories:
+            preview_table = Table(title="Memories to Delete")
+            preview_table.add_column("ID", style="dim")
+            preview_table.add_column("Content", style="white")
+            preview_table.add_column("Level", style="cyan")
+            preview_table.add_column("Tags", style="yellow")
+
+            for mem in preview_memories[:10]:  # Show max 10 for readability
+                preview_table.add_row(
+                    mem["id"][:8] + "...",
+                    mem["content"],
+                    f"L{mem['hierarchy_level']}",
+                    ", ".join(mem["tags"]) or "None",
+                )
+
+            console.print(preview_table)
+
+            if len(preview_memories) > 10:
+                console.print(
+                    f"... and {len(preview_memories) - 10} more memories", style="dim"
+                )
+
+        if dry_run:
+            console.print("🔍 DRY RUN - Memories would be deleted", style="bold blue")
+            graceful_shutdown(cognitive_system)
+            return
+
+        # Confirmation prompt
+        if not no_confirm:
+            confirm = typer.confirm(
+                f"Are you sure you want to delete {preview_result['deleted_count']} memories?"
+            )
+            if not confirm:
+                console.print("⚠️ Deletion cancelled", style="bold yellow")
+                graceful_shutdown(cognitive_system)
+                return
+
+        # Perform actual deletion
+        result = ops.delete_memories_by_tags(tags, dry_run=False)
+
+        if result["success"]:
+            console.print(
+                f"✅ Deleted {result['deleted_count']} memories with tags: {', '.join(tags)}",
+                style="bold green",
+            )
+            if result["processing_time"] > 0:
+                console.print(f"⏱️  Processing time: {result['processing_time']:.3f}s")
+
+            if result.get("vector_deletion_failures", 0) > 0:
+                console.print(
+                    f"⚠️ Warning: {result['vector_deletion_failures']} vector deletions failed but metadata was removed",
+                    style="bold yellow",
+                )
+        else:
+            console.print(
+                f"❌ Failed to delete memories with tags {', '.join(tags)}: {result['error']}",
+                style="bold red",
+            )
+            raise typer.Exit(1)
+
+        # Cleanup
+        graceful_shutdown(cognitive_system)
+
+    except InitializationError as e:
+        console.print(f"❌ Failed to initialize system: {e}", style="bold red")
+        raise typer.Exit(1) from e
+    except Exception as e:
+        console.print(f"❌ Error deleting memories: {e}", style="bold red")
+        raise typer.Exit(1) from e

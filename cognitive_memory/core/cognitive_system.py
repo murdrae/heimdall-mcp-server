@@ -131,6 +131,7 @@ class CognitiveMemorySystem(CognitiveSystem):
                 strength=1.0,
                 access_count=0,
                 metadata=memory_metadata,
+                tags=context.get("tags") if context else None,
             )
 
             # Attach the embedding to the memory object
@@ -926,6 +927,173 @@ class CognitiveMemorySystem(CognitiveSystem):
                 "processing_time": processing_time,
                 "error": str(e),
             }
+
+    def delete_memory_by_id(self, memory_id: str) -> dict[str, Any]:
+        """
+        Delete a single memory by its ID.
+
+        This method handles both vector storage and metadata deletion to ensure
+        complete removal of the memory from the system.
+
+        Args:
+            memory_id: The memory ID to delete
+
+        Returns:
+            Dictionary containing deletion results and statistics
+        """
+        start_time = time.time()
+
+        try:
+            logger.info("Starting memory deletion by ID", memory_id=memory_id)
+
+            # First, get the memory to verify it exists
+            memory = self.memory_storage.retrieve_memory(memory_id)
+            if not memory:
+                logger.info("Memory not found", memory_id=memory_id)
+                return {
+                    "memory_id": memory_id,
+                    "deleted_count": 0,
+                    "vector_deletion_failures": 0,
+                    "processing_time": time.time() - start_time,
+                }
+
+            # Delete vector from Qdrant
+            vector_deletion_failures = 0
+            try:
+                success = self.vector_storage.delete_vector(memory_id)
+                if not success:
+                    vector_deletion_failures = 1
+                    logger.warning("Failed to delete vector", memory_id=memory_id)
+            except Exception as e:
+                vector_deletion_failures = 1
+                logger.error("Error deleting vector", memory_id=memory_id, error=str(e))
+
+            # Delete metadata from SQLite
+            success = self.memory_storage.delete_memory(memory_id)
+            deleted_count = 1 if success else 0
+
+            processing_time = time.time() - start_time
+
+            logger.info(
+                "Memory deletion completed",
+                memory_id=memory_id,
+                deleted_count=deleted_count,
+                vector_deletion_failures=vector_deletion_failures,
+                processing_time=processing_time,
+            )
+
+            return {
+                "memory_id": memory_id,
+                "deleted_count": deleted_count,
+                "vector_deletion_failures": vector_deletion_failures,
+                "processing_time": processing_time,
+            }
+
+        except Exception as e:
+            processing_time = time.time() - start_time
+            logger.error(
+                "Failed to delete memory by ID",
+                memory_id=memory_id,
+                error=str(e),
+                processing_time=processing_time,
+            )
+            return {
+                "memory_id": memory_id,
+                "deleted_count": 0,
+                "vector_deletion_failures": 0,
+                "processing_time": processing_time,
+                "error": str(e),
+            }
+
+    def delete_memories_by_tags(self, tags: list[str]) -> dict[str, Any]:
+        """
+        Delete all memories that have any of the specified tags.
+
+        This method handles both vector storage and metadata deletion to ensure
+        complete removal of memories from the system.
+
+        Args:
+            tags: List of tags to match against memory tags
+
+        Returns:
+            Dictionary containing deletion results and statistics
+        """
+        start_time = time.time()
+
+        try:
+            logger.info("Starting memory deletion by tags", tags=tags)
+
+            # First, get all memories to be deleted for vector cleanup
+            memories_to_delete = self.memory_storage.get_memories_by_tags(tags)
+
+            if not memories_to_delete:
+                logger.info("No memories found with tags", tags=tags)
+                return {
+                    "tags": tags,
+                    "deleted_count": 0,
+                    "vector_deletion_failures": 0,
+                    "processing_time": time.time() - start_time,
+                }
+
+            # Delete vectors from Qdrant
+            memory_ids = [memory.id for memory in memories_to_delete]
+            successfully_deleted_vectors = self.vector_storage.delete_vectors_by_ids(
+                memory_ids
+            )
+            vector_deletion_failures = len(memory_ids) - len(
+                successfully_deleted_vectors
+            )
+
+            if vector_deletion_failures > 0:
+                logger.warning(
+                    "Some vectors failed to delete",
+                    total_vectors=len(memory_ids),
+                    failed_count=vector_deletion_failures,
+                )
+
+            # Delete metadata from SQLite
+            deleted_count = self.memory_storage.delete_memories_by_tags(tags)
+
+            processing_time = time.time() - start_time
+
+            logger.info(
+                "Memory deletion completed",
+                tags=tags,
+                deleted_count=deleted_count,
+                vector_deletion_failures=vector_deletion_failures,
+                processing_time=processing_time,
+            )
+
+            return {
+                "tags": tags,
+                "deleted_count": deleted_count,
+                "vector_deletion_failures": vector_deletion_failures,
+                "processing_time": processing_time,
+            }
+
+        except Exception as e:
+            processing_time = time.time() - start_time
+            logger.error(
+                "Failed to delete memories by tags",
+                tags=tags,
+                error=str(e),
+                processing_time=processing_time,
+            )
+            return {
+                "tags": tags,
+                "deleted_count": 0,
+                "vector_deletion_failures": 0,
+                "processing_time": processing_time,
+                "error": str(e),
+            }
+
+    def retrieve_memory(self, memory_id: str) -> CognitiveMemory | None:
+        """Retrieve a memory by ID."""
+        return self.memory_storage.retrieve_memory(memory_id)
+
+    def get_memories_by_tags(self, tags: list[str]) -> list[CognitiveMemory]:
+        """Get memories that have any of the specified tags."""
+        return self.memory_storage.get_memories_by_tags(tags)
 
     def atomic_reload_memories_from_source(
         self, loader: Any, source_path: str, **kwargs: Any

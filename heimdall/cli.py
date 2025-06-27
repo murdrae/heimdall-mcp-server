@@ -19,6 +19,8 @@ from rich.console import Console
 
 # Import command functions from separate modules
 from heimdall.cli_commands.cognitive_commands import (
+    delete_memories_by_tags_cmd,
+    delete_memory_cmd,
     load_git_patterns,
     load_memories,
     recall_memories,
@@ -107,6 +109,8 @@ app.command("load")(load_memories)
 app.command("git-load")(load_git_patterns)
 app.command("status")(system_status)
 app.command("remove-file")(remove_file_cmd)
+app.command("delete-memory")(delete_memory_cmd)
+app.command("delete-memories-by-tags")(delete_memories_by_tags_cmd)
 
 # Register health and shell commands
 app.command("doctor")(health_check)

@@ -198,6 +198,43 @@ class HeimdallMCPServer:
                         },
                     },
                 ),
+                Tool(
+                    name="delete_memory",
+                    description="Delete a single memory by its ID. Provides preview of what will be deleted for safety.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "memory_id": {
+                                "type": "string",
+                                "description": "The unique ID of the memory to delete",
+                            },
+                            "dry_run": {
+                                "type": "boolean",
+                                "description": "Preview what would be deleted without actually deleting (default: false)",
+                            },
+                        },
+                        "required": ["memory_id"],
+                    },
+                ),
+                Tool(
+                    name="delete_memories_by_tags",
+                    description="Delete all memories that have any of the specified tags. Provides preview for safety.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "List of tags - memories with any of these tags will be deleted",
+                            },
+                            "dry_run": {
+                                "type": "boolean",
+                                "description": "Preview what would be deleted without actually deleting (default: false)",
+                            },
+                        },
+                        "required": ["tags"],
+                    },
+                ),
             ]
 
         @self.server.call_tool()  # type: ignore[misc]
@@ -212,6 +249,10 @@ class HeimdallMCPServer:
                     return await self._session_lessons(arguments)
                 elif name == "memory_status":
                     return await self._memory_status(arguments)
+                elif name == "delete_memory":
+                    return await self._delete_memory(arguments)
+                elif name == "delete_memories_by_tags":
+                    return await self._delete_memories_by_tags(arguments)
                 else:
                     return [TextContent(type="text", text=f"❌ Unknown tool: {name}")]
             except Exception as e:
@@ -425,6 +466,127 @@ class HeimdallMCPServer:
             return [
                 TextContent(
                     type="text", text=f"❌ Error getting system status: {str(e)}"
+                )
+            ]
+
+    async def _delete_memory(self, arguments: dict) -> list[TextContent]:
+        """Handle delete_memory tool calls."""
+        memory_id = arguments.get("memory_id", "")
+        dry_run = arguments.get("dry_run", False)
+
+        if not memory_id or not memory_id.strip():
+            return [
+                TextContent(type="text", text="❌ Error: Memory ID cannot be empty")
+            ]
+
+        try:
+            # Delete memory using operations layer
+            result = self.operations.delete_memory_by_id(
+                memory_id=memory_id.strip(), dry_run=dry_run
+            )
+
+            if not result["success"]:
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"❌ Failed to delete memory: {result['error']}",
+                    )
+                ]
+
+            # Format the response
+            if dry_run:
+                if "preview" in result:
+                    preview = result["preview"]
+                    response = "🔍 Dry run - Would delete memory:\n"
+                    response += f"ID: {memory_id}\n"
+                    response += f"Content: {preview['content']}\n"
+                    response += f"Level: L{preview['hierarchy_level']}\n"
+                    response += f"Tags: {', '.join(preview['tags']) if preview['tags'] else 'None'}\n"
+                    response += f"Source: {preview['source_path']}"
+                else:
+                    response = f"🔍 Dry run - Memory {memory_id} would be deleted"
+            else:
+                processing_time = result.get("processing_time", 0.0)
+                deleted_count = result.get("deleted_count", 0)
+                vector_failures = result.get("vector_deletion_failures", 0)
+
+                if deleted_count > 0:
+                    response = f"✅ Memory deleted: {memory_id}"
+                    if vector_failures > 0:
+                        response += f" (⚠️ {vector_failures} vector deletion failures)"
+                    response += f" ({processing_time:.3f}s)"
+                else:
+                    response = f"❌ Memory not found: {memory_id}"
+
+            return [TextContent(type="text", text=response)]
+
+        except Exception as e:
+            logger.error(f"Error deleting memory: {e}")
+            return [
+                TextContent(type="text", text=f"❌ Error deleting memory: {str(e)}")
+            ]
+
+    async def _delete_memories_by_tags(self, arguments: dict) -> list[TextContent]:
+        """Handle delete_memories_by_tags tool calls."""
+        tags = arguments.get("tags", [])
+        dry_run = arguments.get("dry_run", False)
+
+        if not tags or not any(tag.strip() for tag in tags):
+            return [
+                TextContent(type="text", text="❌ Error: Tags list cannot be empty")
+            ]
+
+        try:
+            # Delete memories using operations layer
+            result = self.operations.delete_memories_by_tags(tags=tags, dry_run=dry_run)
+
+            if not result["success"]:
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"❌ Failed to delete memories: {result['error']}",
+                    )
+                ]
+
+            # Format the response
+            clean_tags = result.get("tags", tags)
+            deleted_count = result.get("deleted_count", 0)
+
+            if dry_run:
+                response = f"🔍 Dry run - Would delete {deleted_count} memories with tags: {', '.join(clean_tags)}"
+
+                # Show preview if available
+                if "preview" in result and result["preview"]:
+                    response += f"\n\nFirst {min(5, len(result['preview']))} memories:"
+                    for i, preview in enumerate(result["preview"][:5]):
+                        response += f"\n{i + 1}. {preview['content'][:100]}..."
+                        response += f" (L{preview['hierarchy_level']}, tags: {', '.join(preview['tags']) if preview['tags'] else 'None'})"
+
+                    if len(result["preview"]) > 5:
+                        response += (
+                            f"\n... and {len(result['preview']) - 5} more memories"
+                        )
+            else:
+                processing_time = result.get("processing_time", 0.0)
+                vector_failures = result.get("vector_deletion_failures", 0)
+
+                if deleted_count > 0:
+                    response = f"✅ Deleted {deleted_count} memories with tags: {', '.join(clean_tags)}"
+                    if vector_failures > 0:
+                        response += f" (⚠️ {vector_failures} vector deletion failures)"
+                    response += f" ({processing_time:.3f}s)"
+                else:
+                    response = (
+                        f"📭 No memories found with tags: {', '.join(clean_tags)}"
+                    )
+
+            return [TextContent(type="text", text=response)]
+
+        except Exception as e:
+            logger.error(f"Error deleting memories by tags: {e}")
+            return [
+                TextContent(
+                    type="text", text=f"❌ Error deleting memories by tags: {str(e)}"
                 )
             ]
 

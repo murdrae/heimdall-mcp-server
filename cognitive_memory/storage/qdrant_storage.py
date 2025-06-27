@@ -567,6 +567,37 @@ class HierarchicalMemoryStorage(VectorStorage):
 
         return success
 
+    def delete_vectors_by_ids(self, memory_ids: list[str]) -> list[str]:
+        """
+        Delete vectors by their IDs across all collections.
+
+        Args:
+            memory_ids: List of vector IDs to delete
+
+        Returns:
+            List of successfully deleted memory IDs
+        """
+        if not memory_ids:
+            return []
+
+        successfully_deleted = []
+
+        for memory_id in memory_ids:
+            success = self.delete_vector(memory_id)
+            if success:
+                successfully_deleted.append(memory_id)
+
+        logger.info(
+            "Batch vector deletion completed",
+            requested_count=len(memory_ids),
+            deleted_count=len(successfully_deleted),
+            deleted_ids=successfully_deleted[:5]
+            if len(successfully_deleted) > 5
+            else successfully_deleted,
+        )
+
+        return successfully_deleted
+
     def update_vector(
         self, id: str, vector: np.ndarray, metadata: dict[str, Any]
     ) -> bool:
