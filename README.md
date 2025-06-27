@@ -194,7 +194,7 @@ graph TD
 
 ## LLM Tool Reference
 
-You can instruct your LLM to use the following four tools to interact with its memory:
+You can instruct your LLM to use the following six tools to interact with its memory:
 
 | Tool              | Description                                                          |
 | :---------------- | :------------------------------------------------------------------- |
@@ -202,6 +202,8 @@ You can instruct your LLM to use the following four tools to interact with its m
 | `recall_memories` | Performs a semantic search for relevant memories based on a query.   |
 | `session_lessons` | Records a key takeaway from the current session for future use.      |
 | `memory_status`   | Checks the health and statistics of the memory system.               |
+| `delete_memory`   | Delete a specific memory by its unique ID.                          |
+| `delete_memories_by_tags` | Delete all memories that have any of the specified tags.    |
 
 
 ## 💡 Best Practices
@@ -213,6 +215,7 @@ To maximize the effectiveness of Heimdall:
   * **Maintain Good Git Hygiene:** Write clear and descriptive commit messages. A message like `feat(api): add user authentication endpoint` is far more valuable than `more stuff`.
   * **Set Up Automation:** Use `heimdall monitor start` and `heimdall git-hooks install` for hands-free memory updates.
   * **Guide Your Assistant:** Use a system prompt (like a `CLAUDE.md` file) to instruct your LLM on *how* and *when* to use the available memory tools.
+  * **Use Strategic Tagging:** Establish rules for your LLM to tag memories consistently. Use temporary tags like `temp-analysis`, `task-specific`, or `cleanup-after-project` for memories that should be deleted after completion, enabling easy cleanup with `delete_memories_by_tags`.
 
 ## 🛠️ Command Reference
 
@@ -226,6 +229,8 @@ To maximize the effectiveness of Heimdall:
 | `heimdall git-load [repo]` | Load git commit patterns into memory |
 | `heimdall status` | Show system status and memory statistics |
 | `heimdall remove-file <path>` | Remove memories for deleted file |
+| `heimdall delete-memory <id>` | Delete specific memory by ID |
+| `heimdall delete-memories-by-tags --tag <tag>` | Delete memories by tags |
 | `heimdall doctor` | Run comprehensive health checks |
 | `heimdall shell` | Start interactive memory shell |
 
@@ -300,7 +305,7 @@ Heimdall MCP server is compatible with any platform that supports STDIO MCP serv
   * [x] ~~Release v0.1.0 publicly~~ ✅ **Completed**
   * [x] ~~Heimdall pip package available~~ ✅ **Completed**
   * [x] ~~Simplify installation~~ ✅ **Completed**
-  * [ ] Delete memories support (manually or by context - for md docs already supported)
+  * [x] ~~Delete memories support (manually or by tags - for md docs already supported)~~ ✅ **Completed**
 
 ## License
 
