@@ -56,6 +56,11 @@ class VectorStorage(ABC):
         """Update an existing vector and its metadata."""
         pass
 
+    @abstractmethod
+    def delete_vectors_by_ids(self, memory_ids: list[str]) -> list[str]:
+        """Delete vectors by their IDs. Returns list of successfully deleted memory IDs."""
+        pass
+
 
 class ActivationEngine(ABC):
     """Abstract interface for memory activation."""
@@ -124,6 +129,21 @@ class MemoryStorage(ABC):
     @abstractmethod
     def delete_memories_by_source_path(self, source_path: str) -> int:
         """Delete all memories associated with a source file path. Returns count of deleted memories."""
+        pass
+
+    @abstractmethod
+    def get_memories_by_tags(self, tags: list[str]) -> list[CognitiveMemory]:
+        """Get memories that have any of the specified tags."""
+        pass
+
+    @abstractmethod
+    def delete_memories_by_tags(self, tags: list[str]) -> int:
+        """Delete memories that have any of the specified tags. Returns count of deleted memories."""
+        pass
+
+    @abstractmethod
+    def delete_memories_by_ids(self, memory_ids: list[str]) -> int:
+        """Delete memories by their IDs. Returns count of deleted memories."""
         pass
 
 
@@ -328,4 +348,24 @@ class CognitiveSystem(ABC):
         Returns:
             Dictionary containing combined operation results and statistics
         """
+        pass
+
+    @abstractmethod
+    def retrieve_memory(self, memory_id: str) -> CognitiveMemory | None:
+        """Retrieve a memory by ID."""
+        pass
+
+    @abstractmethod
+    def get_memories_by_tags(self, tags: list[str]) -> list[CognitiveMemory]:
+        """Get memories that have any of the specified tags."""
+        pass
+
+    @abstractmethod
+    def delete_memory_by_id(self, memory_id: str) -> dict[str, Any]:
+        """Delete a single memory by its ID."""
+        pass
+
+    @abstractmethod
+    def delete_memories_by_tags(self, tags: list[str]) -> dict[str, Any]:
+        """Delete memories that have any of the specified tags."""
         pass

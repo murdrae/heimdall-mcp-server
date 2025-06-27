@@ -135,6 +135,114 @@ async def test_mcp_server_tools_e2e():
     assert detailed_config["embedding_dimensions"] == 384
     assert detailed_config["activation_threshold"] == 0.7
 
+    # Test 8: delete_memories_by_tags tool - dry run first
+    test_tag_memory_text = (
+        "Memory specifically for tag-based deletion testing in E2E MCP tests"
+    )
+    tag_store_result = await server._store_memory(
+        {
+            "text": test_tag_memory_text,
+            "context": {
+                "tags": ["e2e-deletion-test", "mcp-test"],
+                "hierarchy_level": 2,
+                "memory_type": "episodic",
+            },
+        }
+    )
+    assert "✓ Stored:" in tag_store_result[0].text
+
+    # Test dry-run deletion by tags
+    dry_run_result = await server._delete_memories_by_tags(
+        {"tags": ["e2e-deletion-test"], "dry_run": True}
+    )
+    assert len(dry_run_result) == 1
+    dry_run_text = dry_run_result[0].text
+    assert "🔍 Dry run - Would delete" in dry_run_text
+    assert "e2e-deletion-test" in dry_run_text
+
+    # Test actual deletion by tags
+    delete_tags_result = await server._delete_memories_by_tags(
+        {"tags": ["e2e-deletion-test"], "dry_run": False}
+    )
+    assert len(delete_tags_result) == 1
+    delete_tags_text = delete_tags_result[0].text
+    assert (
+        "✅ Deleted" in delete_tags_text or "📭 No memories found" in delete_tags_text
+    )
+
+    # Test 9: delete_memory tool by ID
+    # Store another test memory and get its ID from recall
+    id_test_memory_text = (
+        "Memory specifically for ID-based deletion testing in E2E MCP tests"
+    )
+    id_store_result = await server._store_memory(
+        {
+            "text": id_test_memory_text,
+            "context": {
+                "tags": ["e2e-id-deletion-test"],
+                "hierarchy_level": 2,
+                "memory_type": "episodic",
+            },
+        }
+    )
+    assert "✓ Stored:" in id_store_result[0].text
+
+    # Find the memory ID using recall
+    id_recall_result = await server._recall_memories(
+        {"query": "ID-based deletion testing E2E", "max_results": 5}
+    )
+    id_recall_data = json.loads(id_recall_result[0].text)
+
+    # Find our test memory and extract its ID
+    test_memory_id = None
+    for memory_type in ["core", "peripheral", "bridge"]:
+        if memory_type in id_recall_data["memories"]:
+            for memory in id_recall_data["memories"][memory_type]:
+                if "ID-based deletion testing" in memory["content"]:
+                    test_memory_id = memory["metadata"]["id"]
+                    break
+
+    assert test_memory_id is not None, "Should find the test memory ID"
+
+    # Test dry-run deletion by ID
+    id_dry_run_result = await server._delete_memory(
+        {"memory_id": test_memory_id, "dry_run": True}
+    )
+    assert len(id_dry_run_result) == 1
+    id_dry_run_text = id_dry_run_result[0].text
+    assert "🔍 Dry run - Would delete memory:" in id_dry_run_text
+    assert test_memory_id in id_dry_run_text
+
+    # Test actual deletion by ID
+    id_delete_result = await server._delete_memory(
+        {"memory_id": test_memory_id, "dry_run": False}
+    )
+    assert len(id_delete_result) == 1
+    id_delete_text = id_delete_result[0].text
+    assert "✅ Memory deleted:" in id_delete_text
+    assert test_memory_id in id_delete_text
+
+    # Test 10: Error handling for deletion tools
+    # Test empty memory ID
+    empty_id_result = await server._delete_memory({"memory_id": ""})
+    assert "❌ Error: Memory ID cannot be empty" in empty_id_result[0].text
+
+    # Test nonexistent memory ID
+    fake_id_result = await server._delete_memory(
+        {"memory_id": "fake-id-12345", "dry_run": False}
+    )
+    assert "❌ Memory not found:" in fake_id_result[0].text
+
+    # Test empty tags list
+    empty_tags_result = await server._delete_memories_by_tags({"tags": []})
+    assert "❌ Error: Tags list cannot be empty" in empty_tags_result[0].text
+
+    # Test with nonexistent tags
+    fake_tags_result = await server._delete_memories_by_tags(
+        {"tags": ["nonexistent-tag-12345"], "dry_run": True}
+    )
+    assert "🔍 Dry run - Would delete 0 memories" in fake_tags_result[0].text
+
 
 if __name__ == "__main__":
     """Allow running this test directly for debugging."""

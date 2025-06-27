@@ -1081,6 +1081,235 @@ class DualMemorySystem:
             logger.error("Failed to get memories by level", level=level, error=str(e))
             return []
 
+    def get_memories_by_source_path(self, source_path: str) -> list[CognitiveMemory]:
+        """Get memories by source file path from metadata (interface compliance)."""
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Use JSON_EXTRACT to query source_path from context_metadata
+                cursor.execute(
+                    """
+                    SELECT * FROM memories
+                    WHERE JSON_EXTRACT(context_metadata, '$.source_path') = ?
+                    ORDER BY strength DESC, access_count DESC
+                """,
+                    (source_path,),
+                )
+
+                memories = []
+                for row in cursor.fetchall():
+                    memory = self._row_to_memory(row)
+                    memories.append(memory)
+
+                return memories
+
+        except Exception as e:
+            logger.error(
+                "Failed to get memories by source path",
+                source_path=source_path,
+                error=str(e),
+            )
+            return []
+
+    def delete_memories_by_source_path(self, source_path: str) -> int:
+        """Delete memories by source file path (interface compliance)."""
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Delete the memories
+                cursor.execute(
+                    """
+                    DELETE FROM memories
+                    WHERE JSON_EXTRACT(context_metadata, '$.source_path') = ?
+                """,
+                    (source_path,),
+                )
+
+                deleted_count = cursor.rowcount
+                conn.commit()
+
+                logger.info(
+                    "Deleted memories by source path",
+                    source_path=source_path,
+                    deleted_count=deleted_count,
+                )
+
+                return deleted_count
+
+        except Exception as e:
+            logger.error(
+                "Failed to delete memories by source path",
+                source_path=source_path,
+                error=str(e),
+            )
+            return 0
+
+    def get_memories_by_tags(self, tags: list[str]) -> list[CognitiveMemory]:
+        """Get memories that have any of the specified tags (interface compliance)."""
+        if not tags:
+            return []
+
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Build a query that checks if any of the provided tags are in the memory's tags array
+                placeholders = ", ".join("?" * len(tags))
+                cursor.execute(
+                    f"""
+                    SELECT DISTINCT m.* FROM memories m
+                    JOIN JSON_EACH(m.tags) AS tag_values
+                    WHERE tag_values.value IN ({placeholders})
+                    ORDER BY m.strength DESC, m.access_count DESC
+                """,
+                    tags,
+                )
+
+                memories = []
+                for row in cursor.fetchall():
+                    memory = self._row_to_memory(row)
+                    memories.append(memory)
+
+                return memories
+
+        except Exception as e:
+            logger.error(
+                "Failed to get memories by tags",
+                tags=tags,
+                error=str(e),
+            )
+            return []
+
+    def delete_memories_by_tags(self, tags: list[str]) -> int:
+        """Delete memories that have any of the specified tags (interface compliance)."""
+        if not tags:
+            return 0
+
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # First, get the memory IDs to be deleted for logging
+                placeholders = ", ".join("?" * len(tags))
+                cursor.execute(
+                    f"""
+                    SELECT DISTINCT m.id FROM memories m
+                    JOIN JSON_EACH(m.tags) AS tag_values
+                    WHERE tag_values.value IN ({placeholders})
+                """,
+                    tags,
+                )
+
+                memory_ids = [row["id"] for row in cursor.fetchall()]
+
+                if not memory_ids:
+                    return 0
+
+                # Delete the memories
+                id_placeholders = ", ".join("?" * len(memory_ids))
+                cursor.execute(
+                    f"""
+                    DELETE FROM memories
+                    WHERE id IN ({id_placeholders})
+                """,
+                    memory_ids,
+                )
+
+                deleted_count = cursor.rowcount
+                conn.commit()
+
+                logger.info(
+                    "Deleted memories by tags",
+                    tags=tags,
+                    deleted_count=deleted_count,
+                )
+
+                return deleted_count
+
+        except Exception as e:
+            logger.error(
+                "Failed to delete memories by tags",
+                tags=tags,
+                error=str(e),
+            )
+            return 0
+
+    def delete_memories_by_ids(self, memory_ids: list[str]) -> int:
+        """Delete memories by their IDs (interface compliance)."""
+        if not memory_ids:
+            return 0
+
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Delete the memories
+                placeholders = ", ".join("?" * len(memory_ids))
+                cursor.execute(
+                    f"""
+                    DELETE FROM memories
+                    WHERE id IN ({placeholders})
+                """,
+                    memory_ids,
+                )
+
+                deleted_count = cursor.rowcount
+                conn.commit()
+
+                logger.info(
+                    "Deleted memories by IDs",
+                    memory_ids=memory_ids[:5] if len(memory_ids) > 5 else memory_ids,
+                    deleted_count=deleted_count,
+                )
+
+                return deleted_count
+
+        except Exception as e:
+            logger.error(
+                "Failed to delete memories by IDs",
+                memory_ids=memory_ids,
+                error=str(e),
+            )
+            return 0
+
+    def _row_to_memory(self, row: Any) -> CognitiveMemory:
+        """Convert database row to CognitiveMemory object."""
+        dimensions = json.loads(row["dimensions"]) if row["dimensions"] else {}
+        tags = json.loads(row["tags"]) if row["tags"] else None
+
+        # Deserialize context metadata from JSON if present
+        metadata = {}
+        if "context_metadata" in row.keys() and row["context_metadata"]:
+            try:
+                metadata = json.loads(row["context_metadata"])
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(
+                    f"Failed to deserialize context metadata for memory {row['id']}: {e}"
+                )
+
+        memory = CognitiveMemory(
+            id=row["id"],
+            content=row["content"],
+            memory_type=row["memory_type"],
+            hierarchy_level=row["hierarchy_level"],
+            dimensions=dimensions,
+            timestamp=datetime.fromtimestamp(row["timestamp"])
+            if row["timestamp"]
+            else datetime.now(),
+            strength=row["strength"],
+            access_count=row["access_count"],
+            tags=tags,
+            metadata=metadata,
+            importance_score=row["importance_score"]
+            if "importance_score" in row.keys()
+            else 0.0,
+            decay_rate=row["decay_rate"] if "decay_rate" in row.keys() else 0.1,
+        )
+
+        return memory
+
 
 def create_dual_memory_system(
     db_path: str = "data/cognitive_memory.db",

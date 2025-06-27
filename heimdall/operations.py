@@ -637,3 +637,199 @@ class CognitiveOperations:
                 "processing_time": 0.0,
                 "error": str(e),
             }
+
+    def delete_memory_by_id(
+        self, memory_id: str, dry_run: bool = False
+    ) -> dict[str, Any]:
+        """
+        Delete a single memory by its ID.
+
+        Args:
+            memory_id: The memory ID to delete
+            dry_run: If True, show what would be deleted without deleting
+
+        Returns:
+            Dict containing:
+            - success: bool - True if deletion completed successfully
+            - memory_id: str - The memory ID that was processed
+            - deleted_count: int - Number of memories deleted (0 or 1)
+            - vector_deletion_failures: int - Number of vector deletions that failed
+            - processing_time: float - Time taken in seconds
+            - error: str | None - Error message if failed
+            - dry_run: bool - Whether this was a dry run
+        """
+        if not memory_id or not memory_id.strip():
+            return {
+                "success": False,
+                "memory_id": memory_id,
+                "deleted_count": 0,
+                "vector_deletion_failures": 0,
+                "processing_time": 0.0,
+                "error": "Empty memory ID provided",
+                "dry_run": dry_run,
+            }
+
+        if dry_run:
+            try:
+                # Check if memory exists without deleting
+                memory = self.cognitive_system.retrieve_memory(memory_id)
+                if memory:
+                    return {
+                        "success": True,
+                        "memory_id": memory_id,
+                        "deleted_count": 1,
+                        "vector_deletion_failures": 0,
+                        "processing_time": 0.0,
+                        "error": None,
+                        "dry_run": dry_run,
+                        "preview": {
+                            "content": memory.content[:200] + "..."
+                            if len(memory.content) > 200
+                            else memory.content,
+                            "hierarchy_level": memory.hierarchy_level,
+                            "tags": memory.tags or [],
+                            "source_path": memory.metadata.get("source_path", "N/A"),
+                        },
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "memory_id": memory_id,
+                        "deleted_count": 0,
+                        "vector_deletion_failures": 0,
+                        "processing_time": 0.0,
+                        "error": "Memory not found",
+                        "dry_run": dry_run,
+                    }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "memory_id": memory_id,
+                    "deleted_count": 0,
+                    "vector_deletion_failures": 0,
+                    "processing_time": 0.0,
+                    "error": str(e),
+                    "dry_run": dry_run,
+                }
+
+        try:
+            results = self.cognitive_system.delete_memory_by_id(memory_id)
+
+            return {
+                "success": True,
+                "memory_id": results.get("memory_id", memory_id),
+                "deleted_count": results.get("deleted_count", 0),
+                "vector_deletion_failures": results.get("vector_deletion_failures", 0),
+                "processing_time": results.get("processing_time", 0.0),
+                "error": results.get("error"),
+                "dry_run": dry_run,
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "memory_id": memory_id,
+                "deleted_count": 0,
+                "vector_deletion_failures": 0,
+                "processing_time": 0.0,
+                "error": str(e),
+                "dry_run": dry_run,
+            }
+
+    def delete_memories_by_tags(
+        self, tags: list[str], dry_run: bool = False
+    ) -> dict[str, Any]:
+        """
+        Delete all memories that have any of the specified tags.
+
+        Args:
+            tags: List of tags to match against memory tags
+            dry_run: If True, show what would be deleted without deleting
+
+        Returns:
+            Dict containing:
+            - success: bool - True if deletion completed successfully
+            - tags: list[str] - The tags that were searched for
+            - deleted_count: int - Number of memories deleted
+            - vector_deletion_failures: int - Number of vector deletions that failed
+            - processing_time: float - Time taken in seconds
+            - error: str | None - Error message if failed
+            - dry_run: bool - Whether this was a dry run
+        """
+        if not tags or not any(tag.strip() for tag in tags):
+            return {
+                "success": False,
+                "tags": tags,
+                "deleted_count": 0,
+                "vector_deletion_failures": 0,
+                "processing_time": 0.0,
+                "error": "Empty tags list provided",
+                "dry_run": dry_run,
+            }
+
+        # Clean up tags
+        clean_tags = [tag.strip() for tag in tags if tag.strip()]
+
+        if dry_run:
+            try:
+                # Get memories that would be deleted without deleting them
+                memories = self.cognitive_system.get_memories_by_tags(clean_tags)
+
+                preview_memories = []
+                for memory in memories:
+                    preview_memories.append(
+                        {
+                            "id": memory.id,
+                            "content": memory.content[:100] + "..."
+                            if len(memory.content) > 100
+                            else memory.content,
+                            "hierarchy_level": memory.hierarchy_level,
+                            "tags": memory.tags or [],
+                            "source_path": memory.metadata.get("source_path", "N/A"),
+                        }
+                    )
+
+                return {
+                    "success": True,
+                    "tags": clean_tags,
+                    "deleted_count": len(memories),
+                    "vector_deletion_failures": 0,
+                    "processing_time": 0.0,
+                    "error": None,
+                    "dry_run": dry_run,
+                    "preview": preview_memories,
+                }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "tags": clean_tags,
+                    "deleted_count": 0,
+                    "vector_deletion_failures": 0,
+                    "processing_time": 0.0,
+                    "error": str(e),
+                    "dry_run": dry_run,
+                }
+
+        try:
+            results = self.cognitive_system.delete_memories_by_tags(clean_tags)
+
+            return {
+                "success": True,
+                "tags": results.get("tags", clean_tags),
+                "deleted_count": results.get("deleted_count", 0),
+                "vector_deletion_failures": results.get("vector_deletion_failures", 0),
+                "processing_time": results.get("processing_time", 0.0),
+                "error": results.get("error"),
+                "dry_run": dry_run,
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "tags": clean_tags,
+                "deleted_count": 0,
+                "vector_deletion_failures": 0,
+                "processing_time": 0.0,
+                "error": str(e),
+                "dry_run": dry_run,
+            }

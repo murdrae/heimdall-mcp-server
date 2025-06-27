@@ -508,6 +508,167 @@ class MemoryMetadataStore(MemoryStorage):
             )
             return 0
 
+    def get_memories_by_tags(self, tags: list[str]) -> list[CognitiveMemory]:
+        """Get memories that have any of the specified tags."""
+        if not tags:
+            return []
+
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Build a query that checks if any of the provided tags are in the memory's tags array
+                # SQLite JSON functions: JSON_EACH to iterate over tags array
+                placeholders = ", ".join("?" * len(tags))
+                cursor.execute(
+                    f"""
+                    SELECT DISTINCT m.* FROM memories m
+                    JOIN JSON_EACH(m.tags) AS tag_values
+                    WHERE tag_values.value IN ({placeholders})
+                    ORDER BY m.strength DESC, m.access_count DESC
+                """,
+                    tags,
+                )
+
+                rows = cursor.fetchall()
+                memories = [self._row_to_memory(row) for row in rows]
+
+                logger.debug(
+                    "Retrieved memories by tags",
+                    tags=tags,
+                    count=len(memories),
+                )
+
+                return memories
+
+        except Exception as e:
+            logger.error(
+                "Failed to get memories by tags",
+                tags=tags,
+                error=str(e),
+            )
+            return []
+
+    def delete_memories_by_tags(self, tags: list[str]) -> int:
+        """
+        Delete memories that have any of the specified tags.
+
+        Note: This method only handles SQLite metadata deletion.
+        For complete cleanup including vector storage, use CognitiveSystem.delete_memories_by_tags()
+
+        Args:
+            tags: List of tags to match against memory tags
+
+        Returns:
+            Number of memories deleted
+        """
+        if not tags:
+            return 0
+
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # First, get the memory IDs to be deleted for logging
+                placeholders = ", ".join("?" * len(tags))
+                cursor.execute(
+                    f"""
+                    SELECT DISTINCT m.id FROM memories m
+                    JOIN JSON_EACH(m.tags) AS tag_values
+                    WHERE tag_values.value IN ({placeholders})
+                """,
+                    tags,
+                )
+
+                memory_ids = [row["id"] for row in cursor.fetchall()]
+
+                if not memory_ids:
+                    logger.debug("No memories found with tags", tags=tags)
+                    return 0
+
+                # Delete the memories
+                id_placeholders = ", ".join("?" * len(memory_ids))
+                cursor.execute(
+                    f"""
+                    DELETE FROM memories
+                    WHERE id IN ({id_placeholders})
+                """,
+                    memory_ids,
+                )
+
+                deleted_count = cursor.rowcount
+                conn.commit()
+
+                logger.info(
+                    "Deleted memories by tags",
+                    tags=tags,
+                    deleted_count=deleted_count,
+                    memory_ids=memory_ids[:5]
+                    if len(memory_ids) > 5
+                    else memory_ids,  # Log first 5 IDs
+                )
+
+                return deleted_count
+
+        except Exception as e:
+            logger.error(
+                "Failed to delete memories by tags",
+                tags=tags,
+                error=str(e),
+            )
+            return 0
+
+    def delete_memories_by_ids(self, memory_ids: list[str]) -> int:
+        """
+        Delete memories by their IDs.
+
+        Note: This method only handles SQLite metadata deletion.
+        For complete cleanup including vector storage, use CognitiveSystem methods.
+
+        Args:
+            memory_ids: List of memory IDs to delete
+
+        Returns:
+            Number of memories deleted
+        """
+        if not memory_ids:
+            return 0
+
+        try:
+            with self.db_manager.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Delete the memories
+                placeholders = ", ".join("?" * len(memory_ids))
+                cursor.execute(
+                    f"""
+                    DELETE FROM memories
+                    WHERE id IN ({placeholders})
+                """,
+                    memory_ids,
+                )
+
+                deleted_count = cursor.rowcount
+                conn.commit()
+
+                logger.info(
+                    "Deleted memories by IDs",
+                    memory_ids=memory_ids[:5]
+                    if len(memory_ids) > 5
+                    else memory_ids,  # Log first 5 IDs
+                    deleted_count=deleted_count,
+                )
+
+                return deleted_count
+
+        except Exception as e:
+            logger.error(
+                "Failed to delete memories by IDs",
+                memory_ids=memory_ids,
+                error=str(e),
+            )
+            return 0
+
     def _row_to_memory(self, row: sqlite3.Row) -> CognitiveMemory:
         """Convert database row to CognitiveMemory object."""
         dimensions = json.loads(row["dimensions"]) if row["dimensions"] else {}
