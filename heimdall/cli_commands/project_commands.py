@@ -253,6 +253,34 @@ def project_init(
         heimdall_dir = project_path / ".heimdall"
         heimdall_dir.mkdir(exist_ok=True)
 
+        # Add .heimdall to .gitignore
+        gitignore_path = project_path / ".gitignore"
+        heimdall_entry = ".heimdall/"
+        
+        try:
+            if gitignore_path.exists():
+                # Read existing .gitignore
+                content = gitignore_path.read_text()
+                # Check if .heimdall/ is already in .gitignore
+                # Account for variations like .heimdall, .heimdall/, /.heimdall/
+                patterns = [".heimdall", ".heimdall/", "/.heimdall", "/.heimdall/"]
+                if not any(pattern in content for pattern in patterns):
+                    # Append to existing .gitignore
+                    with gitignore_path.open('a') as f:
+                        if not content.endswith('\n') and content:
+                            f.write('\n')
+                        f.write(f"{heimdall_entry}\n")
+                    console.print(f"📝 Added {heimdall_entry} to existing .gitignore", style="bold green")
+                else:
+                    console.print(f"✅ {heimdall_entry} already in .gitignore", style="dim")
+            else:
+                # Create new .gitignore
+                gitignore_path.write_text(f"{heimdall_entry}\n")
+                console.print(f"📝 Created .gitignore with {heimdall_entry}", style="bold green")
+        except Exception as e:
+            console.print(f"⚠️ Could not update .gitignore: {e}", style="bold yellow")
+            console.print(f"   Please add {heimdall_entry} to .gitignore manually", style="dim")
+
         # Create docs directory for monitoring
         docs_dir = heimdall_dir / "docs"
         docs_dir.mkdir(exist_ok=True)
