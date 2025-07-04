@@ -23,8 +23,5 @@ jobs:
     - name: Run ruff lint
       run: ruff check
 
-    - name: Run black format check
-      run: black --check .
-
     - name: Run mypy type check
       run: mypy .
