@@ -486,10 +486,15 @@ storage:
 
     def _is_port_in_use(self, port: int) -> bool:
         """Check if a port is in use."""
-        for conn in psutil.net_connections():
-            if conn.laddr.port == port:
-                return True
-        return False
+        import socket
+        try:
+            # Try to connect to the port - if successful, it's in use
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(1)  # 1 second timeout
+                result = sock.connect_ex(('localhost', port))
+                return result == 0
+        except Exception:
+            return False
 
 
 class ServiceManager:
