@@ -226,11 +226,41 @@ def project_init(
                 import subprocess
                 import sys
 
+                # Try regular spacy download first (fastest for most environments)
                 result = subprocess.run(
                     [sys.executable, "-m", "spacy", "download", "en_core_web_md"],
                     capture_output=True,
                     text=True,
                 )
+
+                if result.returncode != 0:
+                    # For UV environments, install pip first then use spacy download
+                    progress.update(
+                        task, description="📥 Installing pip in UV environment..."
+                    )
+                    pip_install = subprocess.run(
+                        ["uv", "pip", "install", "pip"],
+                        capture_output=True,
+                        text=True,
+                    )
+
+                    if pip_install.returncode == 0:
+                        progress.update(
+                            task, description="📥 Downloading spaCy model..."
+                        )
+                        result = subprocess.run(
+                            [
+                                sys.executable,
+                                "-m",
+                                "spacy",
+                                "download",
+                                "en_core_web_md",
+                            ],
+                            capture_output=True,
+                            text=True,
+                        )
+                    else:
+                        result = pip_install
 
                 if result.returncode == 0:
                     progress.update(
@@ -1271,9 +1301,12 @@ def _ensure_nltk_data_available(progress: Any, task: Any) -> None:
             )
 
             # Try using subprocess to download via python -m nltk.downloader
-            result = subprocess.run(
+            # Try uv run first, then fall back to regular python
+            uv_result = subprocess.run(
                 [
-                    sys.executable,
+                    "uv",
+                    "run",
+                    "python",
                     "-c",
                     "import nltk; nltk.download('punkt_tab', quiet=True); nltk.download('punkt', quiet=True)",
                 ],
@@ -1281,6 +1314,21 @@ def _ensure_nltk_data_available(progress: Any, task: Any) -> None:
                 text=True,
                 timeout=60,
             )
+
+            if uv_result.returncode == 0:
+                result = uv_result
+            else:
+                # Fallback to regular python
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        "-c",
+                        "import nltk; nltk.download('punkt_tab', quiet=True); nltk.download('punkt', quiet=True)",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
 
             if result.returncode == 0:
                 progress.update(
