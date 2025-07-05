@@ -628,7 +628,7 @@ def project_clean(
             for collection in project_collections:
                 try:
                     collection_info = client.get_collection(collection.name)
-                    total_vectors += collection_info.points_count
+                    total_vectors += collection_info.points_count or 0
                 except Exception:
                     pass  # Skip collections that can't be queried
 

@@ -126,7 +126,8 @@ class CognitiveFusionLayer:
         mean = np.mean(x, axis=-1, keepdims=True)
         var = np.var(x, axis=-1, keepdims=True)
         normalized = (x - mean) / np.sqrt(var + self.layer_norm_eps)
-        return normalized * self.layer_norm_weight + self.layer_norm_bias
+        result: np.ndarray = normalized * self.layer_norm_weight + self.layer_norm_bias
+        return result
 
 
 class CognitiveEncoder:
@@ -392,7 +393,13 @@ class CognitiveEncoder:
                 "layer_norm_weight": self.fusion_layer.layer_norm_weight,
                 "layer_norm_bias": self.fusion_layer.layer_norm_bias,
             }
-            np.savez(weights_path, **weights_data)
+            np.savez(
+                weights_path,
+                weight=weights_data["weight"],
+                bias=weights_data["bias"],
+                layer_norm_weight=weights_data["layer_norm_weight"],
+                layer_norm_bias=weights_data["layer_norm_bias"],
+            )
             logger.info("Fusion layer weights saved successfully", path=weights_path)
             return True
         except Exception as e:
