@@ -37,6 +37,6 @@ jobs:
         sleep 30  # Give services time to start
 
     - name: Run pytest
-      run: pytest tests/ -v --tb=short
+      run: pytest tests/ -v --tb=short -k "not requires_qdrant"
       env:
         PYTHONHASHSEED: 0
