@@ -25,3 +25,6 @@ jobs:
 
     - name: Run mypy type check
       run: mypy . --ignore-missing-imports --exclude tests/ --exclude scripts/
+
+    - name: Run pytest
+      run: pytest tests/ -v --tb=short
