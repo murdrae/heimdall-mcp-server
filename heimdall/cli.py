@@ -72,6 +72,9 @@ logger.add(
 # Initialize rich console for enhanced output
 console = Console()
 
+# Global flag to track logging configuration
+_logging_configured = False
+
 # Main CLI app
 app = typer.Typer(
     name="heimdall",
@@ -164,7 +167,6 @@ def _setup_early_logging() -> None:
 
         # Global flag to track logging configuration
         global _logging_configured
-        _logging_configured = False
 
         # For project init commands, default to WARN level to reduce noise
         is_project_init = len(sys.argv) >= 3 and sys.argv[1:3] == ["project", "init"]

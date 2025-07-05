@@ -116,10 +116,13 @@ class CognitiveFusionLayer:
         fused_embedding = self._layer_norm(fused_embedding)
 
         # Return single array if single input was provided
+        result: np.ndarray
         if single_input:
-            fused_embedding = fused_embedding.squeeze(0)
+            result = fused_embedding.squeeze(0)
+        else:
+            result = fused_embedding
 
-        return fused_embedding
+        return result
 
     def _layer_norm(self, x: np.ndarray) -> np.ndarray:
         """Apply layer normalization."""
