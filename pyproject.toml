@@ -165,7 +165,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["cognitive_memory", "interfaces"]
+source = ["cognitive_memory", "heimdall", "lightweight_monitor.py"]
 omit = [
     "*/tests/*",
     "*/test_*",

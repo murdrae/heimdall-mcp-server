@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 
+@pytest.mark.slow
 class TestMemoryDeletionBehavior:
     """Test suite for memory deletion behavioral correctness."""
 

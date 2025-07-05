@@ -187,7 +187,7 @@ class GitHistoryMiner:
             kwargs: dict[str, Any] = {"max_count": max_commits}
 
             # Handle incremental mode with since_commit
-            if since_commit:
+            if since_commit is not None:
                 # Validate commit hash exists in repository
                 if not self._validate_commit_hash(since_commit):
                     raise ValueError(
