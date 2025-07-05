@@ -34,7 +34,7 @@ class TestMemoryDeletionCLIIntegration:
         """Set up cognitive system with test memories."""
         # Initialize project memory (use non-interactive mode to skip all prompts)
         result = self.run_heimdall_command(
-            ["project", "init", "--non-interactive", "--no-auto-start-qdrant"],
+            ["project", "init", "--non-interactive"],
             cwd=temp_project_dir,
         )
         assert result.returncode == 0, f"Project init failed: {result.stderr}"
@@ -556,7 +556,7 @@ class TestMemoryDeletionCLIIntegration:
         """Test memory deletion performance with larger datasets."""
         # Initialize project (use non-interactive mode to skip all prompts)
         result = self.run_heimdall_command(
-            ["project", "init", "--non-interactive", "--no-auto-start-qdrant"],
+            ["project", "init", "--non-interactive"],
             cwd=temp_project_dir,
         )
         assert result.returncode == 0

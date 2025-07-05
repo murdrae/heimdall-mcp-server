@@ -37,7 +37,6 @@ class TestMemoryDeletionBehavior:
                     "project",
                     "init",
                     "--non-interactive",
-                    "--no-auto-start-qdrant",
                 ],
                 cwd=project_path,
                 capture_output=True,
