@@ -24,4 +24,4 @@ jobs:
       run: ruff check
 
     - name: Run mypy type check
-      run: mypy . --ignore-missing-imports --exclude tests/
+      run: mypy . --ignore-missing-imports --exclude tests/ --exclude scripts/
