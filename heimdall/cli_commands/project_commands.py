@@ -1280,13 +1280,15 @@ def _ensure_nltk_data_available(progress: Any, task: Any) -> None:
             "punkt",  # Legacy punkt tokenizer (fallback)
         ]
 
-        # Download required datasets
+        # Try direct download first (fastest for most environments)
+        download_success = True
         for dataset in required_datasets:
             try:
                 nltk.download(dataset, quiet=True)
             except Exception as e:
                 # Log but continue - some datasets might not be available
                 console.print(f"⚠️ Could not download {dataset}: {e}", style="dim")
+                download_success = False
 
         # Verify that tokenization now works
         try:
@@ -1294,29 +1296,32 @@ def _ensure_nltk_data_available(progress: Any, task: Any) -> None:
 
             sent_tokenize("Test sentence.")
             progress.update(task, description="✅ NLTK data downloaded successfully")
+            return
         except LookupError:
-            # If direct NLTK download failed, try alternative approach
-            progress.update(
-                task, description="📥 Using alternative NLTK download method..."
-            )
+            # Direct download failed, try UV environment approach
+            download_success = False
 
-            # Try using subprocess to download via python -m nltk.downloader
-            # Try uv run first, then fall back to regular python
-            uv_result = subprocess.run(
-                [
-                    "uv",
-                    "run",
-                    "python",
-                    "-c",
-                    "import nltk; nltk.download('punkt_tab', quiet=True); nltk.download('punkt', quiet=True)",
-                ],
+        if not download_success:
+            # For UV environments, install pip first then retry NLTK download
+            progress.update(task, description="📥 Installing pip in UV environment...")
+            pip_install = subprocess.run(
+                ["uv", "pip", "install", "pip"],
                 capture_output=True,
                 text=True,
-                timeout=60,
             )
 
-            if uv_result.returncode == 0:
-                result = uv_result
+            if pip_install.returncode == 0:
+                progress.update(task, description="📥 Downloading NLTK data...")
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        "-c",
+                        "import nltk; nltk.download('punkt_tab', quiet=True); nltk.download('punkt', quiet=True)",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
             else:
                 # Fallback to regular python
                 result = subprocess.run(
