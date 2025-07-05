@@ -5,7 +5,22 @@ on:
     branches: [ main, dev ]
 
 jobs:
+  check-main-access:
+    if: github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check if authorized for main branch
+      run: |
+        if [ "${{ github.actor }}" != "lcbcFoo" ]; then
+          echo "❌ Only maintainers can PR to main branch"
+          echo "Please retarget your PR to the 'dev' branch"
+          exit 1
+        fi
+        echo "✅ Authorized user for main branch"
+
   lint-and-typecheck:
+    needs: [check-main-access]
+    if: always() && (needs.check-main-access.result == 'success' || needs.check-main-access.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -32,6 +47,8 @@ jobs:
       run: mypy . --ignore-missing-imports --exclude tests/ --exclude scripts/
 
   test:
+    needs: [check-main-access]
+    if: always() && (needs.check-main-access.result == 'success' || needs.check-main-access.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
