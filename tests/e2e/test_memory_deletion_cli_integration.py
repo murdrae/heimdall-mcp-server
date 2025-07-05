@@ -18,6 +18,7 @@ import pytest
 
 
 @pytest.mark.slow
+@pytest.mark.requires_qdrant
 class TestMemoryDeletionCLIIntegration:
     """Test suite for memory deletion CLI integration."""
 
