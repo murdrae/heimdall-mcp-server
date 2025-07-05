@@ -170,17 +170,43 @@ class FileMonitor:
             logger.warning(f"Path not currently monitored: {path}")
 
     def get_monitored_files(self) -> set[Path]:
-        """Get all markdown files in monitored paths."""
+        """Get all markdown files in monitored paths, following symbolic links."""
         files = set()
+        visited_dirs = set()  # Track visited directories to prevent infinite loops
+
         for path in self.monitored_paths:
             if path.exists() and path.is_dir():
-                for file_path in path.rglob("*"):
-                    if (
-                        file_path.is_file()
-                        and file_path.suffix.lower() in self.MARKDOWN_EXTENSIONS
-                        and not self._should_ignore_path(file_path)
-                    ):
-                        files.add(file_path)
+                try:
+                    # Use os.walk with followlinks=True to follow symbolic links
+                    for root, dirs, filenames in os.walk(path, followlinks=True):
+                        root_path = Path(root)
+
+                        # Prevent infinite loops by tracking real paths
+                        real_root = root_path.resolve()
+                        if real_root in visited_dirs:
+                            continue
+                        visited_dirs.add(real_root)
+
+                        # Filter out ignored directories
+                        dirs[:] = [
+                            d
+                            for d in dirs
+                            if not self._should_ignore_path(root_path / d)
+                        ]
+
+                        # Check each file
+                        for filename in filenames:
+                            file_path = root_path / filename
+                            if (
+                                file_path.suffix.lower() in self.MARKDOWN_EXTENSIONS
+                                and not self._should_ignore_path(file_path)
+                            ):
+                                files.add(file_path)
+
+                except (OSError, PermissionError) as e:
+                    logger.warning(f"Error walking directory {path}: {e}")
+                    continue
+
         return files
 
     def _should_ignore_path(self, path: Path) -> bool:
