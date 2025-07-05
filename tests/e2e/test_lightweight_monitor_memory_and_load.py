@@ -514,6 +514,92 @@ class TestLightweightMonitorMemoryAndLoad:
             logger.warning("Insufficient memory readings for stability analysis")
             pytest.skip("Could not obtain sufficient memory readings for analysis")
 
+    def test_symbolic_link_file_discovery(self, temp_project):
+        """Test that file monitoring correctly follows symbolic links."""
+        # Create source directory with files
+        source_dir = temp_project["project_root"] / "source_docs"
+        source_dir.mkdir()
+
+        # Create files in source directory
+        source_file1 = source_dir / "linked_file1.md"
+        source_file1.write_text("# Linked File 1\n\nContent from source directory.")
+
+        source_file2 = source_dir / "linked_file2.md"
+        source_file2.write_text(
+            "# Linked File 2\n\nAnother file from source directory."
+        )
+
+        # Create subdirectory with files
+        source_subdir = source_dir / "subdir"
+        source_subdir.mkdir()
+        source_subfile = source_subdir / "subfile.md"
+        source_subfile.write_text("# Subfile\n\nFile in subdirectory.")
+
+        # Create symbolic links in monitored directory
+        link_file = temp_project["docs_dir"] / "symlink_file.md"
+        link_dir = temp_project["docs_dir"] / "symlink_dir"
+
+        # Create symlink to individual file
+        link_file.symlink_to(source_file1)
+
+        # Create symlink to directory
+        link_dir.symlink_to(source_dir)
+
+        # Start monitor in subprocess
+        monitor_process = self._start_monitor_subprocess(temp_project["project_root"])
+        if not monitor_process:
+            pytest.skip("Could not start monitor subprocess")
+
+        try:
+            # Give monitor time to discover files
+            time.sleep(3)
+
+            # Get status to check file count
+            status = self._get_monitor_status(temp_project["project_root"])
+            logger.info(f"Monitor status with symlinks: {status}")
+
+            # Should detect:
+            # 1. test.md (from fixture)
+            # 2. symlink_file.md (symlinked file)
+            # 3. Files inside symlink_dir/ (linked_file1.md, linked_file2.md, subdir/subfile.md)
+            expected_files = (
+                5  # 1 original + 1 symlink file + 3 files in symlinked directory
+            )
+
+            files_monitored = status.get("files_monitored", 0)
+            assert files_monitored >= expected_files, (
+                f"Expected at least {expected_files} files (including symlinked), got {files_monitored}"
+            )
+
+            # Test file modification through symlink
+            source_file1.write_text(
+                "# Modified Linked File 1\n\nContent updated via source."
+            )
+            time.sleep(3)
+
+            # Create new file in symlinked directory
+            new_source_file = source_dir / "new_linked_file.md"
+            new_source_file.write_text(
+                "# New Linked File\n\nAdded after monitor started."
+            )
+            time.sleep(3)
+
+            # Check final status
+            final_status = self._get_monitor_status(temp_project["project_root"])
+            logger.info(f"Final status after symlink modifications: {final_status}")
+
+            # Should detect the new file
+            final_files = final_status.get("files_monitored", 0)
+            assert final_files > files_monitored, (
+                f"Should detect new file through symlink: {final_files} vs {files_monitored}"
+            )
+
+        finally:
+            # Stop monitor
+            self._stop_monitor_subprocess(temp_project["project_root"], monitor_process)
+
+        logger.info("Symbolic link file discovery test completed successfully")
+
 
 if __name__ == "__main__":
     # Run basic memory test manually
