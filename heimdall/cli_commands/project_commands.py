@@ -1211,7 +1211,7 @@ def _execute_mcp_setup() -> list[str]:
         return configured_platforms
 
 
-def _ensure_nltk_data_available(progress, task) -> None:
+def _ensure_nltk_data_available(progress: Any, task: Any) -> None:
     """
     Ensure required NLTK data is available for emotional dimension extraction.
 
