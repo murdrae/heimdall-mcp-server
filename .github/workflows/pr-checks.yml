@@ -26,10 +26,10 @@ jobs:
     - name: Run mypy type check
       run: mypy . --ignore-missing-imports --exclude tests/ --exclude scripts/
 
-    - name: Start Docker services
+    - name: Verify Docker availability
       run: |
         docker --version
-        docker-compose --version
+        docker compose version
 
     - name: Initialize heimdall project
       run: |
