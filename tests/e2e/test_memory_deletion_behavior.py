@@ -30,11 +30,18 @@ class TestMemoryDeletionBehavior:
 
             # Initialize project (answer 'n' to both file monitoring and MCP integration questions)
             result = subprocess.run(
-                ["python", "-m", "heimdall.cli", "project", "init"],
+                [
+                    "python",
+                    "-m",
+                    "heimdall.cli",
+                    "project",
+                    "init",
+                    "--non-interactive",
+                    "--no-auto-start-qdrant",
+                ],
                 cwd=project_path,
                 capture_output=True,
                 text=True,
-                input="n\nn\n",
             )
 
             assert result.returncode == 0, f"Project init failed: {result.stderr}"

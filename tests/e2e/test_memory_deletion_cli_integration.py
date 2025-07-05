@@ -8,6 +8,7 @@ with real cognitive system dependencies.
 """
 
 import json
+import re
 import subprocess
 import tempfile
 import time
@@ -33,7 +34,8 @@ class TestMemoryDeletionCLIIntegration:
         """Set up cognitive system with test memories."""
         # Initialize project memory (use non-interactive mode to skip all prompts)
         result = self.run_heimdall_command(
-            ["project", "init", "--non-interactive"], cwd=temp_project_dir
+            ["project", "init", "--non-interactive", "--no-auto-start-qdrant"],
+            cwd=temp_project_dir,
         )
         assert result.returncode == 0, f"Project init failed: {result.stderr}"
 
@@ -130,6 +132,11 @@ class TestMemoryDeletionCLIIntegration:
 
         return result
 
+    def _strip_ansi_codes(self, text: str) -> str:
+        """Strip ANSI escape codes from text."""
+        ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+        return ansi_escape.sub("", text)
+
     def verify_memory_exists(
         self, memory_id: str, project_dir: Path, content: str = None
     ) -> bool:
@@ -197,7 +204,7 @@ class TestMemoryDeletionCLIIntegration:
         result = self.run_heimdall_command(["delete-memory", "--help"])
 
         assert result.returncode == 0
-        output = result.stdout + result.stderr
+        output = self._strip_ansi_codes(result.stdout + result.stderr)
         assert "Delete a single memory by its ID" in output
         assert "--dry-run" in output
         assert "--no-confirm" in output
@@ -207,7 +214,7 @@ class TestMemoryDeletionCLIIntegration:
         result = self.run_heimdall_command(["delete-memories-by-tags", "--help"])
 
         assert result.returncode == 0
-        output = result.stdout + result.stderr
+        output = self._strip_ansi_codes(result.stdout + result.stderr)
         assert "Delete all memories that have any of the specified tags" in output
         assert "--tag" in output
         assert "--dry-run" in output
@@ -549,7 +556,8 @@ class TestMemoryDeletionCLIIntegration:
         """Test memory deletion performance with larger datasets."""
         # Initialize project (use non-interactive mode to skip all prompts)
         result = self.run_heimdall_command(
-            ["project", "init", "--non-interactive"], cwd=temp_project_dir
+            ["project", "init", "--non-interactive", "--no-auto-start-qdrant"],
+            cwd=temp_project_dir,
         )
         assert result.returncode == 0
 
