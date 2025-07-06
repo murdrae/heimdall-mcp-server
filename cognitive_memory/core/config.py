@@ -446,7 +446,6 @@ class CognitiveConfig:
 
     # Activation and retrieval parameters
     activation_threshold: float = 0.7
-    bridge_discovery_k: int = 5
     max_activations: int = 50
     consolidation_threshold: int = 100
 
@@ -538,9 +537,6 @@ class CognitiveConfig:
         config = cls(
             activation_threshold=float(
                 os.getenv("ACTIVATION_THRESHOLD", str(cls.activation_threshold))
-            ),
-            bridge_discovery_k=int(
-                os.getenv("BRIDGE_DISCOVERY_K", str(cls.bridge_discovery_k))
             ),
             max_activations=int(os.getenv("MAX_ACTIVATIONS", str(cls.max_activations))),
             consolidation_threshold=int(
@@ -853,9 +849,6 @@ class SystemConfig:
         if not 0.0 <= self.cognitive.activation_threshold <= 1.0:
             errors.append("Activation threshold must be between 0.0 and 1.0")
 
-        if self.cognitive.bridge_discovery_k <= 0:
-            errors.append("Bridge discovery K must be positive")
-
         if self.cognitive.max_activations <= 0:
             errors.append("Max activations must be positive")
 
@@ -989,7 +982,6 @@ class SystemConfig:
             },
             "cognitive": {
                 "activation_threshold": self.cognitive.activation_threshold,
-                "bridge_discovery_k": self.cognitive.bridge_discovery_k,
                 "max_activations": self.cognitive.max_activations,
                 "consolidation_threshold": self.cognitive.consolidation_threshold,
                 "dimension_weights": {

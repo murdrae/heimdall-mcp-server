@@ -16,7 +16,6 @@ from loguru import logger
 from .config import SystemConfig
 from .interfaces import (
     ActivationEngine,
-    BridgeDiscovery,
     CognitiveSystem,
     ConnectionGraph,
     EmbeddingProvider,
@@ -24,7 +23,7 @@ from .interfaces import (
     MemoryStorage,
     VectorStorage,
 )
-from .memory import BridgeMemory, CognitiveMemory
+from .memory import CognitiveMemory
 
 
 class CognitiveMemorySystem(CognitiveSystem):
@@ -43,7 +42,6 @@ class CognitiveMemorySystem(CognitiveSystem):
         memory_storage: MemoryStorage,
         connection_graph: ConnectionGraph,
         activation_engine: ActivationEngine,
-        bridge_discovery: BridgeDiscovery,
         config: SystemConfig,
     ):
         """
@@ -55,7 +53,6 @@ class CognitiveMemorySystem(CognitiveSystem):
             memory_storage: Interface for memory persistence
             connection_graph: Interface for memory connections
             activation_engine: Interface for memory activation
-            bridge_discovery: Interface for bridge discovery
             config: System configuration
         """
         self.embedding_provider = embedding_provider
@@ -63,7 +60,6 @@ class CognitiveMemorySystem(CognitiveSystem):
         self.memory_storage = memory_storage
         self.connection_graph = connection_graph
         self.activation_engine = activation_engine
-        self.bridge_discovery = bridge_discovery
         self.config = config
 
         logger.info(
@@ -74,7 +70,6 @@ class CognitiveMemorySystem(CognitiveSystem):
                 "memory_storage",
                 "connection_graph",
                 "activation_engine",
-                "bridge_discovery",
             ],
         )
 
@@ -186,13 +181,13 @@ class CognitiveMemorySystem(CognitiveSystem):
         query: str,
         types: list[str] | None = None,
         max_results: int = 20,
-    ) -> dict[str, list[CognitiveMemory | BridgeMemory]]:
+    ) -> dict[str, list[CognitiveMemory]]:
         """
         Retrieve memories of specified types for a query.
 
         Args:
             query: Query text to search for
-            types: List of memory types to retrieve ("core", "peripheral", "bridge")
+            types: List of memory types to retrieve ("core", "peripheral")
             max_results: Maximum number of results to return
 
         Returns:
@@ -200,19 +195,18 @@ class CognitiveMemorySystem(CognitiveSystem):
         """
         if not query or not query.strip():
             logger.warning("Empty query provided for memory retrieval")
-            return {"core": [], "peripheral": [], "bridge": []}
+            return {"core": [], "peripheral": []}
 
         if types is None:
-            types = ["core", "peripheral", "bridge"]
+            types = ["core", "peripheral"]
 
         try:
             # Encode the query
             query_embedding = self.embedding_provider.encode(query.strip())
 
-            results: dict[str, list[CognitiveMemory | BridgeMemory]] = {
+            results: dict[str, list[CognitiveMemory]] = {
                 "core": [],
                 "peripheral": [],
-                "bridge": [],
             }
 
             # Activate memories if core or peripheral types requested
@@ -255,52 +249,43 @@ class CognitiveMemorySystem(CognitiveSystem):
                 if "core" in types:
                     core_memories = []
                     for result in top_results[:half]:
-                        # Store similarity score in metadata for display
-                        result.memory.metadata["similarity_score"] = (
-                            result.similarity_score
+                        # Retrieve complete memory object from SQLite storage to get tags
+                        complete_memory = self.memory_storage.retrieve_memory(
+                            result.memory.id
                         )
-                        core_memories.append(result.memory)
+                        if complete_memory:
+                            # Store similarity score in metadata for display
+                            complete_memory.metadata["similarity_score"] = (
+                                result.similarity_score
+                            )
+                            core_memories.append(complete_memory)
+                        else:
+                            # Fallback to incomplete memory if SQLite retrieval fails
+                            result.memory.metadata["similarity_score"] = (
+                                result.similarity_score
+                            )
+                            core_memories.append(result.memory)
                     results["core"].extend(core_memories)
                 if "peripheral" in types:
                     peripheral_memories = []
                     for result in top_results[half:]:
-                        # Store similarity score in metadata for display
-                        result.memory.metadata["similarity_score"] = (
-                            result.similarity_score
+                        # Retrieve complete memory object from SQLite storage to get tags
+                        complete_memory = self.memory_storage.retrieve_memory(
+                            result.memory.id
                         )
-                        peripheral_memories.append(result.memory)
+                        if complete_memory:
+                            # Store similarity score in metadata for display
+                            complete_memory.metadata["similarity_score"] = (
+                                result.similarity_score
+                            )
+                            peripheral_memories.append(complete_memory)
+                        else:
+                            # Fallback to incomplete memory if SQLite retrieval fails
+                            result.memory.metadata["similarity_score"] = (
+                                result.similarity_score
+                            )
+                            peripheral_memories.append(result.memory)
                     results["peripheral"].extend(peripheral_memories)
-
-            # Discover bridge memories if requested
-            if "bridge" in types:
-                # Use activated memories as input for bridge discovery
-                activated_memories = []
-                if results["core"]:
-                    activated_memories.extend(results["core"])
-                if results["peripheral"]:
-                    activated_memories.extend(results["peripheral"])
-
-                # If no activated memories, use a smaller subset for bridge discovery context
-                if not activated_memories:
-                    similarity_results = self.vector_storage.search_similar(
-                        query_embedding,
-                        k=5,  # Use fewer as activated to leave candidates
-                    )
-                    activated_memories = [
-                        result.memory for result in similarity_results
-                    ]
-
-                if activated_memories:
-                    # Filter to only CognitiveMemory objects for bridge discovery
-                    cognitive_memories = [
-                        m for m in activated_memories if isinstance(m, CognitiveMemory)
-                    ]
-                    bridge_memories = self.bridge_discovery.discover_bridges(
-                        context=query_embedding,
-                        activated=cognitive_memories,
-                        k=self.config.cognitive.bridge_discovery_k,
-                    )
-                    results["bridge"].extend(bridge_memories)
 
             # Log retrieval statistics
             total_retrieved = sum(len(memories) for memories in results.values())
@@ -311,7 +296,6 @@ class CognitiveMemorySystem(CognitiveSystem):
                 total_retrieved=total_retrieved,
                 core_count=len(results["core"]),
                 peripheral_count=len(results["peripheral"]),
-                bridge_count=len(results["bridge"]),
             )
 
             return results
@@ -323,7 +307,7 @@ class CognitiveMemorySystem(CognitiveSystem):
                 types=types,
                 error=str(e),
             )
-            return {"core": [], "peripheral": [], "bridge": []}
+            return {"core": [], "peripheral": []}
 
     def _determine_hierarchy_level(self, text: str) -> int:
         """
@@ -524,7 +508,6 @@ class CognitiveMemorySystem(CognitiveSystem):
                 "timestamp": datetime.now().isoformat(),
                 "system_config": {
                     "activation_threshold": self.config.cognitive.activation_threshold,
-                    "bridge_discovery_k": self.config.cognitive.bridge_discovery_k,
                     "max_activations": self.config.cognitive.max_activations,
                     "consolidation_threshold": self.config.cognitive.consolidation_threshold,
                 },
@@ -1217,7 +1200,6 @@ def create_cognitive_system(
     memory_storage: MemoryStorage,
     connection_graph: ConnectionGraph,
     activation_engine: ActivationEngine,
-    bridge_discovery: BridgeDiscovery,
     config: SystemConfig,
 ) -> CognitiveMemorySystem:
     """
@@ -1229,7 +1211,6 @@ def create_cognitive_system(
         memory_storage: Interface for memory persistence
         connection_graph: Interface for memory connections
         activation_engine: Interface for memory activation
-        bridge_discovery: Interface for bridge discovery
         config: System configuration
 
     Returns:
@@ -1241,6 +1222,5 @@ def create_cognitive_system(
         memory_storage=memory_storage,
         connection_graph=connection_graph,
         activation_engine=activation_engine,
-        bridge_discovery=bridge_discovery,
         config=config,
     )

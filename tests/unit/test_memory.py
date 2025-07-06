@@ -9,7 +9,6 @@ import pytest
 
 from cognitive_memory.core.memory import (
     ActivationResult,
-    BridgeMemory,
     CognitiveMemory,
     ConsolidationResult,
     MemoryConnection,
@@ -159,38 +158,6 @@ class TestActivationResult:
 
         assert all(mem.hierarchy_level == 0 for mem in level_0_memories)
         assert all(mem.hierarchy_level == 1 for mem in level_1_memories)
-
-
-class TestBridgeMemory:
-    """Test BridgeMemory data structure."""
-
-    def test_bridge_memory_creation(self, sample_memory: CognitiveMemory) -> None:
-        """Test creating a bridge memory."""
-        bridge = BridgeMemory(
-            memory=sample_memory,
-            novelty_score=0.9,
-            connection_potential=0.7,
-            bridge_score=0.8,
-        )
-
-        assert bridge.memory == sample_memory
-        assert bridge.novelty_score == 0.9
-        assert bridge.connection_potential == 0.7
-        assert bridge.bridge_score == 0.8
-        assert "Bridge connects" in bridge.explanation
-
-    def test_custom_explanation(self, sample_memory: CognitiveMemory) -> None:
-        """Test bridge memory with custom explanation."""
-        explanation = "Custom bridge explanation"
-        bridge = BridgeMemory(
-            memory=sample_memory,
-            novelty_score=0.8,
-            connection_potential=0.6,
-            bridge_score=0.7,
-            explanation=explanation,
-        )
-
-        assert bridge.explanation == explanation
 
 
 class TestMemoryConnection:

@@ -15,7 +15,6 @@ from .core.cognitive_system import CognitiveMemorySystem
 from .core.config import SystemConfig
 from .core.interfaces import (
     ActivationEngine,
-    BridgeDiscovery,
     CognitiveSystem,
     ConnectionGraph,
     EmbeddingProvider,
@@ -43,7 +42,6 @@ def create_default_system(config: SystemConfig | None = None) -> CognitiveMemory
     - HierarchicalMemoryStorage for vector storage
     - MemoryMetadataStore and ConnectionGraphStore for persistence
     - BasicActivationEngine for memory activation
-    - SimpleBridgeDiscovery for bridge discovery
     - CognitiveDimensionExtractor for multi-dimensional encoding
 
     Args:
@@ -75,7 +73,6 @@ def create_default_system(config: SystemConfig | None = None) -> CognitiveMemory
         # Import factory functions
         from .encoding.sentence_bert import create_sentence_bert_provider
         from .retrieval.basic_activation import BasicActivationEngine
-        from .retrieval.bridge_discovery import SimpleBridgeDiscovery
         from .storage.qdrant_storage import create_hierarchical_storage
         from .storage.sqlite_persistence import create_sqlite_persistence
 
@@ -139,15 +136,6 @@ def create_default_system(config: SystemConfig | None = None) -> CognitiveMemory
                 f"Activation engine does not implement ActivationEngine interface: {type(activation_engine)}"
             )
 
-        # Create bridge discovery
-        bridge_discovery = SimpleBridgeDiscovery(memory_storage=memory_storage)
-
-        # Validate bridge discovery
-        if not isinstance(bridge_discovery, BridgeDiscovery):
-            raise InitializationError(
-                f"Bridge discovery does not implement BridgeDiscovery interface: {type(bridge_discovery)}"
-            )
-
         # Create cognitive system
         cognitive_system = CognitiveMemorySystem(
             embedding_provider=embedding_provider,
@@ -155,7 +143,6 @@ def create_default_system(config: SystemConfig | None = None) -> CognitiveMemory
             memory_storage=memory_storage,
             connection_graph=connection_graph,
             activation_engine=activation_engine,
-            bridge_discovery=bridge_discovery,
             config=config,
         )
 
@@ -194,7 +181,6 @@ def create_test_system(**overrides: Any) -> CognitiveMemorySystem:
             - memory_storage: MemoryStorage implementation
             - connection_graph: ConnectionGraph implementation
             - activation_engine: ActivationEngine implementation
-            - bridge_discovery: BridgeDiscovery implementation
             - config: SystemConfig instance
 
     Returns:
@@ -218,7 +204,6 @@ def create_test_system(**overrides: Any) -> CognitiveMemorySystem:
             "memory_storage": default_system.memory_storage,
             "connection_graph": default_system.connection_graph,
             "activation_engine": default_system.activation_engine,
-            "bridge_discovery": default_system.bridge_discovery,
             "config": default_system.config,
         }
 
@@ -246,7 +231,6 @@ def create_test_system(**overrides: Any) -> CognitiveMemorySystem:
             memory_storage=cast(MemoryStorage, components["memory_storage"]),
             connection_graph=cast(ConnectionGraph, components["connection_graph"]),
             activation_engine=cast(ActivationEngine, components["activation_engine"]),
-            bridge_discovery=cast(BridgeDiscovery, components["bridge_discovery"]),
             config=cast(SystemConfig, components["config"]),
         )
 
@@ -311,7 +295,6 @@ def _get_expected_interface(component_name: str) -> type | None:
         "memory_storage": MemoryStorage,
         "connection_graph": ConnectionGraph,
         "activation_engine": ActivationEngine,
-        "bridge_discovery": BridgeDiscovery,
         "config": SystemConfig,
     }
     return interface_map.get(component_name)

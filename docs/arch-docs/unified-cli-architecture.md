@@ -153,7 +153,7 @@ class CognitiveOperations:
         """Returns: {"memory_id": "...", "hierarchy_level": 1, "memory_type": "episodic", "success": True}"""
 
     def retrieve_memories(self, query: str, types: list = None, limit: int = 10) -> dict:
-        """Returns: {"core": [...], "peripheral": [...], "bridge": [...], "total_count": 42}"""
+        """Returns: {"core": [...], "peripheral": [...], "total_count": 42}"""
 
     def get_system_status(self, detailed: bool = False) -> dict:
         """Returns: {"memory_counts": {...}, "system_config": {...}, "storage_stats": {...}}"""

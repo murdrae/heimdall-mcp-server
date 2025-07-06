@@ -183,9 +183,8 @@ Retrieve memories based on query with rich contextual information.
 ```json
 {
   "query": "React performance optimization",
-  "types": ["core", "peripheral", "bridge"],
+  "types": ["core", "peripheral"],
   "max_results": 10,
-  "include_bridges": true
 }
 ```
 
@@ -210,7 +209,6 @@ Retrieve memories based on query with rich contextual information.
       }
     ],
     "peripheral": [...],
-    "bridge": [...]
   }
 }
 ```

@@ -52,7 +52,6 @@ cognitive_memory/
 ├── retrieval/              # Memory retrieval and activation
 │   ├── contextual_retrieval.py # Main retrieval coordinator
 │   ├── basic_activation.py     # Activation spreading
-│   └── bridge_discovery.py     # Serendipitous connections
 ├── git_analysis/           # Git commit storage
 │   ├── commit.py           # Commit and FileChange data structures
 │   ├── commit_loader.py    # Convert commits to memories
@@ -139,7 +138,7 @@ The system provides 4 MCP tools for Claude Code integration:
 
 ### Available MCP Tools
 - **`store_memory`**: Store experiences and insights with multi-dimensional context
-- **`recall_memories`**: Semantic search with categorized results (core/peripheral/bridge)
+- **`recall_memories`**: Semantic search with categorized results (core/peripheral)
 - **`session_lessons`**: Record key learnings for future sessions (metacognitive reflection)
 - **`memory_status`**: System health and memory statistics
 

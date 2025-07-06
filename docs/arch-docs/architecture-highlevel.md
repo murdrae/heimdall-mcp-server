@@ -22,7 +22,7 @@ graph TB
 
     subgraph "Cognitive Processing"
         CAE[Context-Driven Activation Engine]
-        BDM[Bridge Discovery Mechanism]
+        MCC[Memory Consolidation Controller]
     end
 
     subgraph "Learning System"
@@ -38,18 +38,18 @@ graph TB
     MDE --> HMS
     HMS --> DMS
     HMS --> CAE
-    CAE --> BDM
-    BDM --> CSE
+    CAE --> MCC
+    MCC --> CSE
     CSE --> MLC
     MLC --> MDE
     CSE --> CMO
-    BDM --> CMO
+    MCC --> CMO
 
     style MDE fill:#4a90e2
     style HMS fill:#5ac8fa
     style DMS fill:#007aff
     style CAE fill:#ff9500
-    style BDM fill:#ff3b30
+    style MCC fill:#ff3b30
     style MLC fill:#34c759
     style CSE fill:#32d74b
 ```
@@ -86,11 +86,11 @@ The architecture implements a biologically-inspired dual memory system that mirr
 
 ### Context-Driven Activation Engine
 
-This component implements the core cognitive retrieval mechanism through activation spreading and resonance. Rather than simple similarity matching, the engine generates context vectors from the current cognitive state and implements sparse activation networks for computational efficiency. The activation spreads iteratively through memory connections, identifying three types of memories: core memories with high direct similarity, peripheral memories with moderate activation, and bridge memories that enable serendipitous connections.
+This component implements the core cognitive retrieval mechanism through activation spreading and resonance. Rather than simple similarity matching, the engine generates context vectors from the current cognitive state and implements sparse activation networks for computational efficiency. The activation spreads iteratively through memory connections, identifying two types of memories: core memories with high direct similarity and peripheral memories with moderate activation.
 
-### Bridge Discovery Mechanism
+### Memory Consolidation Controller
 
-The system's ability to generate "aha moments" emerges from the sophisticated bridge discovery mechanism. This component identifies memories with low direct similarity to the current context but high connection potential through intermediate memories. Using attention-based probabilistic sampling instead of exhaustive search, it computes bridge quality scores based on novelty, connection strength, and relevance potential. This mechanism enables the kind of unexpected connections that characterize human creativity and insight.
+The system's ability to generate insights emerges from the sophisticated memory consolidation controller. This component manages the transition of memories between episodic and semantic storage, identifying patterns that warrant promotion to long-term semantic memory. It analyzes access patterns and connection strengths to determine which memories should be consolidated and how they should be organized for optimal retrieval.
 
 ### Meta-Learning Controller
 
@@ -106,7 +106,7 @@ sequenceDiagram
     participant MDE as Multi-Dimensional Encoder
     participant HMS as Hierarchical Storage
     participant CAE as Activation Engine
-    participant BDM as Bridge Discovery
+    participant MCC as Memory Consolidation
     participant CSE as Cognitive Evolution
     participant MLC as Meta-Learning
 
@@ -117,8 +117,8 @@ sequenceDiagram
     loop Cognitive Iteration
         CAE->>HMS: Context query
         HMS->>CAE: Activated memories
-        CAE->>BDM: Check for bridges
-        BDM->>CSE: Bridge memories + insights
+        CAE->>MCC: Check consolidation needs
+        MCC->>CSE: Consolidated memories + patterns
         CSE->>CAE: Updated context
         CSE->>MLC: Success patterns
     end
@@ -128,7 +128,7 @@ sequenceDiagram
 
 ## Mathematical Framework
 
-The system implements the mathematical framework through several key mechanisms. Memory encoding uses the function E: Experience → ℝᵈ, where each memory vector combines weighted contributions from different modalities. The activation spreading algorithm implements iterative propagation through connection strengths, with activation at time τ calculated as a combination of decay from previous activation and spreading from connected memories. Bridge discovery uses attention mechanisms to efficiently identify promising connections without exhaustive search, computing bridge probability as the product of attention scores, novelty scores, and relevance potential.
+The system implements the mathematical framework through several key mechanisms. Memory encoding uses the function E: Experience → ℝᵈ, where each memory vector combines weighted contributions from different modalities. The activation spreading algorithm implements iterative propagation through connection strengths, with activation at time τ calculated as a combination of decay from previous activation and spreading from connected memories. Memory consolidation uses pattern analysis to identify recurring themes and promote frequently accessed episodic memories to semantic storage.
 
 ## Implementation Phasing
 
@@ -142,12 +142,12 @@ The second phase introduces the full multi-dimensional encoding system with lear
 
 ### Phase 3: Emergent Intelligence (Weeks 9-12)
 
-The final phase implements the attention-based bridge discovery mechanism and deploys the meta-learning controller. This phase enables full cognitive iteration with context evolution, creating a system capable of generating genuine insights through serendipitous connections. The complete system demonstrates emergent cognitive behaviors that mirror human memory and insight generation.
+The final phase implements the advanced memory consolidation mechanism and deploys the meta-learning controller. This phase enables full cognitive iteration with context evolution, creating a system capable of generating genuine insights through pattern recognition and memory organization. The complete system demonstrates emergent cognitive behaviors that mirror human memory and learning processes.
 
 ## Critical Design Decisions
 
-The architecture makes several key design decisions to balance computational efficiency with cognitive authenticity. The hierarchical organization reduces search complexity from O(n) to O(log n) while maintaining rich memory representation. Sparse activation networks limit computational overhead while preserving the ability to discover distant connections. Attention-based bridge discovery avoids exhaustive search while maintaining the serendipitous discovery capability essential for genuine insights.
+The architecture makes several key design decisions to balance computational efficiency with cognitive authenticity. The hierarchical organization reduces search complexity from O(n) to O(log n) while maintaining rich memory representation. Sparse activation networks limit computational overhead while preserving the ability to discover relevant connections. Memory consolidation mechanisms provide efficient pattern recognition while maintaining the discovery capabilities essential for genuine insights.
 
 ## Conclusion
 
-This cognitive memory architecture represents a fundamental shift from information retrieval to genuine cognitive processing. By implementing mathematical models of human memory mechanisms including multi-dimensional encoding, activation spreading, and bridge discovery, the system enables Large Language Models to develop true associative intelligence. The phased implementation approach ensures practical deployment while maintaining the ambitious vision of creating artificial intelligence systems that think, remember, and discover insights in fundamentally human-like ways.
+This cognitive memory architecture represents a fundamental shift from information retrieval to genuine cognitive processing. By implementing mathematical models of human memory mechanisms including multi-dimensional encoding, activation spreading, and memory consolidation, the system enables Large Language Models to develop true associative intelligence. The phased implementation approach ensures practical deployment while maintaining the ambitious vision of creating artificial intelligence systems that think, remember, and discover insights in fundamentally human-like ways.

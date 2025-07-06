@@ -133,7 +133,7 @@ class HeimdallMCPServer:
                                 "type": "array",
                                 "items": {
                                     "type": "string",
-                                    "enum": ["core", "peripheral", "bridge"],
+                                    "enum": ["core", "peripheral"],
                                 },
                                 "description": "Types of memories to retrieve (default: all)",
                             },
@@ -142,10 +142,6 @@ class HeimdallMCPServer:
                                 "minimum": 1,
                                 "maximum": 50,
                                 "description": "Maximum number of memories to return (default: 10)",
-                            },
-                            "include_bridges": {
-                                "type": "boolean",
-                                "description": "Include bridge discoveries for novel connections (default: true)",
                             },
                         },
                         "required": ["query"],
@@ -310,7 +306,6 @@ class HeimdallMCPServer:
         query = arguments.get("query", "")
         types_filter = arguments.get("types", None)  # Use None for all types by default
         max_results = arguments.get("max_results", 10)
-        # include_bridges = arguments.get("include_bridges", True)  # TODO: Implement bridge discovery
 
         if not query.strip():
             return [TextContent(type="text", text="❌ Error: Query cannot be empty")]
@@ -454,7 +449,6 @@ class HeimdallMCPServer:
                             "embedding_model": "all-MiniLM-L6-v2",
                             "embedding_dimensions": 384,
                             "activation_threshold": 0.7,
-                            "bridge_discovery_k": 5,
                             "max_activations": 50,
                         },
                     }

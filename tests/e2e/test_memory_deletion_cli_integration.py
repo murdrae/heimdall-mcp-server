@@ -190,7 +190,7 @@ class TestMemoryDeletionCLIIntegration:
         try:
             output_data = json.loads(result.stdout)
             memory_ids = []
-            for memory_type in ["core", "peripheral", "bridge"]:
+            for memory_type in ["core", "peripheral"]:
                 for memory in output_data.get(memory_type, []):
                     if hasattr(memory, "id"):
                         memory_ids.append(memory.id)

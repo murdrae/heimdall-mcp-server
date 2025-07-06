@@ -182,7 +182,6 @@ def get_system_info(system: CognitiveMemorySystem) -> dict[str, Any]:
                 "memory_storage": type(system.memory_storage).__name__,
                 "connection_graph": type(system.connection_graph).__name__,
                 "activation_engine": type(system.activation_engine).__name__,
-                "bridge_discovery": type(system.bridge_discovery).__name__,
             },
             "configuration": stats.get("system_config", {}),
             "memory_counts": stats.get("memory_counts", {}),

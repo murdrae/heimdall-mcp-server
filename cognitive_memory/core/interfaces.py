@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 
-from .memory import ActivationResult, BridgeMemory, CognitiveMemory, SearchResult
+from .memory import ActivationResult, CognitiveMemory, SearchResult
 
 
 class EmbeddingProvider(ABC):
@@ -70,17 +70,6 @@ class ActivationEngine(ABC):
         self, context: np.ndarray, threshold: float, max_activations: int = 50
     ) -> ActivationResult:
         """Activate memories based on context with spreading activation."""
-        pass
-
-
-class BridgeDiscovery(ABC):
-    """Abstract interface for bridge discovery algorithms."""
-
-    @abstractmethod
-    def discover_bridges(
-        self, context: np.ndarray, activated: list[CognitiveMemory], k: int = 5
-    ) -> list[BridgeMemory]:
-        """Discover bridge memories that create novel connections."""
         pass
 
 
@@ -274,7 +263,7 @@ class CognitiveSystem(ABC):
         query: str,
         types: list[str] | None = None,
         max_results: int = 20,
-    ) -> dict[str, list[CognitiveMemory | BridgeMemory]]:
+    ) -> dict[str, list[CognitiveMemory]]:
         """Retrieve memories of specified types for a query."""
         pass
 

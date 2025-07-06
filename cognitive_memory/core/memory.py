@@ -178,21 +178,6 @@ class ActivationResult:
 
 
 @dataclass
-class BridgeMemory:
-    """Memory identified as a potential bridge connection."""
-
-    memory: CognitiveMemory
-    novelty_score: float
-    connection_potential: float
-    bridge_score: float
-    explanation: str = ""
-
-    def __post_init__(self) -> None:
-        if not self.explanation:
-            self.explanation = f"Bridge connects distant concepts with {self.connection_potential:.2f} potential"
-
-
-@dataclass
 class MemoryConnection:
     """Represents a connection between two memories."""
 

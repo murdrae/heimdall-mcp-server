@@ -123,14 +123,13 @@ class CognitiveOperations:
 
         Args:
             query: Query text
-            types: Memory types to retrieve (core, peripheral, bridge)
+            types: Memory types to retrieve (core, peripheral)
             limit: Maximum results per type
 
         Returns:
             Dict containing:
             - core: list - Core memories matching query
             - peripheral: list - Peripheral memories matching query
-            - bridge: list - Bridge memories connecting concepts
             - total_count: int - Total number of memories found
             - query: str - Original query for reference
             - success: bool - True if retrieval completed without errors
@@ -140,7 +139,6 @@ class CognitiveOperations:
             return {
                 "core": [],
                 "peripheral": [],
-                "bridge": [],
                 "total_count": 0,
                 "query": query,
                 "success": False,
@@ -148,7 +146,7 @@ class CognitiveOperations:
             }
 
         if types is None:
-            types = ["core", "peripheral", "bridge"]
+            types = ["core", "peripheral"]
 
         try:
             results = self.cognitive_system.retrieve_memories(
@@ -157,11 +155,10 @@ class CognitiveOperations:
 
             total_count = sum(len(memories) for memories in results.values())
 
-            # Keep the proper types - CognitiveMemory and BridgeMemory objects
+            # Keep the proper types - CognitiveMemory objects
             standardized_results = {
                 "core": results.get("core", []),
                 "peripheral": results.get("peripheral", []),
-                "bridge": results.get("bridge", []),
                 "total_count": total_count,
                 "query": query,
                 "success": True,
@@ -174,7 +171,6 @@ class CognitiveOperations:
             return {
                 "core": [],
                 "peripheral": [],
-                "bridge": [],
                 "total_count": 0,
                 "query": query,
                 "success": False,

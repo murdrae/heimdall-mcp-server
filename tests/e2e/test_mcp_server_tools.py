@@ -73,7 +73,7 @@ async def test_mcp_server_tools_e2e():
 
     # Check that we can find our test memory in results
     found_test_memory = False
-    for memory_type in ["core", "peripheral", "bridge"]:
+    for memory_type in ["core", "peripheral"]:
         if memory_type in recall_data["memories"]:
             for memory in recall_data["memories"][memory_type]:
                 if "E2E MCP server testing" in memory["content"]:
@@ -195,7 +195,7 @@ async def test_mcp_server_tools_e2e():
 
     # Find our test memory and extract its ID
     test_memory_id = None
-    for memory_type in ["core", "peripheral", "bridge"]:
+    for memory_type in ["core", "peripheral"]:
         if memory_type in id_recall_data["memories"]:
             for memory in id_recall_data["memories"][memory_type]:
                 if "ID-based deletion testing" in memory["content"]:
