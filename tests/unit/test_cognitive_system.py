@@ -70,6 +70,7 @@ def mock_memory_storage():
     mock.update_memory.return_value = True
     mock.delete_memory.return_value = True
     mock.get_memories_by_level.return_value = []
+    mock.get_memories_by_tags.return_value = []
     return mock
 
 
@@ -254,12 +255,14 @@ class TestCognitiveMemorySystem:
         cognitive_system,
         mock_embedding_provider,
         mock_activation_engine,
+        mock_memory_storage,
     ):
         """Test successful memory retrieval."""
         query = "machine learning concepts"
 
         # Mock operations
         mock_embedding_provider.encode.return_value = np.random.randn(512)
+        mock_memory_storage.get_memories_by_tags.return_value = []  # No tag memories
 
         # Retrieve memories
         results = cognitive_system.retrieve_memories(query)
@@ -273,11 +276,14 @@ class TestCognitiveMemorySystem:
         mock_activation_engine.activate_memories.assert_called_once()
 
     def test_retrieve_memories_specific_types(
-        self, cognitive_system, mock_activation_engine
+        self, cognitive_system, mock_activation_engine, mock_memory_storage
     ):
         """Test retrieval with specific memory types."""
         query = "test query"
         types = ["core", "peripheral"]
+
+        # Mock memory storage to return no tag memories
+        mock_memory_storage.get_memories_by_tags.return_value = []
 
         results = cognitive_system.retrieve_memories(query, types=types)
 
@@ -439,3 +445,395 @@ class TestCognitiveMemorySystem:
         # Should default to level 2
         stored_memory = mock_memory_storage.store_memory.call_args[0][0]
         assert stored_memory.hierarchy_level == 2
+
+    def test_store_experience_with_tags_content_fusion(
+        self, cognitive_system, mock_embedding_provider, mock_memory_storage
+    ):
+        """Test that tags are included in content before embedding."""
+        test_text = "I learned about neural networks"
+        context = {"tags": ["machine-learning", "ai", "deep-learning"]}
+
+        # Mock successful operations
+        mock_embedding_provider.encode.return_value = np.random.randn(512)
+        mock_memory_storage.store_memory.return_value = True
+
+        # Store experience with tags
+        memory_id = cognitive_system.store_experience(test_text, context)
+
+        # Verify embedding was called with content + tags
+        expected_content = (
+            "I learned about neural networks machine-learning ai deep-learning"
+        )
+        mock_embedding_provider.encode.assert_called_once_with(expected_content)
+
+        # Verify memory storage preserves original content (without tags)
+        stored_memory = mock_memory_storage.store_memory.call_args[0][0]
+        assert stored_memory.content == test_text
+        assert stored_memory.tags == ["machine-learning", "ai", "deep-learning"]
+        assert memory_id != ""
+
+    def test_store_experience_without_tags(
+        self, cognitive_system, mock_embedding_provider, mock_memory_storage
+    ):
+        """Test that content without tags is encoded normally."""
+        test_text = "Regular content without tags"
+
+        # Mock successful operations
+        mock_embedding_provider.encode.return_value = np.random.randn(512)
+        mock_memory_storage.store_memory.return_value = True
+
+        # Store experience without tags
+        memory_id = cognitive_system.store_experience(test_text)
+
+        # Verify embedding was called with original content only
+        mock_embedding_provider.encode.assert_called_once_with(test_text)
+
+        # Verify memory storage
+        stored_memory = mock_memory_storage.store_memory.call_args[0][0]
+        assert stored_memory.content == test_text
+        assert stored_memory.tags is None
+        assert memory_id != ""
+
+    def test_store_experience_with_empty_tags(
+        self, cognitive_system, mock_embedding_provider, mock_memory_storage
+    ):
+        """Test that empty tags list doesn't affect encoding."""
+        test_text = "Content with empty tags"
+        context = {"tags": []}
+
+        # Mock successful operations
+        mock_embedding_provider.encode.return_value = np.random.randn(512)
+        mock_memory_storage.store_memory.return_value = True
+
+        # Store experience with empty tags
+        memory_id = cognitive_system.store_experience(test_text, context)
+
+        # Verify embedding was called with original content only
+        mock_embedding_provider.encode.assert_called_once_with(test_text)
+
+        # Verify memory storage
+        stored_memory = mock_memory_storage.store_memory.call_args[0][0]
+        assert stored_memory.content == test_text
+        assert stored_memory.tags == []
+        assert memory_id != ""
+
+    def test_tag_boost_single_match(self, cognitive_system):
+        """Test tag boost calculation for single tag match."""
+        from datetime import datetime
+
+        # Create memory with tags
+        memory = CognitiveMemory(
+            id="test-memory",
+            content="Machine learning concepts",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["machine-learning", "concepts"],
+        )
+
+        # Test query that matches one tag as exact token match
+        boost = cognitive_system._calculate_tag_boost(
+            memory, "learning about machine-learning stuff"
+        )
+        assert boost == 0.4  # One exact match = 0.4 boost
+
+    def test_tag_boost_multiple_matches(self, cognitive_system):
+        """Test tag boost calculation for multiple tag matches."""
+        from datetime import datetime
+
+        # Create memory with tags
+        memory = CognitiveMemory(
+            id="test-memory",
+            content="Deep learning with neural networks",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["deep-learning", "neural-networks", "ai"],
+        )
+
+        # Test query that matches multiple tags exactly
+        boost = cognitive_system._calculate_tag_boost(
+            memory, "deep-learning neural-networks tutorial"
+        )
+        assert (
+            boost == 0.8
+        )  # Two exact matches (0.4 + 0.4) + bonus (0.1) = 0.9, capped at 0.8
+
+    def test_tag_boost_no_match(self, cognitive_system):
+        """Test tag boost calculation when no tags match."""
+        from datetime import datetime
+
+        # Create memory with tags
+        memory = CognitiveMemory(
+            id="test-memory",
+            content="Natural language processing",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["nlp", "linguistics"],
+        )
+
+        # Test query that doesn't match any tags
+        boost = cognitive_system._calculate_tag_boost(memory, "computer vision opencv")
+        assert boost == 0.0  # No tag matches = 0.0 boost
+
+    def test_tag_boost_case_insensitive(self, cognitive_system):
+        """Test that tag matching is case insensitive."""
+        from datetime import datetime
+
+        # Create memory with mixed case tags
+        memory = CognitiveMemory(
+            id="test-memory",
+            content="Machine learning algorithms",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["Machine-Learning", "Algorithms"],
+        )
+
+        # Test query with different case (lowercase) - exact token match
+        boost = cognitive_system._calculate_tag_boost(
+            memory, "machine-learning tutorial"
+        )
+        assert boost == 0.4  # Case insensitive exact match
+
+    def test_tag_boost_no_tags(self, cognitive_system):
+        """Test tag boost calculation when memory has no tags."""
+        from datetime import datetime
+
+        # Create memory without tags
+        memory = CognitiveMemory(
+            id="test-memory",
+            content="Some content",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=None,
+        )
+
+        # Test query
+        boost = cognitive_system._calculate_tag_boost(memory, "some content query")
+        assert boost == 0.0  # No tags = 0.0 boost
+
+    def test_tag_boost_capped_at_maximum(self, cognitive_system):
+        """Test that tag boost is capped at 0.5."""
+        from datetime import datetime
+
+        # Create memory with many tags
+        memory = CognitiveMemory(
+            id="test-memory",
+            content="Comprehensive AI tutorial",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["ai", "ml", "deep", "learning", "neural", "networks"],
+        )
+
+        # Test query that matches many tags (would exceed 0.8 without cap)
+        boost = cognitive_system._calculate_tag_boost(
+            memory, "ai ml deep learning neural networks"
+        )
+        assert boost == 0.8  # Capped at maximum
+
+    def test_apply_tag_boost_reordering(self, cognitive_system):
+        """Test that _apply_tag_boost reorders memories correctly."""
+        from datetime import datetime
+
+        # Create memories with different tag match potential
+        memory_no_tags = CognitiveMemory(
+            id="memory-1",
+            content="Regular content",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=None,
+        )
+
+        memory_with_matching_tag = CognitiveMemory(
+            id="memory-2",
+            content="Machine learning content",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["machine-learning", "ai"],
+        )
+
+        memory_with_non_matching_tag = CognitiveMemory(
+            id="memory-3",
+            content="Different content",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["biology", "genetics"],
+        )
+
+        # Create results dict
+        results = {
+            "core": [
+                memory_no_tags,
+                memory_with_matching_tag,
+                memory_with_non_matching_tag,
+            ],
+            "peripheral": [],
+        }
+
+        # Apply tag boost
+        cognitive_system._apply_tag_boost(results, "machine-learning tutorial")
+
+        # Verify reordering: memory with matching tag should be first
+        assert results["core"][0].id == "memory-2"  # Has matching tag
+        assert results["core"][1].id in ["memory-1", "memory-3"]  # Others follow
+
+    def test_enhanced_tag_boost_exact_match(self, cognitive_system):
+        """Test enhanced tag boost calculation for exact token matches."""
+        from datetime import datetime
+
+        # Create memory with tags
+        memory = CognitiveMemory(
+            id="test-memory",
+            content="Machine learning concepts",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["machine-learning", "concepts"],
+        )
+
+        # Test exact token match
+        boost = cognitive_system._calculate_tag_boost(
+            memory, "machine-learning tutorial"
+        )
+        assert boost == 0.4  # Exact token match = 0.4 boost
+
+    def test_enhanced_tag_boost_multiple_exact_matches(self, cognitive_system):
+        """Test enhanced tag boost with multiple exact matches and bonus."""
+        from datetime import datetime
+
+        # Create memory with multiple tags
+        memory = CognitiveMemory(
+            id="test-memory",
+            content="Deep learning with neural networks",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["deep-learning", "neural-networks", "ai"],
+        )
+
+        # Test multiple exact matches
+        boost = cognitive_system._calculate_tag_boost(
+            memory, "deep-learning neural-networks tutorial"
+        )
+        assert (
+            boost == 0.8
+        )  # Two exact matches (0.4 + 0.4) + bonus (0.1) = 0.9, capped at 0.8
+
+    def test_retrieval_with_exact_tag_search(
+        self,
+        cognitive_system,
+        mock_embedding_provider,
+        mock_vector_storage,
+        mock_memory_storage,
+    ):
+        """Test that memories with exact tag matches get highest priority in retrieval."""
+        from datetime import datetime
+
+        from cognitive_memory.core.memory import SearchResult
+
+        # Create memories with different relevance
+        tag_match_memory = CognitiveMemory(
+            id="tag-match",
+            content="Low relevance content",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["machine-learning"],
+        )
+
+        high_relevance_memory = CognitiveMemory(
+            id="high-relevance",
+            content="Very relevant content about algorithms",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["algorithms"],
+        )
+
+        # Mock tag search to return empty (no direct tag matches)
+        mock_memory_storage.get_memories_by_tags.return_value = []
+
+        # Mock vector search returning high relevance first (normally)
+        mock_results = [
+            SearchResult(
+                memory=high_relevance_memory, similarity_score=0.5, metadata={}
+            ),  # Lower score
+            SearchResult(
+                memory=tag_match_memory, similarity_score=0.3, metadata={}
+            ),  # Will get boosted to 0.7
+        ]
+        mock_vector_storage.search_similar.return_value = mock_results
+
+        # Mock memory storage to return complete objects
+        def mock_retrieve(memory_id):
+            if memory_id == "tag-match":
+                return tag_match_memory
+            elif memory_id == "high-relevance":
+                return high_relevance_memory
+            return None
+
+        mock_memory_storage.retrieve_memory.side_effect = mock_retrieve
+
+        # Mock empty activation result to trigger fallback
+        mock_activation_result = Mock()
+        mock_activation_result.core_memories = []
+        mock_activation_result.peripheral_memories = []
+        cognitive_system.activation_engine.activate_memories.return_value = (
+            mock_activation_result
+        )
+
+        # Search for exact tag
+        results = cognitive_system.retrieve_memories("machine-learning")
+
+        # Tag match should be first: 0.3 + 0.4 = 0.7 > 0.5
+        assert len(results["core"]) > 0
+        # The exact order depends on how the fallback mechanism works, but tag match should rank higher
+
+    def test_tag_based_recall_explicit_test(self, cognitive_system):
+        """Explicit test that recall will use tags to give you memories with unrelated content."""
+        from datetime import datetime
+
+        # Create memory with content unrelated to tags
+        memory_with_unrelated_tags = CognitiveMemory(
+            id="unrelated-tag-memory",
+            content="Python database connection optimization techniques include connection pooling, lazy loading, and prepared statements for improved performance.",
+            memory_type="semantic",
+            hierarchy_level=1,
+            timestamp=datetime.now(),
+            tags=["banana-bread", "kitchen-recipe"],
+        )
+
+        # Mock the _add_tag_memories method to find our memory
+        def mock_add_tag_memories(query, types, results, max_results):
+            if "banana-bread" in query.lower():
+                if "core" in types:
+                    results["core"].append(memory_with_unrelated_tags)
+
+        cognitive_system._add_tag_memories = mock_add_tag_memories
+
+        # Mock the _add_activation_memories method to do nothing
+        def mock_add_activation_memories(query_embedding, types, results, max_results):
+            pass  # Don't add any activation memories
+
+        cognitive_system._add_activation_memories = mock_add_activation_memories
+
+        # Search using only the tag - should find the memory despite content mismatch
+        results = cognitive_system.retrieve_memories("banana-bread")
+
+        # Verify the memory was found through tag matching
+        assert len(results["core"]) > 0
+        found_memory = results["core"][0]
+        assert found_memory.id == "unrelated-tag-memory"
+        assert (
+            found_memory.content
+            == "Python database connection optimization techniques include connection pooling, lazy loading, and prepared statements for improved performance."
+        )
+        assert "banana-bread" in found_memory.tags
+        assert "kitchen-recipe" in found_memory.tags

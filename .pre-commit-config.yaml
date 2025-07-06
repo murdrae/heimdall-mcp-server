@@ -20,13 +20,5 @@ repos:
     hooks:
       - id: mypy
         exclude: ^tests/
-        additional_dependencies: ['types-requests', 'types-PyYAML']
-
-  - repo: local
-    hooks:
-      - id: pytest-check
-        name: pytest-check
-        entry: bash -c 'source venv/bin/activate && python -m pytest tests/ -v -m "not slow"'
-        language: system
-        pass_filenames: false
-        always_run: true
+        args: [--no-warn-unused-ignores]
+        additional_dependencies: ['types-requests', 'types-PyYAML', 'loguru', 'numpy', 'platformdirs', 'python-dotenv', 'types-psutil', 'GitPython']

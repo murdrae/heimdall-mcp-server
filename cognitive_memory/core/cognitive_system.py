@@ -93,8 +93,13 @@ class CognitiveMemorySystem(CognitiveSystem):
             memory_id = str(uuid.uuid4())
             current_time = datetime.now()
 
+            # Prepare content with tags for encoding
+            content_for_embedding = text
+            if context and context.get("tags"):
+                content_for_embedding = f"{text} {' '.join(context['tags'])}"
+
             # Encode the experience
-            embedding = self.embedding_provider.encode(text)
+            embedding = self.embedding_provider.encode(content_for_embedding)
 
             # Determine hierarchy level based on context or heuristics
             if context and "hierarchy_level" in context:
@@ -209,25 +214,12 @@ class CognitiveMemorySystem(CognitiveSystem):
                 "peripheral": [],
             }
 
-            # Activate memories if core or peripheral types requested
+            # Add tag-based memories first, then activation-based memories
             if "core" in types or "peripheral" in types:
-                activation_result = self.activation_engine.activate_memories(
-                    context=query_embedding,
-                    threshold=self.config.cognitive.activation_threshold,
-                    max_activations=self.config.cognitive.max_activations,
+                self._add_tag_memories(query, types, results, max_results)
+                self._add_activation_memories(
+                    query_embedding, types, results, max_results
                 )
-
-                if "core" in types:
-                    # Take top scoring memories as core
-                    results["core"].extend(
-                        activation_result.core_memories[: max_results // 2]
-                    )
-
-                if "peripheral" in types:
-                    # Take remaining activated memories as peripheral
-                    results["peripheral"].extend(
-                        activation_result.peripheral_memories[: max_results // 2]
-                    )
 
             # Fallback to direct vector similarity search if no core/peripheral memories found
             if (
@@ -243,9 +235,30 @@ class CognitiveMemorySystem(CognitiveSystem):
                 similarity_results = self.vector_storage.search_similar(
                     query_embedding, k=fallback_limit
                 )
+
+                # Apply tag boost to similarity scores before filtering/splitting
+                query_lower = query.strip().lower()
+                for result in similarity_results:
+                    if result.memory.tags:
+                        tag_boost = self._calculate_tag_boost(
+                            result.memory, query_lower
+                        )
+                        if tag_boost > 0:
+                            result.similarity_score += tag_boost
+                            logger.debug(
+                                "Applied tag boost",
+                                memory_id=result.memory.id[:8],
+                                original_score=result.similarity_score - tag_boost,
+                                boost=tag_boost,
+                                final_score=result.similarity_score,
+                            )
+
+                # Re-sort by boosted scores to ensure tag matches rank higher
+                similarity_results.sort(key=lambda x: x.similarity_score, reverse=True)
+
                 # Split results between core and peripheral
                 half = fallback_limit // 2 or 1
-                top_results = similarity_results[:fallback_limit]
+                top_results = similarity_results
                 if "core" in types:
                     core_memories = []
                     for result in top_results[:half]:
@@ -286,6 +299,9 @@ class CognitiveMemorySystem(CognitiveSystem):
                             )
                             peripheral_memories.append(result.memory)
                     results["peripheral"].extend(peripheral_memories)
+
+            # Apply tag-based boost to improve ranking
+            self._apply_tag_boost(results, query.strip())
 
             # Log retrieval statistics
             total_retrieved = sum(len(memories) for memories in results.values())
@@ -1192,6 +1208,120 @@ class CognitiveMemorySystem(CognitiveSystem):
                 distribution[level_key] += 1
 
         return distribution
+
+    def _apply_tag_boost(
+        self, results: dict[str, list[CognitiveMemory]], query: str
+    ) -> None:
+        """
+        Apply tag-based boost to memories when their tags appear in the query.
+
+        Args:
+            results: Dictionary with 'core' and 'peripheral' memory lists
+            query: Original query string
+        """
+        if not query:
+            return
+
+        query_lower = query.lower()
+
+        # Process both core and peripheral memories
+        for memory_type in ["core", "peripheral"]:
+            if memory_type not in results:
+                continue
+
+            # Create list of (memory, boost_score) tuples
+            memory_boosts = []
+            for memory in results[memory_type]:
+                boost = self._calculate_tag_boost(memory, query_lower)
+                memory_boosts.append((memory, boost))
+
+            # Sort by boost score (descending) to put tag-matched memories first
+            memory_boosts.sort(key=lambda x: x[1], reverse=True)
+
+            # Update the results list with re-ordered memories
+            results[memory_type] = [memory for memory, _ in memory_boosts]
+
+    def _calculate_tag_boost(self, memory: CognitiveMemory, query_lower: str) -> float:
+        """
+        Calculate boost score for a memory based on tag matches in query.
+
+        Args:
+            memory: Memory to check for tag matches
+            query_lower: Lowercase query string
+
+        Returns:
+            Boost score (0.0 to 0.8)
+        """
+        if not memory.tags:
+            return 0.0
+
+        boost = 0.0
+        exact_matches = 0
+        query_tokens = set(query_lower.split())
+
+        for tag in memory.tags:
+            tag_lower = tag.lower()
+
+            # Exact tag match in query tokens (highest boost)
+            if tag_lower in query_tokens:
+                exact_matches += 1
+                boost += 0.4
+            # Tag appears as substring in query (moderate boost)
+            elif tag_lower in query_lower:
+                boost += 0.2
+
+        # Additional boost for multiple exact matches
+        if exact_matches >= 2:
+            boost += 0.1
+
+        return min(boost, 0.8)  # Cap total boost
+
+    def _add_tag_memories(
+        self,
+        query: str,
+        types: list[str],
+        results: dict[str, list[CognitiveMemory]],
+        max_results: int,
+    ) -> None:
+        """Add memories that match query words as tags."""
+        query_tokens = query.strip().lower().split()
+        tag_memories = self.memory_storage.get_memories_by_tags(query_tokens)
+
+        for memory in tag_memories:
+            if "core" in types and len(results["core"]) < max_results // 2:
+                results["core"].append(memory)
+            elif (
+                "peripheral" in types and len(results["peripheral"]) < max_results // 2
+            ):
+                results["peripheral"].append(memory)
+
+    def _add_activation_memories(
+        self,
+        query_embedding: Any,
+        types: list[str],
+        results: dict[str, list[CognitiveMemory]],
+        max_results: int,
+    ) -> None:
+        """Add memories from activation engine (only fill remaining slots)."""
+        activation_result = self.activation_engine.activate_memories(
+            context=query_embedding,
+            threshold=self.config.cognitive.activation_threshold,
+            max_activations=self.config.cognitive.max_activations,
+        )
+
+        if "core" in types:
+            remaining_slots = max_results // 2 - len(results["core"])
+            if remaining_slots > 0:
+                results["core"].extend(
+                    activation_result.core_memories[:remaining_slots]
+                )
+
+        if "peripheral" in types:
+            remaining_slots = max_results // 2 - len(results["peripheral"])
+            if remaining_slots > 0:
+                results["peripheral"].extend(
+                    activation_result.peripheral_memories[:remaining_slots]
+                )
 
 
 def create_cognitive_system(

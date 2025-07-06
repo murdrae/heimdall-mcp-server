@@ -321,6 +321,7 @@ class VectorSearchEngine:
                     timestamp=payload.get("timestamp", 0.0),
                     strength=payload.get("strength", 1.0),
                     access_count=payload.get("access_count", 0),
+                    tags=payload.get("tags"),
                 )
 
                 results.append(
