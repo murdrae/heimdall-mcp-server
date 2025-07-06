@@ -744,7 +744,6 @@ class HealthChecker:
                         "qdrant_url": config.qdrant.url,
                         "sentence_bert_model": config.embedding.model_name,
                         "activation_threshold": config.cognitive.activation_threshold,
-                        "bridge_discovery_k": config.cognitive.bridge_discovery_k,
                     }
 
                 if issues:

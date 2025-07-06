@@ -19,7 +19,6 @@ from cognitive_memory.core.memory import CognitiveMemory
 from cognitive_memory.factory import create_test_system
 from tests.factory_utils import (
     MockActivationEngine,
-    MockBridgeDiscovery,
     MockCognitiveSystem,
     MockConnectionGraph,
     MockEmbeddingProvider,
@@ -212,12 +211,6 @@ def mock_activation_engine_factory() -> MockActivationEngine:
 
 
 @fixture  # type: ignore[misc]
-def mock_bridge_discovery_factory() -> MockBridgeDiscovery:
-    """Create mock bridge discovery for factory testing."""
-    return MockBridgeDiscovery()
-
-
-@fixture  # type: ignore[misc]
 def mock_cognitive_system_factory() -> MockCognitiveSystem:
     """Create mock cognitive system for factory testing."""
     return MockCognitiveSystem()
@@ -232,6 +225,5 @@ def factory_test_system(test_config: SystemConfig) -> Any:
         memory_storage=MockMemoryStorage(),
         connection_graph=MockConnectionGraph(),
         activation_engine=MockActivationEngine(),
-        bridge_discovery=MockBridgeDiscovery(),
         config=test_config,
     )

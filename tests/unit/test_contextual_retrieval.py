@@ -1,8 +1,8 @@
 """
 Unit tests for ContextualRetrieval.
 
-Tests the high-level retrieval coordination that integrates activation spreading,
-similarity search, and bridge discovery for comprehensive memory retrieval.
+Tests the high-level retrieval coordination that integrates activation spreading
+and similarity search for comprehensive memory retrieval.
 """
 
 from unittest.mock import Mock
@@ -12,12 +12,10 @@ import pytest
 
 from cognitive_memory.core.interfaces import (
     ActivationEngine,
-    BridgeDiscovery,
     ConnectionGraph,
     MemoryStorage,
 )
 from cognitive_memory.core.memory import (
-    BridgeMemory,
     CognitiveMemory,
 )
 from cognitive_memory.retrieval.contextual_retrieval import (
@@ -49,12 +47,6 @@ class TestContextualRetrieval:
         return mock
 
     @pytest.fixture
-    def mock_bridge_discovery(self) -> Mock:
-        """Create mock bridge discovery."""
-        mock = Mock(spec=BridgeDiscovery)
-        return mock
-
-    @pytest.fixture
     def mock_connection_graph(self) -> Mock:
         """Create mock connection graph."""
         mock = Mock(spec=ConnectionGraph)
@@ -76,7 +68,6 @@ class TestContextualRetrieval:
         mock_memory_storage: Mock,
         mock_activation_engine: Mock,
         mock_similarity_search: Mock,
-        mock_bridge_discovery: Mock,
         mock_connection_graph: Mock,
     ) -> ContextualRetrieval:
         """Create ContextualRetrieval with mocked dependencies."""
@@ -84,7 +75,6 @@ class TestContextualRetrieval:
             memory_storage=mock_memory_storage,
             activation_engine=mock_activation_engine,
             similarity_search=mock_similarity_search,
-            bridge_discovery=mock_bridge_discovery,
             connection_graph=mock_connection_graph,
         )
 
@@ -93,7 +83,6 @@ class TestContextualRetrieval:
         mock_memory_storage: Mock,
         mock_activation_engine: Mock,
         mock_similarity_search: Mock,
-        mock_bridge_discovery: Mock,
         mock_connection_graph: Mock,
     ) -> None:
         """Test ContextualRetrieval initialization."""
@@ -101,14 +90,12 @@ class TestContextualRetrieval:
             memory_storage=mock_memory_storage,
             activation_engine=mock_activation_engine,
             similarity_search=mock_similarity_search,
-            bridge_discovery=mock_bridge_discovery,
             connection_graph=mock_connection_graph,
         )
 
         assert retrieval.memory_storage == mock_memory_storage
         assert retrieval.activation_engine == mock_activation_engine
         assert retrieval.similarity_search == mock_similarity_search
-        assert retrieval.bridge_discovery == mock_bridge_discovery
 
     def test_init_minimal(self, mock_memory_storage: Mock) -> None:
         """Test initialization with minimal components."""
@@ -116,15 +103,13 @@ class TestContextualRetrieval:
             memory_storage=mock_memory_storage,
             activation_engine=None,
             similarity_search=None,
-            bridge_discovery=None,
             connection_graph=None,
         )
 
         assert retrieval.memory_storage == mock_memory_storage
         assert retrieval.activation_engine is None
-        # Should create default similarity search and bridge discovery
+        # Should create default similarity search
         assert retrieval.similarity_search is not None
-        assert retrieval.bridge_discovery is not None
 
     def test_retrieve_memories_basic(
         self,
@@ -139,7 +124,6 @@ class TestContextualRetrieval:
         assert isinstance(result, ContextualRetrievalResult)
         assert isinstance(result.core_memories, list)
         assert isinstance(result.peripheral_memories, list)
-        assert isinstance(result.bridge_memories, list)
         assert result.retrieval_time_ms >= 0
 
     def test_retrieve_memories_with_parameters(
@@ -152,7 +136,6 @@ class TestContextualRetrieval:
             query_context=mock_numpy_embedding,
             max_core=5,
             max_peripheral=10,
-            max_bridges=3,
             activation_threshold=0.7,
             similarity_threshold=0.5,
         )
@@ -170,7 +153,6 @@ class TestContextualRetrieval:
             query_context=mock_numpy_embedding,
             use_activation=False,
             use_similarity=False,
-            use_bridges=False,
         )
 
         assert isinstance(result, ContextualRetrievalResult)
@@ -186,7 +168,6 @@ class TestContextualRetrieval:
             memory_storage=mock_memory_storage,
             activation_engine=None,
             similarity_search=None,
-            bridge_discovery=None,
             connection_graph=None,
         )
 
@@ -202,36 +183,22 @@ class TestContextualRetrievalResult:
 
     def test_init(self, sample_memories: list[CognitiveMemory]) -> None:
         """Test ContextualRetrievalResult initialization."""
-        bridge_memories = [
-            BridgeMemory(
-                memory=sample_memories[0],
-                novelty_score=0.8,
-                connection_potential=0.7,
-                bridge_score=0.75,
-                explanation="Test bridge",
-            )
-        ]
-
         result = ContextualRetrievalResult(
             core_memories=sample_memories[:2],
             peripheral_memories=sample_memories[2:3],
-            bridge_memories=bridge_memories,
             retrieval_time_ms=100.5,
         )
 
         assert result.core_memories == sample_memories[:2]
         assert result.peripheral_memories == sample_memories[2:3]
-        assert result.bridge_memories == bridge_memories
         assert result.retrieval_time_ms == 100.5
         assert result.total_memories == 3  # 2 core + 1 peripheral
-        assert result.total_bridges == 1
 
     def test_get_all_memories(self, sample_memories: list[CognitiveMemory]) -> None:
         """Test getting all memories from result."""
         result = ContextualRetrievalResult(
             core_memories=sample_memories[:2],
             peripheral_memories=sample_memories[2:3],
-            bridge_memories=[],
         )
 
         all_memories = result.get_all_memories()
@@ -247,7 +214,6 @@ class TestContextualRetrievalResult:
         result = ContextualRetrievalResult(
             core_memories=sample_memories[:3],
             peripheral_memories=sample_memories[3:4],
-            bridge_memories=[],
         )
 
         # This test will need to be updated based on how hierarchy_level is used
@@ -257,20 +223,9 @@ class TestContextualRetrievalResult:
 
     def test_to_dict(self, sample_memories: list[CognitiveMemory]) -> None:
         """Test conversion to dictionary."""
-        bridge_memories = [
-            BridgeMemory(
-                memory=sample_memories[0],
-                novelty_score=0.8,
-                connection_potential=0.7,
-                bridge_score=0.75,
-                explanation="Test bridge",
-            )
-        ]
-
         result = ContextualRetrievalResult(
             core_memories=sample_memories[:1],
             peripheral_memories=sample_memories[1:2],
-            bridge_memories=bridge_memories,
             retrieval_time_ms=123.45,
         )
 
@@ -279,8 +234,6 @@ class TestContextualRetrievalResult:
         assert isinstance(result_dict, dict)
         assert "core_memories" in result_dict
         assert "peripheral_memories" in result_dict
-        assert "bridge_memories" in result_dict
         assert "total_memories" in result_dict
-        assert "total_bridges" in result_dict
         assert "retrieval_time_ms" in result_dict
         assert result_dict["retrieval_time_ms"] == 123.45

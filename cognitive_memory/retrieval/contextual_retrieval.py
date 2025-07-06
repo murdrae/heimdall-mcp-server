@@ -1,9 +1,8 @@
 """
 Contextual retrieval coordinator implementation.
 
-This module provides the high-level coordination of activation, similarity search,
-and bridge discovery to create a unified retrieval system that categorizes
-memories and aggregates results.
+This module provides the high-level coordination of activation and similarity search
+to create a unified retrieval system that categorizes memories and aggregates results.
 """
 
 import time
@@ -12,10 +11,9 @@ from typing import Any
 import numpy as np
 from loguru import logger
 
-from ..core.interfaces import ActivationEngine, BridgeDiscovery, MemoryStorage
-from ..core.memory import ActivationResult, BridgeMemory, CognitiveMemory, SearchResult
+from ..core.interfaces import ActivationEngine, MemoryStorage
+from ..core.memory import ActivationResult, CognitiveMemory, SearchResult
 from .basic_activation import BasicActivationEngine
-from .bridge_discovery import SimpleBridgeDiscovery
 from .similarity_search import SimilaritySearch
 
 
@@ -23,16 +21,14 @@ class ContextualRetrievalResult:
     """
     Result from contextual retrieval containing categorized memories.
 
-    Organizes retrieval results into core memories (highly relevant),
-    peripheral memories (moderately relevant), and bridge memories
-    (serendipitous connections).
+    Organizes retrieval results into core memories (highly relevant)
+    and peripheral memories (moderately relevant).
     """
 
     def __init__(
         self,
         core_memories: list[CognitiveMemory],
         peripheral_memories: list[CognitiveMemory],
-        bridge_memories: list[BridgeMemory],
         activation_result: ActivationResult | None = None,
         similarity_results: list[SearchResult] | None = None,
         retrieval_time_ms: float = 0.0,
@@ -44,7 +40,6 @@ class ContextualRetrievalResult:
         Args:
             core_memories: Highly relevant core memories
             peripheral_memories: Moderately relevant peripheral memories
-            bridge_memories: Serendipitous bridge connections
             activation_result: Original activation result
             similarity_results: Original similarity search results
             retrieval_time_ms: Total retrieval time in milliseconds
@@ -52,7 +47,6 @@ class ContextualRetrievalResult:
         """
         self.core_memories = core_memories
         self.peripheral_memories = peripheral_memories
-        self.bridge_memories = bridge_memories
         self.activation_result = activation_result
         self.similarity_results = similarity_results
         self.retrieval_time_ms = retrieval_time_ms
@@ -60,7 +54,6 @@ class ContextualRetrievalResult:
 
         # Calculate totals
         self.total_memories = len(core_memories) + len(peripheral_memories)
-        self.total_bridges = len(bridge_memories)
 
     def get_all_memories(self) -> list[CognitiveMemory]:
         """Get all memories (core + peripheral)."""
@@ -76,18 +69,7 @@ class ContextualRetrievalResult:
         return {
             "core_memories": [m.to_dict() for m in self.core_memories],
             "peripheral_memories": [m.to_dict() for m in self.peripheral_memories],
-            "bridge_memories": [
-                {
-                    "memory": b.memory.to_dict(),
-                    "novelty_score": b.novelty_score,
-                    "connection_potential": b.connection_potential,
-                    "bridge_score": b.bridge_score,
-                    "explanation": b.explanation,
-                }
-                for b in self.bridge_memories
-            ],
             "total_memories": self.total_memories,
-            "total_bridges": self.total_bridges,
             "retrieval_time_ms": self.retrieval_time_ms,
             "context_metadata": self.context_metadata,
         }
@@ -95,8 +77,8 @@ class ContextualRetrievalResult:
 
 class ContextualRetrieval:
     """
-    High-level retrieval coordinator that integrates activation, similarity search,
-    and bridge discovery into a unified contextual retrieval system.
+    High-level retrieval coordinator that integrates activation and similarity search
+    into a unified contextual retrieval system.
 
     Provides the main interface for memory retrieval with automatic result
     categorization and ranking.
@@ -105,14 +87,12 @@ class ContextualRetrieval:
     memory_storage: MemoryStorage
     activation_engine: ActivationEngine | None
     similarity_search: SimilaritySearch
-    bridge_discovery: BridgeDiscovery
 
     def __init__(
         self,
         memory_storage: MemoryStorage,
         activation_engine: ActivationEngine | None = None,
         similarity_search: SimilaritySearch | None = None,
-        bridge_discovery: BridgeDiscovery | None = None,
         connection_graph: Any | None = None,  # ConnectionGraph interface
     ):
         """
@@ -122,7 +102,6 @@ class ContextualRetrieval:
             memory_storage: Storage interface for memory access
             activation_engine: Optional activation engine (created if None)
             similarity_search: Optional similarity search (created if None)
-            bridge_discovery: Optional bridge discovery (created if None)
             connection_graph: Optional connection graph for activation
         """
         self.memory_storage = memory_storage
@@ -139,35 +118,28 @@ class ContextualRetrieval:
             self.activation_engine = None
 
         self.similarity_search = similarity_search or SimilaritySearch(memory_storage)
-        self.bridge_discovery = bridge_discovery or SimpleBridgeDiscovery(
-            memory_storage
-        )
 
     def retrieve_memories(
         self,
         query_context: np.ndarray,
         max_core: int = 10,
         max_peripheral: int = 15,
-        max_bridges: int = 5,
         activation_threshold: float = 0.6,
         similarity_threshold: float = 0.3,
         use_activation: bool = True,
         use_similarity: bool = True,
-        use_bridges: bool = True,
     ) -> ContextualRetrievalResult:
         """
-        Retrieve memories using integrated activation, similarity, and bridge discovery.
+        Retrieve memories using integrated activation and similarity search.
 
         Args:
             query_context: Query context vector
             max_core: Maximum core memories to return
             max_peripheral: Maximum peripheral memories to return
-            max_bridges: Maximum bridge memories to return
             activation_threshold: Threshold for activation spreading
             similarity_threshold: Threshold for similarity search
             use_activation: Whether to use activation spreading
             use_similarity: Whether to use similarity search
-            use_bridges: Whether to use bridge discovery
 
         Returns:
             ContextualRetrievalResult with categorized memories
@@ -216,29 +188,12 @@ class ContextualRetrieval:
                 max_peripheral,
             )
 
-            # Phase 4: Bridge discovery (if enabled)
-            bridge_memories = []
-
-            if use_bridges:
-                all_retrieved = core_memories + peripheral_memories
-                if (
-                    all_retrieved
-                ):  # Only search for bridges if we have retrieved memories
-                    bridge_memories = self.bridge_discovery.discover_bridges(
-                        query_context, all_retrieved, max_bridges
-                    )
-
-                    logger.debug(
-                        f"Bridge discovery found {len(bridge_memories)} bridges"
-                    )
-
             # Create result
             retrieval_time_ms = (time.time() - start_time) * 1000
 
             result = ContextualRetrievalResult(
                 core_memories=core_memories,
                 peripheral_memories=peripheral_memories,
-                bridge_memories=bridge_memories,
                 activation_result=activation_result,
                 similarity_results=similarity_results,
                 retrieval_time_ms=retrieval_time_ms,
@@ -248,7 +203,6 @@ class ContextualRetrieval:
                     "used_activation": use_activation
                     and self.activation_engine is not None,
                     "used_similarity": use_similarity,
-                    "used_bridges": use_bridges,
                 },
             )
 
@@ -256,7 +210,6 @@ class ContextualRetrieval:
                 "Contextual retrieval completed",
                 core_memories=len(core_memories),
                 peripheral_memories=len(peripheral_memories),
-                bridge_memories=len(bridge_memories),
                 retrieval_time_ms=retrieval_time_ms,
             )
 
@@ -265,7 +218,7 @@ class ContextualRetrieval:
         except Exception as e:
             logger.error("Contextual retrieval failed", error=str(e))
             return ContextualRetrievalResult(
-                [], [], [], retrieval_time_ms=(time.time() - start_time) * 1000
+                [], [], retrieval_time_ms=(time.time() - start_time) * 1000
             )
 
     def _merge_and_categorize_memories(
@@ -398,7 +351,6 @@ class ContextualRetrieval:
         stats: dict[str, Any] = {
             "has_activation_engine": self.activation_engine is not None,
             "has_similarity_search": self.similarity_search is not None,
-            "has_bridge_discovery": self.bridge_discovery is not None,
         }
 
         # Add component configurations
@@ -411,10 +363,5 @@ class ContextualRetrieval:
             self.similarity_search, "get_search_config"
         ):
             stats["similarity_config"] = self.similarity_search.get_search_config()
-
-        if self.bridge_discovery and hasattr(
-            self.bridge_discovery, "get_discovery_config"
-        ):
-            stats["bridge_config"] = self.bridge_discovery.get_discovery_config()
 
         return stats

@@ -89,18 +89,6 @@ def log_activation_spreading(
     )
 
 
-def log_bridge_discovery(
-    bridges_found: int, query_context: str, discovery_time_ms: float
-) -> None:
-    """Log bridge discovery event."""
-    log_cognitive_event(
-        "bridge_discovery",
-        bridges_found=bridges_found,
-        query_context=query_context[:100],  # Truncate for logging
-        discovery_time_ms=discovery_time_ms,
-    )
-
-
 def log_memory_consolidation(
     episodic_compressed: int, semantic_created: int, consolidation_time_ms: float
 ) -> None:

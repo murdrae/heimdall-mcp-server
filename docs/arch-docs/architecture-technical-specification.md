@@ -24,7 +24,6 @@ The architecture delivers a production-ready Python package distributed via pip,
 |-----------|------------------------|------------------|
 | **Dimension Extraction** | Rule-based + ML Hybrid | Regex patterns + sentiment analysis + learned classifiers |
 | **Activation Algorithm** | Qdrant Collections + BFS | 3-collection hierarchy with breadth-first activation spreading |
-| **Bridge Discovery** | Simple Distance Inversion | Inverse similarity scoring with connection potential weighting |
 | **Memory Consolidation** | Time-based + Pattern-based | Episodic→Semantic promotion based on access frequency |
 
 ### Infrastructure Components
@@ -252,14 +251,6 @@ The monitoring system supports extension through modular components:
 - **Connection Graph**: SQLite-based memory relationships with strength scoring
 - **Result Classification**: Core memories (highest activation) vs peripheral memories
 
-### Bridge Discovery Implementation
-
-#### Distance Inversion Algorithm
-- **Novelty Scoring**: Inverse similarity to query (1.0 - cosine_similarity)
-- **Connection Potential**: Maximum similarity to any activated memory
-- **Bridge Score**: Weighted combination (60% novelty + 40% connection potential)
-- **Serendipitous Discovery**: Finds unexpected connections between distant concepts
-
 ### Memory Persistence with SQLite
 
 #### Database Schema
@@ -295,24 +286,12 @@ CREATE TABLE memory_connections (
     FOREIGN KEY (target_id) REFERENCES memories(id)
 );
 
--- Bridge discovery cache
-CREATE TABLE bridge_cache (
-    query_hash TEXT NOT NULL,
-    bridge_memory_id TEXT NOT NULL,
-    bridge_score REAL NOT NULL,
-    novelty_score REAL NOT NULL,
-    connection_potential REAL NOT NULL,
-    created_at DATETIME NOT NULL,
-    PRIMARY KEY (query_hash, bridge_memory_id),
-    FOREIGN KEY (bridge_memory_id) REFERENCES memories(id)
-);
-
 -- Usage statistics for meta-learning
 CREATE TABLE retrieval_stats (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     query_hash TEXT NOT NULL,
     memory_id TEXT NOT NULL,
-    retrieval_type TEXT NOT NULL,  -- core/peripheral/bridge
+    retrieval_type TEXT NOT NULL,  -- core/peripheral
     success_score REAL,
     timestamp DATETIME NOT NULL,
     FOREIGN KEY (memory_id) REFERENCES memories(id)
@@ -323,7 +302,6 @@ CREATE INDEX idx_memories_level ON memories(level);
 CREATE INDEX idx_memories_timestamp ON memories(timestamp);
 CREATE INDEX idx_memories_access_count ON memories(access_count);
 CREATE INDEX idx_connections_strength ON memory_connections(connection_strength);
-CREATE INDEX idx_bridge_cache_query ON bridge_cache(query_hash);
 ```
 
 #### Dual Memory System Implementation
@@ -339,7 +317,6 @@ All critical components are wrapped in abstract interfaces to enable easy swappi
 - **EmbeddingProvider**: Abstract interface supporting ONNX, PyTorch, or cloud providers
 - **VectorStorage**: Qdrant, Chroma, or custom vector database backends
 - **ActivationEngine**: Pluggable memory activation algorithms
-- **BridgeDiscovery**: Swappable serendipity algorithms
 - **MemoryLoader**: Content ingestion from markdown, PDFs, code repositories
 
 ## Implementation Phasing with Technical Details
@@ -357,7 +334,7 @@ All critical components are wrapped in abstract interfaces to enable easy swappi
 cognitive_memory/
 ├── core/
 │   ├── interfaces.py          # Abstract interfaces (EmbeddingProvider, etc.)
-│   ├── memory.py             # CognitiveMemory, BridgeMemory data structures
+│   ├── memory.py             # CognitiveMemory data structures
 │   ├── cognitive_system.py   # Main CognitiveSystem orchestrator
 │   └── config.py             # System configuration
 ├── encoding/
@@ -371,7 +348,6 @@ cognitive_memory/
 ├── retrieval/
 │   ├── contextual_retrieval.py # Main retrieval coordinator
 │   ├── basic_activation.py     # BFS activation spreading
-│   └── bridge_discovery.py     # Serendipitous connections
 ├── git_analysis/
 │   ├── commit.py             # Git commit data structures
 │   ├── commit_loader.py      # Git history to memory conversion
@@ -424,12 +400,10 @@ heimdall/
 - Hierarchical memory organization (L0→L1→L2)
 - BFS activation spreading through Qdrant collections
 - Connection graph tracking in SQLite
-- Simple distance inversion bridge discovery
 
 ### Phase 3: Emergent Intelligence (Weeks 9-12)
 **Technical Deliverables:**
 - Meta-learning controller for adaptive encoding
-- Advanced bridge discovery with attention mechanisms
 - Memory consolidation automation
 - Performance optimization and scaling
 - Comprehensive evaluation metrics
@@ -440,7 +414,6 @@ heimdall/
 - **Memory Encoding**: O(1) per experience with Sentence-BERT
 - **Hierarchical Search**: O(log n) through Qdrant collections
 - **Activation Spreading**: O(k) where k = max_activations (bounded)
-- **Bridge Discovery**: O(m) where m = candidate_memories (limited by sampling)
 
 ### Memory Requirements
 - **Base Embeddings**: 384D float32 = 1.5KB per memory
@@ -459,12 +432,11 @@ heimdall/
 1. **Unit Tests**: Each interface implementation tested independently
 2. **Integration Tests**: End-to-end cognitive workflows
 3. **Performance Tests**: Latency and throughput benchmarks
-4. **Cognitive Tests**: Evaluation of bridge discovery quality
+4. **Cognitive Tests**: Evaluation of retrieval quality
 5. **Regression Tests**: Ensure upgrades maintain cognitive fidelity
 
 ### Evaluation Metrics
 - **Retrieval Quality**: Precision@K, Recall@K for different memory types
-- **Bridge Discovery**: Novelty score, connection relevance, user feedback
 - **Consolidation Success**: Pattern extraction accuracy, compression ratios
 - **System Performance**: Query latency, memory usage, throughput
 
@@ -505,7 +477,6 @@ SQLITE_PATH=./data/cognitive_memory.db
 SENTENCE_BERT_MODEL=all-MiniLM-L6-v2
 LOG_LEVEL=INFO
 ACTIVATION_THRESHOLD=0.7
-BRIDGE_DISCOVERY_K=5
 ```
 
 ### Logging Strategy with Loguru
@@ -513,7 +484,6 @@ BRIDGE_DISCOVERY_K=5
 # Cognitive event logging
 logger.info("Memory formation", experience_id=uuid, dimensions=extracted_dims)
 logger.debug("Activation spreading", activated_count=42, threshold=0.7)
-logger.warning("Bridge discovery yielded no results", query_context=context_summary)
 logger.error("Qdrant connection failed", error=str(e))
 ```
 
@@ -563,7 +533,7 @@ logger.error("Qdrant connection failed", error=str(e))
 │                                                                 │
 │  • Experience processing    • Memory formation                  │
 │  • Context analysis        • Association building              │
-│  • Bridge discovery        • Activation spreading              │
+│  • Memory consolidation    • Activation spreading              │
 └─────────────────────────────────────────────────────────────────┘
          │
          ▼
@@ -578,7 +548,7 @@ logger.error("Qdrant connection failed", error=str(e))
 │ │ Project-    │ │ │ • Memory metadata       │ │ │             │ │
 │ │ Scoped      │ │ │ • Connection graph      │ │ │ Embeddings  │ │
 │ │ Collections │ │ │ • Usage statistics      │ │ │ Sentiment   │ │
-│ │             │ │ │ • Bridge cache          │ │ │ Analysis    │ │
+│ │             │ │ │ • Usage statistics      │ │ │ Analysis    │ │
 │ │ 400D        │ │ │                         │ │ │             │ │
 │ │ Vectors     │ │ │ Relationships & Meta    │ │ │ Cached      │ │
 │ └─────────────┘ │ └─────────────────────────┘ │ └─────────────┘ │
@@ -599,7 +569,6 @@ $ heimdall shell               # Interactive session
 # Daily usage
 cognitive> store "Working on transformer attention mechanisms"
 cognitive> recall "attention patterns"
-cognitive> bridges "neural networks"
 cognitive> exit
 ```
 
@@ -626,7 +595,6 @@ cognitive> exit
   "result": {
     "memory_id": "mem_12345",
     "associations": ["async_programming", "python_concepts"],
-    "bridges": ["javascript_promises", "concurrent_patterns"]
   }
 }
 ```

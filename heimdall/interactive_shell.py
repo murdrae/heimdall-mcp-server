@@ -46,8 +46,6 @@ class CognitiveShellCompleter(Completer):
             "store",
             "retrieve",
             "recall",
-            "bridges",
-            "connect",
             "status",
             "config",
             "consolidate",
@@ -199,7 +197,6 @@ class InteractiveShell:
         self.session_stats = {
             "memories_stored": 0,
             "queries_made": 0,
-            "bridges_discovered": 0,
         }
 
         # Set up prompt_toolkit session with history, styling, and completion
@@ -269,8 +266,7 @@ class InteractiveShell:
             "serendipitous connections.\n\n"
             "[dim]🧠 Memory Types:[/dim]\n"
             "[dim]  🎯 Core: Most relevant to your query[/dim]\n"
-            "[dim]  🌐 Peripheral: Contextual associations[/dim]\n"
-            "[dim]  🌉 Bridge: Creative connections between distant concepts[/dim]\n\n"
+            "[dim]  🌐 Peripheral: Contextual associations[/dim]\n\n"
             "[dim]💡 Tips:[/dim]\n"
             "[dim]  • Type 'help' for commands, 'quit' to exit[/dim]\n"
             "[dim]  • Use TAB for command and path completion[/dim]\n"
@@ -331,21 +327,6 @@ class InteractiveShell:
                     self.console.print("[bold red]❌ Please provide a query[/bold red]")
             else:
                 self.console.print("[bold red]❌ Please provide a query[/bold red]")
-
-        # Bridge discovery
-        elif command.startswith("bridges ") or command.startswith("connect "):
-            # Use original command to preserve case in queries
-            query = (
-                original_command.split(" ", 1)[1].strip()
-                if " " in original_command
-                else ""
-            )
-            if query:
-                self._discover_bridges(query)
-            else:
-                self.console.print(
-                    "[bold red]❌ Please provide a query for bridge discovery[/bold red]"
-                )
 
         # System status
         elif command in ["status", "stats"]:
@@ -473,7 +454,7 @@ class InteractiveShell:
             ),
             (
                 "retrieve <query> [--full]",
-                "Retrieve all memory types (core/peripheral/bridge)",
+                "Retrieve all memory types (core/peripheral)",
                 "retrieve 'machine learning' --full",
             ),
             (
@@ -481,12 +462,6 @@ class InteractiveShell:
                 "Same as retrieve",
                 "recall 'debugging issues' --full",
             ),
-            (
-                "bridges <query>",
-                "Focus on bridge connections only",
-                "bridges 'programming'",
-            ),
-            ("connect <query>", "Same as bridges", "connect 'algorithms'"),
             ("status", "Show system status", "status"),
             ("config", "Show configuration", "config"),
             ("consolidate", "Organize memories", "consolidate"),
@@ -556,7 +531,7 @@ class InteractiveShell:
 
             result = self.operations.retrieve_memories(
                 query=query,
-                types=["core", "peripheral", "bridge"],
+                types=["core", "peripheral"],
                 limit=10,
             )
 
@@ -571,7 +546,6 @@ class InteractiveShell:
             memories_by_type = {
                 "core": result.get("core", []),
                 "peripheral": result.get("peripheral", []),
-                "bridge": result.get("bridge", []),
             }
             total_results = result["total_count"]
 
@@ -594,22 +568,12 @@ class InteractiveShell:
                     elif memory_type == "peripheral":
                         border_style = "dim"
                         title_style = "🌐 PERIPHERAL MEMORIES"
-                    elif memory_type == "bridge":
-                        border_style = "magenta"
-                        title_style = "🌉 BRIDGE MEMORIES"
                     else:
                         border_style = "white"
                         title_style = f"{memory_type.upper()} MEMORIES"
 
-                    # Use bridge-specific formatting for bridge memories
-                    if memory_type == "bridge":
-                        content = self._format_bridges(
-                            memories, full_output=full_output
-                        )
-                    else:
-                        content = self._format_memories(
-                            memories, full_output=full_output
-                        )
+                    # Format memories for display
+                    content = self._format_memories(memories, full_output=full_output)
 
                     type_panel = Panel(
                         content,
@@ -621,44 +585,6 @@ class InteractiveShell:
         except Exception as e:
             self.console.print(
                 f"[bold red]❌ Error retrieving memories: {e}[/bold red]"
-            )
-
-    def _discover_bridges(self, query: str) -> None:
-        """Discover bridge connections using operations layer."""
-        try:
-            self.session_stats["bridges_discovered"] += 1
-
-            result = self.operations.retrieve_memories(
-                query=query,
-                types=["bridge"],
-                limit=5,
-            )
-
-            if not result["success"]:
-                error_msg = result.get("error", "Unknown error")
-                self.console.print(
-                    f"[bold red]❌ Error discovering bridges: {error_msg}[/bold red]"
-                )
-                return
-
-            bridges = result.get("bridge", [])
-
-            if not bridges:
-                self.console.print(
-                    "[bold yellow]🌉 No bridge connections found[/bold yellow]"
-                )
-                return
-
-            bridge_panel = Panel(
-                self._format_bridges(bridges),
-                title=f"🌉 BRIDGE CONNECTIONS ({len(bridges)})",
-                border_style="magenta",
-            )
-            self.console.print(bridge_panel)
-
-        except Exception as e:
-            self.console.print(
-                f"[bold red]❌ Error discovering bridges: {e}[/bold red]"
             )
 
     def _show_status(self) -> None:
@@ -692,10 +618,6 @@ class InteractiveShell:
                 status_table.add_row(
                     "Activation Threshold",
                     str(system_config.get("activation_threshold", "N/A")),
-                )
-                status_table.add_row(
-                    "Bridge Discovery K",
-                    str(system_config.get("bridge_discovery_k", "N/A")),
                 )
 
             # Vector database info
@@ -930,7 +852,6 @@ class InteractiveShell:
             memories_by_type = {
                 "core": result.get("core", []),
                 "peripheral": result.get("peripheral", []),
-                "bridge": result.get("bridge", []),
             }
             total_results = result["total_count"]
 
@@ -967,9 +888,7 @@ class InteractiveShell:
             "Memories Stored", str(self.session_stats["memories_stored"])
         )
         summary_table.add_row("Queries Made", str(self.session_stats["queries_made"]))
-        summary_table.add_row(
-            "Bridges Discovered", str(self.session_stats["bridges_discovered"])
-        )
+        summary_table.add_row()
 
         self.console.print(summary_table)
 
@@ -1049,58 +968,6 @@ class InteractiveShell:
 
         return "\n".join(preview_lines)
 
-    def _format_bridges(self, bridges: list[Any], full_output: bool = False) -> str:
-        """Format bridge connections for display (legacy method for compatibility)."""
-        lines = []
-        for i, bridge_item in enumerate(bridges, 1):
-            # Handle BridgeMemory objects properly
-            if hasattr(bridge_item, "memory"):
-                # This is a BridgeMemory object
-                memory = bridge_item.memory
-                if full_output:
-                    content = memory.content.strip()
-                else:
-                    content = (
-                        memory.content[:80] + "..."
-                        if len(memory.content) > 80
-                        else memory.content
-                    )
-                lines.append(f"{i}. {content}")
-                lines.append(
-                    f"   Novelty: {bridge_item.novelty_score:.2f}, "
-                    f"Connection: {bridge_item.connection_potential:.2f}, "
-                    f"Bridge Score: {bridge_item.bridge_score:.2f}"
-                )
-                if bridge_item.explanation:
-                    lines.append(f"   {bridge_item.explanation}")
-
-                # Add source information for bridge memories
-                source_info = format_source_info(memory)
-                if source_info:
-                    lines.append(f"   Source: {source_info}")
-            else:
-                # Fallback for regular CognitiveMemory objects (backward compatibility)
-                if full_output:
-                    content = bridge_item.content.strip()
-                else:
-                    content = (
-                        bridge_item.content[:80] + "..."
-                        if len(bridge_item.content) > 80
-                        else bridge_item.content
-                    )
-                lines.append(f"{i}. {content}")
-                lines.append(
-                    f"   Novelty: {getattr(bridge_item, 'novelty_score', 0):.2f}, "
-                    f"Connection: {getattr(bridge_item, 'connection_potential', 0):.2f}"
-                )
-
-                # Add source information for bridge memories (fallback case)
-                source_info = format_source_info(bridge_item)
-                if source_info:
-                    lines.append(f"   Source: {source_info}")
-            lines.append("")  # Empty line for separation
-        return "\n".join(lines)
-
     def _format_memories_from_data(
         self, memories: list[dict], full_output: bool = False
     ) -> str:
@@ -1139,59 +1006,6 @@ class InteractiveShell:
             lines.append(
                 f"   ID: {memory_id}, Level: L{hierarchy_level}, Strength: {score:.2f}"
             )
-
-            # Source information from metadata
-            source_path = metadata.get("source_path")
-            source_type = metadata.get("source_type")
-            if source_path or source_type:
-                source_info = ""
-                if source_type:
-                    source_info += source_type
-                if source_path:
-                    if source_info:
-                        source_info += f": {source_path}"
-                    else:
-                        source_info = source_path
-                lines.append(f"   Source: {source_info}")
-
-            lines.append("")  # Empty line for separation
-
-        return "\n".join(lines)
-
-    def _format_bridges_from_data(
-        self, bridges: list[dict], full_output: bool = False
-    ) -> str:
-        """Format bridge connections from structured data returned by operations layer."""
-        lines = []
-        for i, bridge_data in enumerate(bridges, 1):
-            # Extract data from structured bridge dict
-            bridge_data.get("id", "unknown")
-            content = bridge_data.get("content", "")
-            metadata = bridge_data.get("metadata", {})
-
-            # Bridge-specific scores
-            novelty_score = bridge_data.get("novelty_score", 0.0)
-            connection_potential = bridge_data.get("connection_potential", 0.0)
-            bridge_score = bridge_data.get("bridge_score", 0.0)
-            explanation = bridge_data.get("explanation", "")
-
-            # Format content
-            if full_output:
-                formatted_content = content.strip()
-            else:
-                formatted_content = (
-                    content[:80] + "..." if len(content) > 80 else content
-                )
-
-            lines.append(f"{i}. {formatted_content}")
-            lines.append(
-                f"   Novelty: {novelty_score:.2f}, "
-                f"Connection: {connection_potential:.2f}, "
-                f"Bridge Score: {bridge_score:.2f}"
-            )
-
-            if explanation:
-                lines.append(f"   {explanation}")
 
             # Source information from metadata
             source_path = metadata.get("source_path")

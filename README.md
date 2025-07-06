@@ -145,7 +145,7 @@ graph TD
 
         %% 4. Output Formatting
         style Formatted_Response fill:#fff9c4,stroke:#fbc02d,color:#212121
-        Formatted_Response["📦 Formatted MCP Response<br/><i>{ core, peripheral, bridge }</i>"]
+        Formatted_Response["📦 Formatted MCP Response<br/><i>{ core, peripheral }</i>"]
 
         %% Define internal flow
         MCP_Server -- calls --> CLI

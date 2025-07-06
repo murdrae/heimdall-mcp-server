@@ -8,7 +8,6 @@ processing through associative thinking, serendipitous connections, and emergent
 from . import core, encoding, retrieval, storage
 from .core import (
     ActivationResult,
-    BridgeMemory,
     CognitiveMemory,
     SearchResult,
     get_config,
@@ -22,7 +21,6 @@ try:
 
     __all__ = [
         "ActivationResult",
-        "BridgeMemory",
         "CognitiveMemory",
         "SearchResult",
         "get_config",
@@ -37,7 +35,6 @@ try:
 except ImportError:
     __all__ = [
         "ActivationResult",
-        "BridgeMemory",
         "CognitiveMemory",
         "SearchResult",
         "get_config",

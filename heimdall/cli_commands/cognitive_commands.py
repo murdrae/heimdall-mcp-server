@@ -66,7 +66,7 @@ def store_experience(
 def recall_memories(
     query: str = typer.Argument(..., help="Query to search for in memories"),
     types: list[str] = typer.Option(
-        None, "--types", help="Memory types to retrieve (core, peripheral, bridge)"
+        None, "--types", help="Memory types to retrieve (core, peripheral)"
     ),
     limit: int = typer.Option(10, "--limit", help="Maximum results per type"),
     json_output: bool = typer.Option(False, "--json", help="Output in JSON format"),
@@ -100,7 +100,7 @@ def recall_memories(
             console.print(f"🔍 Query: [bold cyan]{query}[/bold cyan]")
             console.print(f"📊 Total results: {results['total_count']}")
 
-            for memory_type in ["core", "peripheral", "bridge"]:
+            for memory_type in ["core", "peripheral"]:
                 memories = results[memory_type]
                 if memories:
                     console.print(
@@ -109,13 +109,7 @@ def recall_memories(
 
                     for i, memory in enumerate(memories, 1):
                         # Handle different memory object types
-                        if hasattr(memory, "memory") and hasattr(
-                            memory.memory, "content"
-                        ):
-                            # This is a BridgeMemory object
-                            content = memory.memory.content
-                            score = getattr(memory, "bridge_score", "N/A")
-                        elif hasattr(memory, "content"):
+                        if hasattr(memory, "content"):
                             # This is a CognitiveMemory object
                             content = memory.content
                             score = getattr(memory, "similarity_score", "N/A")

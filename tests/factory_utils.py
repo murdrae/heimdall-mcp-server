@@ -13,7 +13,6 @@ import numpy as np
 from cognitive_memory.core.config import SystemConfig
 from cognitive_memory.core.interfaces import (
     ActivationEngine,
-    BridgeDiscovery,
     CognitiveSystem,
     ConnectionGraph,
     EmbeddingProvider,
@@ -22,7 +21,6 @@ from cognitive_memory.core.interfaces import (
 )
 from cognitive_memory.core.memory import (
     ActivationResult,
-    BridgeMemory,
     CognitiveMemory,
     SearchResult,
 )
@@ -318,21 +316,6 @@ class MockActivationEngine(ActivationEngine):
         return self.activation_result
 
 
-class MockBridgeDiscovery(BridgeDiscovery):
-    """Mock bridge discovery for testing factory pattern."""
-
-    def __init__(self):
-        self.bridge_results: list[BridgeMemory] = []
-        self.call_count = 0
-
-    def discover_bridges(
-        self, context: np.ndarray, activated: list[CognitiveMemory], k: int = 5
-    ) -> list[BridgeMemory]:
-        """Return mock bridge results."""
-        self.call_count += 1
-        return self.bridge_results[:k]
-
-
 class MockCognitiveSystem(CognitiveSystem):
     """Mock cognitive system for testing factory pattern."""
 
@@ -407,7 +390,6 @@ def create_partial_mock_system(**real_components) -> dict[str, Any]:
         "memory_storage": MockMemoryStorage(),
         "connection_graph": MockConnectionGraph(),
         "activation_engine": MockActivationEngine(),
-        "bridge_discovery": MockBridgeDiscovery(),
     }
 
     # Override with real components
@@ -488,12 +470,6 @@ def run_factory_creation_test(factory_func, *args, **kwargs) -> FactoryTestResul
             ).__name__
             validation_results["activation_engine"] = isinstance(
                 system.activation_engine, ActivationEngine
-            )
-
-        if hasattr(system, "bridge_discovery"):
-            component_types["bridge_discovery"] = type(system.bridge_discovery).__name__
-            validation_results["bridge_discovery"] = isinstance(
-                system.bridge_discovery, BridgeDiscovery
             )
 
         # Test basic functionality
@@ -595,7 +571,6 @@ class MockDependencyProvider:
             "memory_storage": MockMemoryStorage(),
             "connection_graph": MockConnectionGraph(),
             "activation_engine": MockActivationEngine(),
-            "bridge_discovery": MockBridgeDiscovery(),
         }
 
         return mock_components.get(component_type)

@@ -49,7 +49,6 @@ class TestDatabaseManager:
                     "schema_migrations",
                     "memories",
                     "memory_connections",
-                    "bridge_cache",
                     "retrieval_stats",
                 }
 
@@ -76,7 +75,6 @@ class TestDatabaseManager:
                 expected_migrations = [
                     "001_memories",
                     "002_memory_connections",
-                    "003_bridge_cache",
                     "004_retrieval_stats",
                     "005_add_embedding_column",
                     "006_source_path_index",
@@ -116,7 +114,6 @@ class TestDatabaseManager:
 
             assert "memories_count" in stats
             assert "memory_connections_count" in stats
-            assert "bridge_cache_count" in stats
             assert "retrieval_stats_count" in stats
             assert "database_size_bytes" in stats
 

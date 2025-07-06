@@ -2,7 +2,7 @@
 SQLite persistence layer for cognitive memory metadata and connection graph.
 
 This module implements structured data storage using SQLite with a complete
-database schema for memory metadata, connection graphs, bridge cache, and
+database schema for memory metadata, connection graphs, and
 retrieval statistics to support the cognitive memory system.
 """
 
@@ -151,7 +151,6 @@ class DatabaseManager:
                 tables = [
                     "memories",
                     "memory_connections",
-                    "bridge_cache",
                     "retrieval_stats",
                 ]
 

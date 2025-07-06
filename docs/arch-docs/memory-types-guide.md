@@ -2,9 +2,9 @@
 
 ## Overview
 
-The Cognitive Memory System categorizes retrieved memories into three distinct types that mirror how human memory and cognition work. This tri-fold classification enables both focused recall and serendipitous discovery, creating a truly cognitive approach to information retrieval.
+The Cognitive Memory System categorizes retrieved memories into two distinct types that mirror how human memory and cognition work. This dual classification enables both focused recall and contextual discovery, creating a truly cognitive approach to information retrieval.
 
-## The Three Memory Types
+## The Two Memory Types
 
 ### 🎯 Core Memories
 
@@ -55,29 +55,6 @@ Peripheral memories have moderate activation strength and often include:
   - Data preprocessing techniques
   - Your experience with Python libraries
 
-### 🌉 Bridge Memories
-
-**Definition**: Memories that create unexpected connections between distant concepts through low direct similarity but high connection potential, enabling serendipitous discoveries.
-
-**Characteristics**:
-- **Special Algorithm**: Distance inversion + connection potential
-- **Purpose**: Creative insights and novel associations
-- **Visual Style**: Magenta border in interactive shell
-- **Cognitive Role**: Innovation and creative problem-solving
-
-**How They're Determined**:
-Bridge memories use a unique algorithm that looks for:
-- **Low Direct Similarity**: Memories not obviously related to your query
-- **High Connection Potential**: Strong links to your activated memories
-- **Novelty Score**: Calculated as `1.0 - similarity_to_query`
-- **Bridge Score**: `(novelty_weight × novelty) + (connection_weight × connection_potential)`
-
-**Examples**:
-- **Query**: "machine learning algorithms"
-- **Bridge Memories**:
-  - Cooking recipes (both involve optimization and iteration)
-  - Musical composition (pattern recognition and structure)
-  - Gardening notes (growth processes and feedback loops)
 
 ## Technical Implementation
 
@@ -101,11 +78,6 @@ if activation_strength >= 0.7:
     → Core Memory
 elif activation_strength >= 0.5:
     → Peripheral Memory
-
-# Bridge memories use separate algorithm:
-bridge_score = (0.6 × novelty) + (0.4 × connection_potential)
-if bridge_score >= threshold:
-    → Bridge Memory
 ```
 
 ### Configuration
@@ -116,11 +88,6 @@ Default thresholds can be configured via environment variables:
 # Core/Peripheral thresholds
 ACTIVATION_THRESHOLD=0.7        # Core threshold
 PERIPHERAL_THRESHOLD=0.5        # Peripheral threshold
-
-# Bridge discovery settings
-BRIDGE_DISCOVERY_K=5           # Number of bridge candidates
-BRIDGE_NOVELTY_WEIGHT=0.6      # Weight for novelty score
-BRIDGE_CONNECTION_WEIGHT=0.4   # Weight for connection potential
 ```
 
 ## Usage in Different Interfaces
@@ -132,11 +99,6 @@ BRIDGE_CONNECTION_WEIGHT=0.4   # Weight for connection potential
 cognitive> retrieve "neural networks"
 🎯 CORE MEMORIES (3)
 🌐 PERIPHERAL MEMORIES (5)
-🌉 BRIDGE MEMORIES (2)
-
-# Focus on bridges only
-cognitive> bridges "neural networks"
-🌉 BRIDGE MEMORIES (2)
 ```
 
 ### Command Line Interface
@@ -146,8 +108,8 @@ cognitive> bridges "neural networks"
 memory_system load retrieve "neural networks"
 
 # Specific types only
-memory_system retrieve "neural networks" --types core peripheral
-memory_system retrieve "neural networks" --types bridge
+memory_system retrieve "neural networks" --types core
+memory_system retrieve "neural networks" --types peripheral
 ```
 
 ### Programmatic API
@@ -156,59 +118,45 @@ memory_system retrieve "neural networks" --types bridge
 # Retrieve all types
 results = cognitive_system.retrieve_memories(
     query="neural networks",
-    types=["core", "peripheral", "bridge"],
+    types=["core", "peripheral"],
     max_results=10
 )
 
 # Access by type
 core_memories = results["core"]
 peripheral_memories = results["peripheral"]
-bridge_memories = results["bridge"]
 ```
 
 ## Cognitive Psychology Background
 
-This three-tier system is inspired by research in cognitive psychology and memory science:
+This two-tier system is inspired by research in cognitive psychology and memory science:
 
 ### Spreading Activation Theory
 - **Core memories**: Direct activation from query concepts
 - **Peripheral memories**: Secondary activation through associative links
-- **Bridge memories**: Cross-domain activation and creative insight
 
 ### Dual-Process Theory
-- **System 1 (Fast)**: Core and peripheral memories for quick, contextual responses
-- **System 2 (Slow)**: Bridge memories for deliberate, creative connections
-
-### Serendipity in Information Systems
-Bridge memories implement computational serendipity by:
-- Breaking out of similarity-based "filter bubbles"
-- Connecting disparate knowledge domains
-- Enabling unexpected insights and innovation
+- **System 1 (Fast)**: Core memories for quick, direct responses
+- **System 2 (Slow)**: Peripheral memories for contextual understanding and broader connections
 
 ## Best Practices
 
 ### For Query Formulation
 - **Specific queries** tend to produce more core memories
-- **Broad queries** generate more peripheral and bridge connections
-- **Abstract concepts** often yield interesting bridge discoveries
+- **Broad queries** generate more peripheral connections
+- **Abstract concepts** often yield more peripheral associations
 
 ### For Memory Storage
 - **Rich metadata** improves classification accuracy
-- **Diverse content** increases bridge discovery potential
+- **Diverse content** increases peripheral connection potential
 - **Regular use** strengthens memory activation patterns
 
 ### For System Configuration
 - **Lower thresholds** (0.6/0.4) for more inclusive results
 - **Higher thresholds** (0.8/0.6) for more focused results
-- **Adjust bridge weights** based on creativity vs relevance needs
 
 ## Troubleshooting
 
-### No Bridge Memories Found
-- Check if sufficient memories are loaded
-- Verify bridge discovery is enabled
-- Consider lowering bridge discovery threshold
-- Ensure diverse content for cross-domain connections
 
 ### Too Many Peripheral Memories
 - Increase peripheral threshold in configuration
@@ -297,4 +245,4 @@ cognitive> cleanup
 
 ---
 
-*The Cognitive Memory System implements these memory types to create human-like information retrieval that balances precision, context, and creativity - enabling both focused research and serendipitous discovery.*
+*The Cognitive Memory System implements these memory types to create human-like information retrieval that balances precision and context - enabling both focused research and contextual discovery.*

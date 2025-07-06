@@ -3,7 +3,6 @@
 from .config import SystemConfig, get_config
 from .interfaces import (
     ActivationEngine,
-    BridgeDiscovery,
     CognitiveSystem,
     ConnectionGraph,
     DimensionExtractor,
@@ -12,7 +11,7 @@ from .interfaces import (
     VectorStorage,
 )
 from .logging_setup import log_cognitive_event, setup_logging
-from .memory import ActivationResult, BridgeMemory, CognitiveMemory, SearchResult
+from .memory import ActivationResult, CognitiveMemory, SearchResult
 
 __all__ = [
     "SystemConfig",
@@ -20,11 +19,9 @@ __all__ = [
     "CognitiveMemory",
     "SearchResult",
     "ActivationResult",
-    "BridgeMemory",
     "EmbeddingProvider",
     "VectorStorage",
     "ActivationEngine",
-    "BridgeDiscovery",
     "DimensionExtractor",
     "MemoryStorage",
     "ConnectionGraph",

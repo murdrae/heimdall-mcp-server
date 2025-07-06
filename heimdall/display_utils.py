@@ -122,68 +122,40 @@ def format_memory_results_json(result_data: dict[str, Any]) -> str:
     }
 
     # Process each memory type
-    for memory_type in ["core", "peripheral", "bridge"]:
+    for memory_type in ["core", "peripheral"]:
         memories = result_data.get(memory_type, [])
         if memories:
             formatted_results["memories"][memory_type] = []
 
             for memory_item in memories:
-                if memory_type == "bridge" and hasattr(memory_item, "memory"):
-                    # Handle BridgeMemory objects
-                    bridge_mem = memory_item
-                    memory = bridge_mem.memory
+                # Handle regular memory objects
+                memory = memory_item
+                if hasattr(memory_item, "memory"):
+                    memory = memory_item.memory
 
-                    memory_data = {
-                        "type": "bridge",
-                        "content": memory.content,
-                        "metadata": {
-                            "id": memory.id,
-                            "hierarchy_level": memory.hierarchy_level,
-                            "memory_type": memory.memory_type,
-                            "novelty_score": round(bridge_mem.novelty_score, 3),
-                            "bridge_score": round(bridge_mem.bridge_score, 3),
-                            "connection_potential": round(
-                                bridge_mem.connection_potential, 3
-                            ),
-                            "source": format_source_info(memory),
-                            "created_date": memory.created_date.isoformat()
-                            if memory.created_date
-                            else None,
-                            "last_accessed": memory.last_accessed.isoformat()
-                            if memory.last_accessed
-                            else None,
-                            "access_count": memory.access_count,
-                            "importance_score": memory.importance_score,
-                            "tags": memory.tags,
-                        },
-                    }
+                memory_data = {
+                    "type": memory_type,
+                    "content": memory.content,
+                    "metadata": {
+                        "id": memory.id,
+                        "hierarchy_level": memory.hierarchy_level,
+                        "memory_type": memory.memory_type,
+                        "source": format_source_info(memory),
+                        "created_date": memory.created_date.isoformat()
+                        if memory.created_date
+                        else None,
+                        "last_accessed": memory.last_accessed.isoformat()
+                        if memory.last_accessed
+                        else None,
+                        "access_count": memory.access_count,
+                        "importance_score": memory.importance_score,
+                        "tags": memory.tags,
+                    },
+                }
 
-                else:
-                    # Handle regular CognitiveMemory objects
-                    memory = memory_item
-
-                    # Use similarity score from metadata if available, otherwise fallback to memory strength
-                    score = memory.metadata.get("similarity_score", memory.strength)
-
-                    memory_data = {
-                        "type": memory.memory_type,
-                        "content": memory.content,
-                        "metadata": {
-                            "id": memory.id,
-                            "hierarchy_level": memory.hierarchy_level,
-                            "strength": round(score, 3),
-                            "source": format_source_info(memory),
-                            "created_date": memory.created_date.isoformat()
-                            if memory.created_date
-                            else None,
-                            "last_accessed": memory.last_accessed.isoformat()
-                            if memory.last_accessed
-                            else None,
-                            "access_count": memory.access_count,
-                            "importance_score": memory.importance_score,
-                            "tags": memory.tags,
-                        },
-                    }
+                # Use similarity score from metadata if available, otherwise fallback to memory strength
+                score = memory.metadata.get("similarity_score", memory.strength)
+                memory_data["metadata"]["strength"] = round(score, 3)
 
                 formatted_results["memories"][memory_type].append(memory_data)
 

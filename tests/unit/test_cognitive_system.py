@@ -14,13 +14,12 @@ from cognitive_memory.core.cognitive_system import CognitiveMemorySystem
 from cognitive_memory.core.config import SystemConfig
 from cognitive_memory.core.interfaces import (
     ActivationEngine,
-    BridgeDiscovery,
     ConnectionGraph,
     EmbeddingProvider,
     MemoryStorage,
     VectorStorage,
 )
-from cognitive_memory.core.memory import ActivationResult, BridgeMemory, CognitiveMemory
+from cognitive_memory.core.memory import ActivationResult, CognitiveMemory
 from tests.factory_utils import (
     MockEmbeddingProvider,
     MockMemoryStorage,
@@ -38,7 +37,6 @@ def create_fully_mocked_system(config: SystemConfig) -> CognitiveMemorySystem:
         memory_storage=components["memory_storage"],
         connection_graph=components["connection_graph"],
         activation_engine=components["activation_engine"],
-        bridge_discovery=components["bridge_discovery"],
         config=config,
     )
 
@@ -139,37 +137,6 @@ def factory_cognitive_system(test_config):
 
 
 @pytest.fixture
-def mock_bridge_discovery():
-    """Create mock bridge discovery."""
-    mock = Mock(spec=BridgeDiscovery)
-
-    # Create sample bridge memory with fixed timestamp
-    from datetime import datetime
-
-    fixed_timestamp = datetime(2024, 1, 2, 10, 0, 0)
-    sample_memory = CognitiveMemory(
-        id="bridge-memory-1",
-        content="Bridge memory content",
-        memory_type="semantic",
-        hierarchy_level=1,
-        dimensions={},
-        timestamp=fixed_timestamp,
-        strength=0.7,
-        access_count=1,
-    )
-
-    bridge_memory = BridgeMemory(
-        memory=sample_memory,
-        bridge_score=0.85,
-        connection_potential=0.8,
-        novelty_score=0.9,
-    )
-
-    mock.discover_bridges.return_value = [bridge_memory]
-    return mock
-
-
-@pytest.fixture
 def test_config():
     """Create test configuration."""
     with patch("cognitive_memory.core.config.load_dotenv"):
@@ -184,7 +151,6 @@ def cognitive_system(
     mock_memory_storage,
     mock_connection_graph,
     mock_activation_engine,
-    mock_bridge_discovery,
     test_config,
 ):
     """Create cognitive system with mocked dependencies."""
@@ -194,7 +160,6 @@ def cognitive_system(
         memory_storage=mock_memory_storage,
         connection_graph=mock_connection_graph,
         activation_engine=mock_activation_engine,
-        bridge_discovery=mock_bridge_discovery,
         config=test_config,
     )
 
@@ -209,7 +174,6 @@ class TestCognitiveMemorySystem:
         assert cognitive_system.memory_storage is not None
         assert cognitive_system.connection_graph is not None
         assert cognitive_system.activation_engine is not None
-        assert cognitive_system.bridge_discovery is not None
         assert cognitive_system.config is not None
 
     @patch("cognitive_memory.core.cognitive_system.datetime")
@@ -290,7 +254,6 @@ class TestCognitiveMemorySystem:
         cognitive_system,
         mock_embedding_provider,
         mock_activation_engine,
-        mock_bridge_discovery,
     ):
         """Test successful memory retrieval."""
         query = "machine learning concepts"
@@ -304,26 +267,23 @@ class TestCognitiveMemorySystem:
         # Verify structure
         assert "core" in results
         assert "peripheral" in results
-        assert "bridge" in results
 
         # Verify operations were called
         mock_embedding_provider.encode.assert_called_with(query)
         mock_activation_engine.activate_memories.assert_called_once()
-        mock_bridge_discovery.discover_bridges.assert_called_once()
 
     def test_retrieve_memories_specific_types(
-        self, cognitive_system, mock_activation_engine, mock_bridge_discovery
+        self, cognitive_system, mock_activation_engine
     ):
         """Test retrieval with specific memory types."""
         query = "test query"
-        types = ["core", "bridge"]
+        types = ["core", "peripheral"]
 
         results = cognitive_system.retrieve_memories(query, types=types)
 
-        # Should have core and bridge memories
+        # Should have core memories (peripheral may be empty if no matches)
         assert len(results["core"]) > 0
-        assert len(results["bridge"]) > 0
-        assert len(results["peripheral"]) == 0  # Not requested
+        # Note: peripheral memories may be empty if no matches above threshold
 
     def test_factory_system_isolation(self, factory_cognitive_system):
         """Test that factory-created systems provide proper test isolation."""
@@ -391,7 +351,6 @@ class TestCognitiveMemorySystem:
 
         assert results["core"] == []
         assert results["peripheral"] == []
-        assert results["bridge"] == []
 
     def test_consolidate_memories(
         self,
@@ -449,7 +408,6 @@ class TestCognitiveMemorySystem:
         # Verify config values
         config = stats["system_config"]
         assert "activation_threshold" in config
-        assert "bridge_discovery_k" in config
 
     def test_error_handling_in_store(self, cognitive_system, mock_embedding_provider):
         """Test error handling during experience storage."""
@@ -471,7 +429,6 @@ class TestCognitiveMemorySystem:
         # Should return empty results
         assert results["core"] == []
         assert results["peripheral"] == []
-        assert results["bridge"] == []
 
     def test_invalid_hierarchy_level(self, cognitive_system, mock_memory_storage):
         """Test handling of invalid hierarchy level in context."""

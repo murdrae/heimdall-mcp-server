@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from cognitive_memory.core.memory import BridgeMemory, CognitiveMemory
+from cognitive_memory.core.memory import CognitiveMemory
 
 # Add project root to path to find heimdall module
 project_root = Path(__file__).parent.parent.parent.parent
@@ -186,12 +186,9 @@ class TestCognitiveOperations:
             # Arrange
             mock_memory1 = Mock(spec=CognitiveMemory)
             mock_memory2 = Mock(spec=CognitiveMemory)
-            mock_bridge = Mock(spec=BridgeMemory)
-
             mock_cognitive_system.retrieve_memories.return_value = {
                 "core": [mock_memory1],
                 "peripheral": [mock_memory2],
-                "bridge": [mock_bridge],
             }
 
             # Act
@@ -200,14 +197,13 @@ class TestCognitiveOperations:
             # Assert
             assert result["success"] is True
             assert result["query"] == "test query"
-            assert result["total_count"] == 3
+            assert result["total_count"] == 2
             assert len(result["core"]) == 1
             assert len(result["peripheral"]) == 1
-            assert len(result["bridge"]) == 1
             assert result["error"] is None
             mock_cognitive_system.retrieve_memories.assert_called_once_with(
                 query="test query",
-                types=["core", "peripheral", "bridge"],
+                types=["core", "peripheral"],
                 max_results=5,
             )
 
@@ -220,7 +216,6 @@ class TestCognitiveOperations:
             mock_cognitive_system.retrieve_memories.return_value = {
                 "core": [mock_memory],
                 "peripheral": [],
-                "bridge": [],
             }
 
             # Act
@@ -244,7 +239,6 @@ class TestCognitiveOperations:
             assert result["error"] == "Empty query provided"
             assert result["core"] == []
             assert result["peripheral"] == []
-            assert result["bridge"] == []
             mock_cognitive_system.retrieve_memories.assert_not_called()
 
         def test_retrieve_memories_whitespace_query(
@@ -267,7 +261,7 @@ class TestCognitiveOperations:
             mock_memory = Mock()
             mock_cognitive_system.retrieve_memories.return_value = {
                 "core": [mock_memory],
-                # Missing peripheral and bridge keys
+                # Missing peripheral key
             }
 
             # Act
@@ -279,7 +273,6 @@ class TestCognitiveOperations:
             assert len(result["core"]) == 1
             assert result["core"][0] is mock_memory
             assert result["peripheral"] == []  # Should default to empty list
-            assert result["bridge"] == []  # Should default to empty list
 
         def test_retrieve_memories_system_exception(
             self, operations, mock_cognitive_system
@@ -297,7 +290,7 @@ class TestCognitiveOperations:
             assert result["success"] is False
             assert result["total_count"] == 0
             assert result["error"] == "Retrieval error"
-            assert all(result[key] == [] for key in ["core", "peripheral", "bridge"])
+            assert all(result[key] == [] for key in ["core", "peripheral"])
 
     class TestGetSystemStatus:
         """Tests for get_system_status method."""
