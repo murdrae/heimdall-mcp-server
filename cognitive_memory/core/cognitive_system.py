@@ -249,20 +249,42 @@ class CognitiveMemorySystem(CognitiveSystem):
                 if "core" in types:
                     core_memories = []
                     for result in top_results[:half]:
-                        # Store similarity score in metadata for display
-                        result.memory.metadata["similarity_score"] = (
-                            result.similarity_score
+                        # Retrieve complete memory object from SQLite storage to get tags
+                        complete_memory = self.memory_storage.retrieve_memory(
+                            result.memory.id
                         )
-                        core_memories.append(result.memory)
+                        if complete_memory:
+                            # Store similarity score in metadata for display
+                            complete_memory.metadata["similarity_score"] = (
+                                result.similarity_score
+                            )
+                            core_memories.append(complete_memory)
+                        else:
+                            # Fallback to incomplete memory if SQLite retrieval fails
+                            result.memory.metadata["similarity_score"] = (
+                                result.similarity_score
+                            )
+                            core_memories.append(result.memory)
                     results["core"].extend(core_memories)
                 if "peripheral" in types:
                     peripheral_memories = []
                     for result in top_results[half:]:
-                        # Store similarity score in metadata for display
-                        result.memory.metadata["similarity_score"] = (
-                            result.similarity_score
+                        # Retrieve complete memory object from SQLite storage to get tags
+                        complete_memory = self.memory_storage.retrieve_memory(
+                            result.memory.id
                         )
-                        peripheral_memories.append(result.memory)
+                        if complete_memory:
+                            # Store similarity score in metadata for display
+                            complete_memory.metadata["similarity_score"] = (
+                                result.similarity_score
+                            )
+                            peripheral_memories.append(complete_memory)
+                        else:
+                            # Fallback to incomplete memory if SQLite retrieval fails
+                            result.memory.metadata["similarity_score"] = (
+                                result.similarity_score
+                            )
+                            peripheral_memories.append(result.memory)
                     results["peripheral"].extend(peripheral_memories)
 
             # Log retrieval statistics
