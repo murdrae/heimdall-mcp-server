@@ -307,6 +307,27 @@ Heimdall MCP server is compatible with any platform that supports STDIO MCP serv
   * [x] ~~Simplify installation~~ ✅ **Completed**
   * [x] ~~Delete memories support (manually or by tags - for md docs already supported)~~ ✅ **Completed**
 
-## License
+## 🤝 Contributing
 
-This project is licensed under the Apache 2.0 License.
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
+
+- Setting up the development environment
+- Our dual licensing model
+- Code style guidelines
+- Pull request process
+
+**Important:** All contributors must agree to our [Contributor License Agreement](CLA.md) before their contributions can be merged.
+
+### Quick Start for Contributors
+
+1. Fork the repository
+2. Create a feature branch targeting `dev` (not `main`)
+3. Make your changes following our style guidelines
+4. Submit a pull request with the provided template
+5. Sign the CLA when prompted by the CLA Assistant
+
+For questions, open an issue or start a discussion!
+
+## 📄 License
+
+This project is licensed under the Apache 2.0 License for open source use. See our [Contributing Guide](CONTRIBUTING.md) for information about our dual licensing model for commercial applications.
