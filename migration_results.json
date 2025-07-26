@@ -1,0 +1,11 @@
+{
+  "total": 83,
+  "migrated": 83,
+  "failed": 0,
+  "by_window": {
+    "active": 73,
+    "working": 8,
+    "reference": 2,
+    "archive": 0
+  }
+}
