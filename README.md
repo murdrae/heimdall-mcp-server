@@ -1,15 +1,14 @@
-# Heimdall MCP Server - Your AI Coding Assistant's Long-Term Memory
+# Enhanced Memory System - Persistent AI Context for Development
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://pypi.org/project/heimdall-mcp/)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](hhttps://github.com/lcbcFoo/heimdall-mcp-server/blob/main/README.mdttps://opensource.org/licenses/Apache-2.0)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)]()
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![MCP Protocol](https://img.shields.io/badge/MCP-compatible-brightgreen.svg)](https://modelcontextprotocol.io/)
-[![Heimdall Demo Video](https://img.shields.io/badge/YouTube-red)](https://youtu.be/7X1gntAXsao)
-![PyPI - Version](https://img.shields.io/pypi/v/heimdall-mcp)
 
+**Enhanced fork with temporal-semantic memory architecture and advanced project tracking capabilities.**
 
-**The Problem:** Your AI coding assistant has short-lived memory. Every chat session starts from a blank slate.
+**The Problem:** AI development assistants lack persistent memory across sessions, leading to repeated context building.
 
-**The Solution:** Heimdall gives your LLM a persistent, growing, cognitive memory of your specific codebase, lessons and memories carry over time.
+**The Solution:** A sophisticated memory system that learns from your codebase, maintains context across sessions, and provides intelligent knowledge consolidation with enhanced temporal-semantic architecture.
 
 
 https://github.com/user-attachments/assets/120b3d32-72d1-4d42-b3ab-285e8a711981
@@ -17,12 +16,14 @@ https://github.com/user-attachments/assets/120b3d32-72d1-4d42-b3ab-285e8a711981
 
 ## Key Features
 
-- 🧠 **Context-Rich Memory**: Heimdall learns from your documentation, session insights, and development history, allowing your LLM to recall specific solutions and architectural patterns across conversations.
-- 📚 **Git-Aware Context**: It indexes your project's entire git history, understanding not just what changed, but also who changed it, when, and context.
-- 🔗 **Isolated & Organized**: Each project gets its own isolated memory space, ensuring that context from one project doesn't leak into another.
-- ⚡ **Efficient Integration**: Built on the Model Context Protocol (MCP), it provides a standardized, low-overhead way for LLMs to access this powerful memory.
+- **Enhanced Temporal-Semantic Memory**: Advanced memory architecture that learns from documentation, session insights, and development history with sophisticated temporal windowing and semantic organization.
+- **Comprehensive Git Integration**: Indexes complete git history with advanced pattern recognition, understanding change contexts, co-modification patterns, and development workflows.
+- **Project Isolation**: Each project maintains isolated memory spaces with project-specific collections and automatic boundary management.
+- **MCP Protocol Integration**: Built on Model Context Protocol for standardized AI assistant integration with optimized memory access patterns.
+- **Bridge Discovery**: Advanced connection finding between distant concepts for serendipitous knowledge discovery.
+- **Enhanced Analytics**: Comprehensive memory statistics, health monitoring, and usage analytics for optimal performance.
 
-## 🚀 Getting Started
+## Getting Started
 
 **Prerequisites**: Python 3.10+ and Docker (for Qdrant vector database).
 
@@ -99,7 +100,7 @@ heimdall git-hooks install
 **Note**: If you have existing post-commit hooks, they'll be safely chained and preserved - but proceed carefully.
 
 
-## 🧹 Cleanup
+## Cleanup
 
 To remove Heimdall from a project:
 
@@ -206,7 +207,7 @@ You can instruct your LLM to use the following six tools to interact with its me
 | `delete_memories_by_tags` | Delete all memories that have any of the specified tags.    |
 
 
-## 💡 Best Practices
+## Best Practices
 
 To maximize the effectiveness of Heimdall:
 
@@ -217,7 +218,7 @@ To maximize the effectiveness of Heimdall:
   * **Guide Your Assistant:** Use a system prompt (like a `CLAUDE.md` file) to instruct your LLM on *how* and *when* to use the available memory tools.
   * **Use Strategic Tagging:** Establish rules for your LLM to tag memories consistently. Use temporary tags like `temp-analysis`, `task-specific`, or `cleanup-after-project` for memories that should be deleted after completion, enabling easy cleanup with `delete_memories_by_tags`.
 
-## 🛠️ Command Reference
+## Command Reference
 
 ### Core Commands
 
@@ -298,7 +299,7 @@ Heimdall MCP server is compatible with any platform that supports STDIO MCP serv
 - Semantic analysis: spaCy
 - Integration: Model Context Protocol (MCP)
 
-## 🗺️Short Term Roadmap
+## Short Term Roadmap
 
   * [x] ~~Git `post-commit` hook for automatic, real-time memory updates~~ ✅ **Completed**
   * [x] ~~Watcher to auto-detect and load new documents in the `.heimdall-mcp` directory.~~ ✅ **Completed**
@@ -307,7 +308,7 @@ Heimdall MCP server is compatible with any platform that supports STDIO MCP serv
   * [x] ~~Simplify installation~~ ✅ **Completed**
   * [x] ~~Delete memories support (manually or by tags - for md docs already supported)~~ ✅ **Completed**
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
 
@@ -328,6 +329,6 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 For questions, open an issue or start a discussion!
 
-## 📄 License
+## License
 
 This project is licensed under the Apache 2.0 License for open source use. See our [Contributing Guide](CONTRIBUTING.md) for information about our dual licensing model for commercial applications.
